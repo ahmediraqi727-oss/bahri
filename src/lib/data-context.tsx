@@ -81,13 +81,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     async function loadData() {
-      const [productsRes, suppliersRes] = await Promise.all([
-        supabase.from("products").select("*").order("created_at", { ascending: false }),
-        supabase.from("suppliers").select("*").order("created_at", { ascending: false }),
-      ]);
-      if (productsRes.data) setProducts(productsRes.data.map(rowToProduct));
-      if (suppliersRes.data) setSuppliers(suppliersRes.data.map(rowToSupplier));
-      setLoading(false);
+      try {
+        const [productsRes, suppliersRes] = await Promise.all([
+          supabase.from("products").select("*").order("created_at", { ascending: false }),
+          supabase.from("suppliers").select("*").order("created_at", { ascending: false }),
+        ]);
+        if (productsRes.data) setProducts(productsRes.data.map(rowToProduct));
+        if (suppliersRes.data) setSuppliers(suppliersRes.data.map(rowToSupplier));
+      } catch {
+        // Fallback gracefully on query error
+      } finally {
+        setLoading(false);
+      }
     }
     loadData();
   }, []);

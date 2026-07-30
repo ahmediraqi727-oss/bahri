@@ -54,9 +54,14 @@ export function SalesProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase.from("sales").select("*").order("created_at", { ascending: false });
-      if (data) setSales(data.map(rowToSale));
-      setLoading(false);
+      try {
+        const { data } = await supabase.from("sales").select("*").order("created_at", { ascending: false });
+        if (data) setSales(data.map(rowToSale));
+      } catch {
+        // Fallback gracefully on query error
+      } finally {
+        setLoading(false);
+      }
     }
     load();
   }, []);

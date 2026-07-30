@@ -45,9 +45,14 @@ export function ActivityLogProvider({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase.from("activity_log").select("*").order("created_at", { ascending: false }).limit(500);
-      if (data) setActivities(data.map(rowToActivity));
-      setLoading(false);
+      try {
+        const { data } = await supabase.from("activity_log").select("*").order("created_at", { ascending: false }).limit(500);
+        if (data) setActivities(data.map(rowToActivity));
+      } catch {
+        // Fallback gracefully on query error
+      } finally {
+        setLoading(false);
+      }
     }
     load();
   }, []);

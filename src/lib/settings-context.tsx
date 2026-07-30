@@ -63,12 +63,17 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase.from("settings").select("*").eq("user_id", SETTINGS_USER_ID).single();
-      if (data) {
-        setSettings(rowToSettings(data));
-        setSettingsId(data.id);
+      try {
+        const { data } = await supabase.from("settings").select("*").eq("user_id", SETTINGS_USER_ID).maybeSingle();
+        if (data) {
+          setSettings(rowToSettings(data));
+          setSettingsId(data.id);
+        }
+      } catch {
+        // Fallback gracefully to DEFAULT_SETTINGS
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     load();
   }, []);

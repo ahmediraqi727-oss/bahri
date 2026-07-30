@@ -45,9 +45,14 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase.from("trash").select("*").order("deleted_at", { ascending: false });
-      if (data) setItems(data.map(rowToTrash));
-      setLoading(false);
+      try {
+        const { data } = await supabase.from("trash").select("*").order("deleted_at", { ascending: false });
+        if (data) setItems(data.map(rowToTrash));
+      } catch {
+        // Fallback gracefully on query error
+      } finally {
+        setLoading(false);
+      }
     }
     load();
   }, []);

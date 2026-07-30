@@ -45,13 +45,18 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   useEffect(() => {
     async function load() {
-      let query = supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(100);
-      if (user?.id) {
-        query = query.eq("user_id", user.id);
+      try {
+        let query = supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(100);
+        if (user?.id) {
+          query = query.eq("user_id", user.id);
+        }
+        const { data } = await query;
+        if (data) setNotifications(data.map(rowToNotification));
+      } catch {
+        // Fallback gracefully on query error
+      } finally {
+        setLoading(false);
       }
-      const { data } = await query;
-      if (data) setNotifications(data.map(rowToNotification));
-      setLoading(false);
     }
     load();
   }, [user?.id]);
