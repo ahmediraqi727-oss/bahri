@@ -354,6 +354,8 @@ DROP POLICY IF EXISTS "Managers can view all users" ON users;
 DROP POLICY IF EXISTS "Managers can update all users" ON users;
 DROP POLICY IF EXISTS "Admins can view all users" ON users;
 DROP POLICY IF EXISTS "Admins can update all users" ON users;
+DROP POLICY IF EXISTS "Managers and Admins can update users" ON users;
+DROP POLICY IF EXISTS "Managers and Admins can insert users" ON users;
 
 CREATE POLICY "Users can view own profile" ON users FOR SELECT USING (auth.uid() = id OR public.is_manager_or_admin());
 CREATE POLICY "Managers and Admins can update users" ON users FOR UPDATE USING (public.is_manager_or_admin());
@@ -363,11 +365,15 @@ DROP POLICY IF EXISTS "Anyone can view products" ON products;
 DROP POLICY IF EXISTS "Managers can manage products" ON products;
 DROP POLICY IF EXISTS "Admins can insert products" ON products;
 DROP POLICY IF EXISTS "Admins can update products" ON products;
+DROP POLICY IF EXISTS "Managers and Admins can manage products" ON products;
+
 CREATE POLICY "Anyone can view products" ON products FOR SELECT USING (TRUE);
 CREATE POLICY "Managers and Admins can manage products" ON products FOR ALL USING (public.is_manager_or_admin());
 
 DROP POLICY IF EXISTS "Anyone can view suppliers" ON suppliers;
 DROP POLICY IF EXISTS "Managers can manage suppliers" ON suppliers;
+DROP POLICY IF EXISTS "Managers and Admins can manage suppliers" ON suppliers;
+
 CREATE POLICY "Anyone can view suppliers" ON suppliers FOR SELECT USING (TRUE);
 CREATE POLICY "Managers and Admins can manage suppliers" ON suppliers FOR ALL USING (public.is_manager_or_admin());
 
@@ -375,21 +381,31 @@ DROP POLICY IF EXISTS "Anyone can create orders" ON orders;
 DROP POLICY IF EXISTS "Managers can view all orders" ON orders;
 DROP POLICY IF EXISTS "Admins can view orders" ON orders;
 DROP POLICY IF EXISTS "Managers can update orders" ON orders;
+DROP POLICY IF EXISTS "Managers and Admins can view orders" ON orders;
+DROP POLICY IF EXISTS "Managers and Admins can update orders" ON orders;
+
 CREATE POLICY "Anyone can create orders" ON orders FOR INSERT WITH CHECK (TRUE);
 CREATE POLICY "Managers and Admins can view orders" ON orders FOR SELECT USING (public.is_manager_or_admin());
 CREATE POLICY "Managers and Admins can update orders" ON orders FOR UPDATE USING (public.is_manager_or_admin());
 
 DROP POLICY IF EXISTS "Managers can view sales" ON sales;
 DROP POLICY IF EXISTS "System can insert sales" ON sales;
+DROP POLICY IF EXISTS "Managers and Admins can view sales" ON sales;
+DROP POLICY IF EXISTS "System and Admins can insert sales" ON sales;
+
 CREATE POLICY "Managers and Admins can view sales" ON sales FOR SELECT USING (public.is_manager_or_admin());
 CREATE POLICY "System and Admins can insert sales" ON sales FOR INSERT WITH CHECK (TRUE);
 
 DROP POLICY IF EXISTS "Managers can view activity" ON activity_log;
 DROP POLICY IF EXISTS "System can insert activity" ON activity_log;
+DROP POLICY IF EXISTS "Managers and Admins can view activity" ON activity_log;
+
 CREATE POLICY "Managers and Admins can view activity" ON activity_log FOR SELECT USING (public.is_manager_or_admin());
 CREATE POLICY "System can insert activity" ON activity_log FOR INSERT WITH CHECK (TRUE);
 
 DROP POLICY IF EXISTS "Managers can manage trash" ON trash;
+DROP POLICY IF EXISTS "Managers and Admins can manage trash" ON trash;
+
 CREATE POLICY "Managers and Admins can manage trash" ON trash FOR ALL USING (public.is_manager_or_admin());
 
 DROP POLICY IF EXISTS "Users can view own notifications" ON notifications;
@@ -409,6 +425,8 @@ CREATE POLICY "Users can update own settings" ON settings FOR UPDATE USING (TRUE
 
 DROP POLICY IF EXISTS "Anyone can view active cards" ON chat_cards;
 DROP POLICY IF EXISTS "Managers can manage cards" ON chat_cards;
+DROP POLICY IF EXISTS "Managers and Admins can manage cards" ON chat_cards;
+
 CREATE POLICY "Anyone can view active cards" ON chat_cards FOR SELECT USING (is_active = TRUE OR public.is_manager_or_admin());
 CREATE POLICY "Managers and Admins can manage cards" ON chat_cards FOR ALL USING (public.is_manager_or_admin());
 
