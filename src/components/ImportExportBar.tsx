@@ -64,7 +64,7 @@ export default function ImportExportBar() {
           const nameStr = String(nameVal).trim();
           if (!nameStr) continue;
 
-          const costPrice = parseFloat(String(findVal(row, ["costprice", "cost_price", "cost", "سعر التكلفة", "التكلفة", "تكلفة"]) || 0)) || 0;
+          let costPrice = parseFloat(String(findVal(row, ["costprice", "cost_price", "cost", "سعر التكلفة", "التكلفة", "تكلفة"]) || 0)) || 0;
           const profitMargin = parseFloat(String(findVal(row, ["profitmargin", "profit_margin", "profit", "margin", "هامش الربح", "الربح", "نسبة الربح"]) || 0)) || 0;
           let wholesalePrice = parseFloat(String(findVal(row, ["wholesaleprice", "wholesale_price", "wholesale", "سعر الجملة", "الجملة", "جملة"]) || 0)) || 0;
           let retailPrice = parseFloat(String(findVal(row, ["retailprice", "retail_price", "retail", "price", "سعر المفرد", "المفرد", "السعر", "سعر البيع"]) || 0)) || 0;
@@ -72,10 +72,12 @@ export default function ImportExportBar() {
           if (retailPrice === 0 && costPrice > 0 && profitMargin > 0) {
             retailPrice = calculateRetailPrice(costPrice, profitMargin);
           }
-          if (wholesalePrice === 0) wholesalePrice = costPrice;
+          if (costPrice === 0 && retailPrice > 0) costPrice = retailPrice;
+          if (wholesalePrice === 0) wholesalePrice = retailPrice > 0 ? retailPrice : costPrice;
 
           const stock = parseInt(String(findVal(row, ["stock", "quantity", "qty", "count", "الكمية", "المخزون", "العدد"]) || 0)) || 0;
           const supplierVal = findVal(row, ["supplier", "supplierid", "supplier_id", "المورد", "اسم المورد", "مورد"]);
+          const supplierPhone = String(findVal(row, ["معلومات اتصال المورد", "هاتف المورد", "رقم المورد", "تلفون المورد"]) || "");
           let supplierId = "";
 
           if (supplierVal) {
@@ -88,7 +90,7 @@ export default function ImportExportBar() {
               try {
                 const newSup = await addSupplier({
                   name: rawSup,
-                  phone: "",
+                  phone: supplierPhone,
                   email: "",
                   address: "",
                   notes: "أُضيف تلقائياً أثناء استيراد الملفات",
@@ -101,8 +103,10 @@ export default function ImportExportBar() {
             }
           }
 
-          const notes = String(findVal(row, ["notes", "note", "description", "ملاحظات", "تفاصيل", "الوصف"]) || "");
-          const image = String(findVal(row, ["image", "img", "photo", "pic", "الصورة", "صورة"]) || "");
+          const desc = String(findVal(row, ["notes", "note", "description", "ملاحظات", "تفاصيل", "الوصف", "الوصف التفصيلي"]) || "");
+          const category = String(findVal(row, ["category", "الفئة", "فئة"]) || "");
+          const notes = category && desc ? `الفئة: ${category} | ${desc}` : category || desc;
+          const image = String(findVal(row, ["image", "img", "photo", "pic", "الصورة", "صورة", "رابط الصورة"]) || "");
 
           mapped.push({
             name: nameStr,
