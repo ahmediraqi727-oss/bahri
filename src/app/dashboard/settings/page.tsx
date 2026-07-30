@@ -75,6 +75,73 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      {/* === Section 1.5: Contact Links (روابط الاتصال والتواصل) === */}
+      {(settings.currentRole === "manager" || settings.currentRole === "admin") && (
+        <section className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xl">📞</span>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">روابط الاتصال والتواصل (خاصة بالمدير)</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">تظهر هذه الروابط للزبائن بعد إكمال الشراء لتأكيد الطلب مباشرة</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1.5 flex items-center gap-2">
+                <span>💬</span> رابط / رقم الواتساب (WhatsApp)
+              </label>
+              <input
+                type="text"
+                placeholder="مثال: https://wa.me/9647800000000 أو 07800000000"
+                value={settings.whatsappLink || ""}
+                onChange={(e) => updateSettings({ whatsappLink: e.target.value })}
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1.5 flex items-center gap-2">
+                <span>✈️</span> رابط / يوزر التليكرام (Telegram)
+              </label>
+              <input
+                type="text"
+                placeholder="مثال: https://t.me/username أو @username"
+                value={settings.telegramLink || ""}
+                onChange={(e) => updateSettings({ telegramLink: e.target.value })}
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1.5 flex items-center gap-2">
+                <span>⚡</span> رابط الماسنجر (Facebook Messenger)
+              </label>
+              <input
+                type="text"
+                placeholder="مثال: https://m.me/page_name أو اسم الصفحة"
+                value={settings.messengerLink || ""}
+                onChange={(e) => updateSettings({ messengerLink: e.target.value })}
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1.5 flex items-center gap-2">
+                <span>📞</span> رقم الاتصال المباشر (Phone Call)
+              </label>
+              <input
+                type="text"
+                placeholder="مثال: 07800000000"
+                value={settings.phoneLink || ""}
+                onChange={(e) => updateSettings({ phoneLink: e.target.value })}
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none text-sm"
+              />
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* === Section 2: Appearance === */}
       <section className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-6">
         <div className="flex items-center gap-2 mb-2">

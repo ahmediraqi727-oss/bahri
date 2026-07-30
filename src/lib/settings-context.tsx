@@ -30,6 +30,10 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
     secondaryColor: (row.secondary_color as string) || "#7c3aed",
     accentColor: (row.accent_color as string) || "#f59e0b",
     darkMode: (row.dark_mode as boolean) || false,
+    whatsappLink: (row.whatsapp_link as string) || "",
+    telegramLink: (row.telegram_link as string) || "",
+    messengerLink: (row.messenger_link as string) || "",
+    phoneLink: (row.phone_link as string) || "07800000000",
     currentRole: "manager",
     roleThemes: {
       manager: { primary: rt.manager?.primary || "#1e40af", secondary: rt.manager?.secondary || "#7c3aed", accent: rt.manager?.accent || "#f59e0b" },
@@ -52,6 +56,10 @@ function settingsToRow(settings: SiteSettings): Record<string, unknown> {
     secondary_color: settings.secondaryColor,
     accent_color: settings.accentColor,
     dark_mode: settings.darkMode,
+    whatsapp_link: settings.whatsappLink || "",
+    telegram_link: settings.telegramLink || "",
+    messenger_link: settings.messengerLink || "",
+    phone_link: settings.phoneLink || "",
     role_themes: settings.roleThemes,
   };
 }

@@ -18,6 +18,10 @@ export interface SiteSettings {
   accentColor: string;
   darkMode: boolean;
   currentRole: UserRole;
+  whatsappLink?: string;
+  telegramLink?: string;
+  messengerLink?: string;
+  phoneLink?: string;
   roleThemes: {
     manager: RoleTheme;
     admin: RoleTheme;
@@ -37,6 +41,10 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   accentColor: "#f59e0b",
   darkMode: false,
   currentRole: "manager",
+  whatsappLink: "",
+  telegramLink: "",
+  messengerLink: "",
+  phoneLink: "07800000000",
   roleThemes: {
     manager: { primary: "#1e40af", secondary: "#7c3aed", accent: "#f59e0b" },
     admin: { primary: "#059669", secondary: "#0891b2", accent: "#f97316" },

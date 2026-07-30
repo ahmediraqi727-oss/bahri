@@ -120,12 +120,48 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
 
   const sendViaWhatsApp = () => {
     const msg = generateWhatsAppMessage();
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank");
+    const wa = settings.whatsappLink?.trim();
+    if (wa) {
+      if (wa.startsWith("http")) {
+        const sep = wa.includes("?") ? "&" : "?";
+        window.open(`${wa}${sep}text=${encodeURIComponent(msg)}`, "_blank");
+      } else {
+        const cleanNumber = wa.replace(/\D/g, "");
+        window.open(`https://api.whatsapp.com/send?phone=${cleanNumber}&text=${encodeURIComponent(msg)}`, "_blank");
+      }
+    } else {
+      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank");
+    }
   };
 
   const sendViaTelegram = () => {
     const msg = generateWhatsAppMessage();
-    window.open(`https://t.me/share/url?url=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin : '')}&text=${encodeURIComponent(msg)}`, "_blank");
+    const tg = settings.telegramLink?.trim();
+    if (tg) {
+      if (tg.startsWith("http")) {
+        const sep = tg.includes("?") ? "&" : "?";
+        window.open(`${tg}${sep}text=${encodeURIComponent(msg)}`, "_blank");
+      } else if (tg.startsWith("@")) {
+        window.open(`https://t.me/${tg.replace("@", "")}`, "_blank");
+      } else {
+        window.open(`https://t.me/${tg}`, "_blank");
+      }
+    } else {
+      window.open(`https://t.me/share/url?url=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin : '')}&text=${encodeURIComponent(msg)}`, "_blank");
+    }
+  };
+
+  const sendViaMessenger = () => {
+    const ms = settings.messengerLink?.trim();
+    if (ms) {
+      if (ms.startsWith("http")) {
+        window.open(ms, "_blank");
+      } else {
+        window.open(`https://m.me/${ms}`, "_blank");
+      }
+    } else {
+      window.open("https://m.me/", "_blank");
+    }
   };
 
   const generatePDF = () => {
@@ -333,8 +369,13 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
                 <button onClick={sendViaTelegram} className="w-full py-3 bg-[#0088cc] text-white rounded-xl font-bold hover:bg-[#006da3] transition-colors flex items-center justify-center gap-2 shadow-sm text-sm">
                   ✈️ إرسال الطلب عبر تليجرام
                 </button>
-                <a href="tel:07800000000" className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 shadow-sm text-sm block text-center">
-                  📞 اتصال مباشر للإدارة (07800000000)
+                {settings.messengerLink && (
+                  <button onClick={sendViaMessenger} className="w-full py-3 bg-[#0084FF] text-white rounded-xl font-bold hover:bg-[#0073E6] transition-colors flex items-center justify-center gap-2 shadow-sm text-sm">
+                    ⚡ إرسال الطلب عبر ماسنجر
+                  </button>
+                )}
+                <a href={`tel:${settings.phoneLink || "07800000000"}`} className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 shadow-sm text-sm block text-center">
+                  📞 اتصال مباشر للإدارة ({settings.phoneLink || "07800000000"})
                 </a>
                 <button onClick={generatePDF} className="w-full py-2.5 bg-gray-700 text-white rounded-xl font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 shadow-sm text-xs">
                   📄 تحميل الفاتورة PDF
