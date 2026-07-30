@@ -19,6 +19,7 @@ interface AuthContextType {
   loading: boolean;
   signUp: (email: string, password: string, fullName: string, role?: UserRole) => Promise<{ error: AuthError | null }>;
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
+  signInWithGoogle: () => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   guestLogin: (name: string, governorate: string) => void;
 }
@@ -127,6 +128,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const signInWithGoogle = useCallback(async () => {
+    try {
+      const origin = typeof window !== "undefined" ? window.location.origin : "https://ahmed-bahri.vercel.app";
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${origin}/dashboard`,
+        },
+      });
+      return { error };
+    } catch (e: unknown) {
+      return { error: e as AuthError };
+    }
+  }, []);
+
   const signOut = useCallback(async () => {
     try {
       await supabase.auth.signOut();
@@ -162,7 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user, session]);
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signOut, guestLogin }}>
+    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signInWithGoogle, signOut, guestLogin }}>
       {children}
     </AuthContext.Provider>
   );

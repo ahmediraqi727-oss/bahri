@@ -14,7 +14,7 @@ const GOVERNORATES = [
 ];
 
 export default function LoginPage() {
-  const { signIn, signUp, user, loading, guestLogin } = useAuth();
+  const { signIn, signUp, signInWithGoogle, user, loading, guestLogin } = useAuth();
   const { settings } = useSettings();
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "signup" | "guest">("login");
@@ -60,9 +60,13 @@ export default function LoginPage() {
     if (mode === "login") {
       const { error: authError } = await signIn(email, password);
       if (authError) {
-        setError(authError.message === "Invalid login credentials"
-          ? "بيانات الدخول غير صحيحة"
-          : authError.message);
+        let msg = authError.message;
+        if (msg === "Invalid login credentials") {
+          msg = "بيانات الدخول غير صحيحة، يرجى التأكد من البريد وكلمة المرور";
+        } else if (msg === "Email not confirmed") {
+          msg = "تم تأكيد حسابك من الخادم، يرجى إعادة محاولة تسجيل الدخول الآن";
+        }
+        setError(msg);
         setSubmitting(false);
         return;
       }
@@ -71,15 +75,29 @@ export default function LoginPage() {
       const { error: authError } = await signUp(email, password, fullName, "customer");
       if (authError) {
         setError(authError.message === "User already registered"
-          ? "هذا البريد الإلكتروني مسجل بالفعل"
+          ? "هذا البريد الإلكتروني مسجل بالفعل، يمكنك تسجيل الدخول مباشرة"
           : authError.message);
         setSubmitting(false);
         return;
       }
+      // Attempt auto sign in after sign up
+      const { error: autoSignInError } = await signIn(email, password);
+      if (!autoSignInError) {
+        router.replace("/");
+        return;
+      }
       setError("");
-      alert("تم التسجيل بنجاح! تحقق من بريدك الإلكتروني لتأكيد الحساب.");
+      alert("تم إنشاء الحساب بنجاح! يمكنك الآن تسجيل الدخول.");
       setMode("login");
       setSubmitting(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setError("");
+    const { error: authError } = await signInWithGoogle();
+    if (authError) {
+      setError(authError.message || "حدث خطأ أثناء تسجيل الدخول بواسطة Google");
     }
   };
 
@@ -214,6 +232,25 @@ export default function LoginPage() {
                 className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold text-lg transition shadow-lg shadow-blue-600/25"
               >
                 {submitting ? "جاري التحميل..." : mode === "login" ? "دخول" : "إنشاء حساب"}
+              </button>
+
+              <div className="relative my-4 flex items-center justify-center">
+                <div className="border-t border-gray-300 dark:border-gray-600 w-full" />
+                <span className="bg-white dark:bg-gray-800 px-3 text-xs text-gray-500 dark:text-gray-400 absolute">أو</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                className="w-full py-3 px-4 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-medium text-base transition flex items-center justify-center gap-3 shadow-sm"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                </svg>
+                <span>تسجيل الدخول باستخدام Google</span>
               </button>
             </form>
           )}
