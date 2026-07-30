@@ -30,79 +30,102 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
   const [address, setAddress] = useState("");
   const [notes, setNotes] = useState("");
 
+  const [submitting, setSubmitting] = useState(false);
+
   const handleOrder = async () => {
-    const order: Order = {
-      id: crypto.randomUUID(),
-      customerName: name,
-      customerPhone: phone,
-      customerAddress: address,
-      items: [...items],
-      total,
-      status: "pending",
-      notes,
-      createdAt: new Date().toISOString(),
-    };
+    if (!name.trim() || !phone.trim() || !address.trim()) return;
+    setSubmitting(true);
 
-    const saleItems = items.map((item) => {
-      const product = products.find((p) => p.id === item.productId);
-      return {
-        productId: item.productId,
-        productName: item.name,
-        costPrice: product?.costPrice || 0,
-        retailPrice: item.retailPrice,
-        quantity: item.quantity,
+    try {
+      const order: Order = {
+        id: crypto.randomUUID(),
+        customerName: name,
+        customerPhone: phone,
+        customerAddress: address,
+        items: [...items],
+        total,
+        status: "pending",
+        notes,
+        createdAt: new Date().toISOString(),
       };
-    });
-    const saleCost = saleItems.reduce((s, i) => s + i.costPrice * i.quantity, 0);
-    await addSale({
-      customerName: name,
-      customerPhone: phone,
-      items: saleItems,
-      total,
-      cost: saleCost,
-      profit: total - saleCost,
-    });
 
-    await addNotification({
-      type: "info",
-      title: "طلب جديد! 🛒",
-      message: `طلب من ${name} - ${items.length} منتج - ${total.toLocaleString()} د.ع`,
-      productId: order.id,
-    });
+      const saleItems = items.map((item) => {
+        const product = products.find((p) => p.id === item.productId);
+        return {
+          productId: item.productId,
+          productName: item.name,
+          costPrice: product?.costPrice || 0,
+          retailPrice: item.retailPrice,
+          quantity: item.quantity,
+        };
+      });
+      const saleCost = saleItems.reduce((s, i) => s + i.costPrice * i.quantity, 0);
 
-    await logActivity({
-      user: "customer",
-      action: "create",
-      entity: "طلب",
-      entityId: order.id,
-      details: `طلب جديد من ${name} (${phone}) - الإجمالي: ${total.toLocaleString()} د.ع`,
-    });
+      try {
+        await addSale({
+          customerName: name,
+          customerPhone: phone,
+          items: saleItems,
+          total,
+          cost: saleCost,
+          profit: total - saleCost,
+        });
+      } catch (e) {
+        console.warn("addSale error:", e);
+      }
 
-    setStep("done");
+      try {
+        await addNotification({
+          type: "info",
+          title: "طلب جديد! 🛒",
+          message: `طلب من ${name} - ${items.length} منتج - ${total.toLocaleString()} د.ع | هاتف: ${phone} | العنوان: ${address}`,
+          productId: order.id,
+        });
+      } catch (e) {
+        console.warn("addNotification error:", e);
+      }
+
+      try {
+        await logActivity({
+          user: "customer",
+          action: "create",
+          entity: "طلب",
+          entityId: order.id,
+          details: `طلب جديد من ${name} (${phone}) - العنوان: ${address} - الإجمالي: ${total.toLocaleString()} د.ع`,
+        });
+      } catch (e) {
+        console.warn("logActivity error:", e);
+      }
+    } catch (err) {
+      console.error("handleOrder error:", err);
+    } finally {
+      setSubmitting(false);
+      setStep("done");
+    }
   };
 
   const generateWhatsAppMessage = () => {
-    let msg = `🛒 *طلب جديد - ${settings.siteName}*\n\n`;
+    let msg = `🛒 *طلب جديد من المتجر - ${settings.siteName}*\n\n`;
     msg += `👤 *الزبون:* ${name}\n`;
     msg += `📞 *الهاتف:* ${phone}\n`;
     msg += `📍 *العنوان:* ${address}\n\n`;
-    msg += `📦 *المنتجات:*\n`;
+    msg += `📦 *المنتجات المطلوبة:*\n`;
     items.forEach((item, i) => {
       msg += `${i + 1}. ${item.name} × ${item.quantity} = ${(item.retailPrice * item.quantity).toLocaleString()} د.ع\n`;
     });
-    msg += `\n💰 *الإجمالي:* ${total.toLocaleString()} د.ع\n`;
+    msg += `\n💰 *المجموع الكلي:* ${total.toLocaleString()} د.ع\n`;
     if (notes) msg += `\n📝 *ملاحظات:* ${notes}\n`;
     return msg;
   };
 
   const sendViaWhatsApp = () => {
     const msg = generateWhatsAppMessage();
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
   const sendViaTelegram = () => {
     const msg = generateWhatsAppMessage();
-    window.open(`https://t.me/share/url?url=${encodeURIComponent(settings.siteName)}&text=${encodeURIComponent(msg)}`, "_blank");
+    window.open(`https://t.me/share/url?url=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin : '')}&text=${encodeURIComponent(msg)}`, "_blank");
   };
 
   const generatePDF = () => {
@@ -116,7 +139,7 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
     doc.setFontSize(20);
     doc.text(settings.siteName, pageWidth / 2, 18, { align: "center" });
     doc.setFontSize(10);
-    doc.text("فاتورة", pageWidth / 2, 26, { align: "center" });
+    doc.text("فاتورة طلب", pageWidth / 2, 26, { align: "center" });
     doc.text(new Date().toLocaleDateString("ar-EG"), pageWidth / 2, 33, { align: "center" });
 
     doc.setTextColor(50, 50, 50);
@@ -178,7 +201,7 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
         <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between" style={{ backgroundColor: `${theme.primary}10` }}>
           <div>
             <h2 className="font-bold text-gray-900 dark:text-white">
-              {step === "cart" ? `🛒 السلة (${itemCount})` : step === "checkout" ? "📝 تأكيد الطلب" : "✅ تم الطلب"}
+              {step === "cart" ? `🛒 السلة (${itemCount})` : step === "checkout" ? "📝 تأكيد الطلب" : "✅ تم إكمال الطلب"}
             </h2>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-500">✕</button>
@@ -235,19 +258,19 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
             <div className="p-4 space-y-4">
               <div>
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">اسم الزبون *</label>
-                <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none" placeholder="الاسم الكامل" />
+                <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none text-sm" placeholder="الاسم الكامل" />
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">رقم الهاتف *</label>
-                <input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none" placeholder="07XX XXX XXXX" />
+                <input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none text-sm" placeholder="07XX XXX XXXX" />
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">العنوان *</label>
-                <input type="text" required value={address} onChange={(e) => setAddress(e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none" placeholder="المدينة / الحي / الشارع" />
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">العنوان / المحافظة *</label>
+                <input type="text" required value={address} onChange={(e) => setAddress(e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none text-sm" placeholder="المحافظة / المدينة / المنطقة" />
               </div>
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">ملاحظات</label>
-                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none resize-none" placeholder="ملاحظات إضافية..." />
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">ملاحظات إضافية</label>
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none resize-none text-sm" placeholder="ملاحظات حول وقت التوصيل أو تفاصيل أخرى..." />
               </div>
 
               <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 space-y-2">
@@ -258,7 +281,7 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
                   </div>
                 ))}
                 <div className="border-t border-gray-200 dark:border-gray-700 pt-2 flex justify-between font-bold">
-                  <span className="text-gray-900 dark:text-white">الإجمالي</span>
+                  <span className="text-gray-900 dark:text-white">الإجمالي الكلي</span>
                   <span style={{ color: theme.primary }}>{total.toLocaleString()} د.ع</span>
                 </div>
               </div>
@@ -266,25 +289,60 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
           )}
 
           {step === "done" && (
-            <div className="p-6 text-center space-y-6">
-              <div className="text-6xl">✅</div>
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white">تم استلام طلبك بنجاح!</h3>
-              <p className="text-gray-500 dark:text-gray-400">سنتواصل معك قريباً لتأكيد الطلب</p>
+            <div className="p-5 text-center space-y-5">
+              <div className="w-14 h-14 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center text-3xl mx-auto shadow-inner">
+                ✓
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">تم تأكيد طلبك بنجاح!</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">جميع البيانات تم تسجيلها ويمكنك التواصل المباشر عبر الخيارات التالية:</p>
+              </div>
 
-              <div className="space-y-3">
-                <button onClick={sendViaWhatsApp} className="w-full py-3 bg-[#25D366] text-white rounded-xl font-medium hover:bg-[#20BD5A] transition-colors flex items-center justify-center gap-2">
-                  💬 إرسال عبر واتساب
+              {/* Card with summary details */}
+              <div className="bg-gray-50 dark:bg-gray-800/80 rounded-2xl p-4 text-right space-y-2.5 border border-gray-200 dark:border-gray-700 text-xs">
+                <div className="border-b border-gray-200 dark:border-gray-700 pb-2 flex justify-between items-center">
+                  <span className="font-bold text-gray-900 dark:text-white text-sm">📋 ملخص معلومات الطلب:</span>
+                  <span className="text-[10px] text-gray-400">{new Date().toLocaleTimeString("ar-EG", { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                <div className="space-y-1 text-gray-700 dark:text-gray-300">
+                  <p>👤 <b>الاسم:</b> {name}</p>
+                  <p>📞 <b>رقم الهاتف:</b> {phone}</p>
+                  <p>📍 <b>العنوان / المحافظة:</b> {address}</p>
+                  {notes && <p>📝 <b>الملاحظات:</b> {notes}</p>}
+                </div>
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-2 space-y-1">
+                  <p className="font-semibold text-gray-800 dark:text-gray-200">📦 المنتجات ({items.length}):</p>
+                  {items.map((item, idx) => (
+                    <div key={idx} className="flex justify-between text-gray-600 dark:text-gray-400">
+                      <span>• {item.name} ({item.quantity} قطعة)</span>
+                      <span className="font-medium text-gray-800 dark:text-gray-200">{(item.retailPrice * item.quantity).toLocaleString()} د.ع</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-2 flex justify-between font-extrabold text-sm text-gray-900 dark:text-white">
+                  <span>المجموع النهائي:</span>
+                  <span style={{ color: theme.primary }}>{total.toLocaleString()} د.ع</span>
+                </div>
+              </div>
+
+              {/* Instant Communication Actions */}
+              <div className="space-y-2 pt-1">
+                <button onClick={sendViaWhatsApp} className="w-full py-3 bg-[#25D366] text-white rounded-xl font-bold hover:bg-[#20BD5A] transition-colors flex items-center justify-center gap-2 shadow-sm text-sm">
+                  💬 إرسال الطلب عبر واتساب
                 </button>
-                <button onClick={sendViaTelegram} className="w-full py-3 bg-[#0088cc] text-white rounded-xl font-medium hover:bg-[#006da3] transition-colors flex items-center justify-center gap-2">
-                  ✈️ إرسال عبر تليجرام
+                <button onClick={sendViaTelegram} className="w-full py-3 bg-[#0088cc] text-white rounded-xl font-bold hover:bg-[#006da3] transition-colors flex items-center justify-center gap-2 shadow-sm text-sm">
+                  ✈️ إرسال الطلب عبر تليجرام
                 </button>
-                <button onClick={generatePDF} className="w-full py-3 bg-gray-700 text-white rounded-xl font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">
+                <a href="tel:07800000000" className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 shadow-sm text-sm block text-center">
+                  📞 اتصال مباشر للإدارة (07800000000)
+                </a>
+                <button onClick={generatePDF} className="w-full py-2.5 bg-gray-700 text-white rounded-xl font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 shadow-sm text-xs">
                   📄 تحميل الفاتورة PDF
                 </button>
               </div>
 
-              <button onClick={() => { clearCart(); setStep("cart"); setName(""); setPhone(""); setAddress(""); setNotes(""); onClose(); }} className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 underline">
-                العودة للمتجر
+              <button onClick={() => { clearCart(); setStep("cart"); setName(""); setPhone(""); setAddress(""); setNotes(""); onClose(); }} className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 underline block mx-auto pt-1">
+                إغلاق والعودة للمتجر
               </button>
             </div>
           )}
@@ -310,11 +368,18 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
           <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
             <button
               onClick={handleOrder}
-              disabled={!name.trim() || !phone.trim() || !address.trim()}
-              className="w-full py-3 text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={submitting || !name.trim() || !phone.trim() || !address.trim()}
+              className="w-full py-3 text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               style={{ backgroundColor: theme.primary }}
             >
-              تأكيد الطلب
+              {submitting ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  جاري تأكيد الطلب...
+                </>
+              ) : (
+                "تأكيد الطلب"
+              )}
             </button>
             <button onClick={() => setStep("cart")} className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
               العودة للسلة
