@@ -184,11 +184,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const importAllData = useCallback(async (data: { products?: Product[]; suppliers?: Supplier[] }) => {
     if (data.suppliers && data.suppliers.length > 0) {
       const rows = data.suppliers.map((s) => supplierToRow(s as unknown as Record<string, unknown>));
-      await supabase.from("suppliers").insert(rows);
+      await supabase.from("suppliers").upsert(rows);
     }
     if (data.products && data.products.length > 0) {
       const rows = data.products.map((p) => productToRow(p as unknown as Record<string, unknown>));
-      await supabase.from("products").insert(rows);
+      await supabase.from("products").upsert(rows);
     }
     const [productsRes, suppliersRes] = await Promise.all([
       supabase.from("products").select("*").order("created_at", { ascending: false }),

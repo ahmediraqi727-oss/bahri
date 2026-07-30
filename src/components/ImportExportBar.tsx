@@ -14,6 +14,8 @@ export default function ImportExportBar() {
   const importRef = useRef<HTMLInputElement>(null);
   const backupRef = useRef<HTMLInputElement>(null);
 
+  const getSupplierName = (id: string) => suppliers.find((s) => s.id === id)?.name || "—";
+
   const handleImportProducts = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -86,7 +88,6 @@ export default function ImportExportBar() {
             if (supplierMap.has(lowerSup)) {
               supplierId = supplierMap.get(lowerSup)!;
             } else if (rawSup.length > 0) {
-              // Create supplier dynamically if not found
               try {
                 const newSup = await addSupplier({
                   name: rawSup,
@@ -106,7 +107,7 @@ export default function ImportExportBar() {
           const desc = String(findVal(row, ["notes", "note", "description", "ملاحظات", "تفاصيل", "الوصف", "الوصف التفصيلي"]) || "");
           const category = String(findVal(row, ["category", "الفئة", "فئة"]) || "");
           const notes = category && desc ? `الفئة: ${category} | ${desc}` : category || desc;
-          const image = String(findVal(row, ["image", "img", "photo", "pic", "الصورة", "صورة", "رابط الصورة"]) || "");
+          const image = String(findVal(row, ["image", "img", "photo", "pic", "الصورة", "صورة", "رابط الصورة", "رابط صورة المنتج", "صورة المنتج", "product_image", "productimage"]) || "");
 
           mapped.push({
             name: nameStr,
@@ -131,9 +132,9 @@ export default function ImportExportBar() {
           user: settings.currentRole,
           action: "import",
           entity: "منتجات",
-          details: `استيراد ${count} منتج من ملف ${file.name}`,
+          details: `استيراد ${count} منتج مع الصور والمعلومات من ملف ${file.name}`,
         });
-        alert(`🎉 تم استيراد ${count} منتج بنجاح!`);
+        alert(`🎉 تم استيراد ${count} منتج بنجاح مدمجة مع صورها وجميع معلوماتها!`);
       } catch (err: any) {
         console.error("Error importing products:", err);
         alert(`❌ حدث خطأ أثناء استيراد الملف: ${err?.message || err}`);
@@ -146,20 +147,30 @@ export default function ImportExportBar() {
   const handleExportProducts = async () => {
     if (products.length === 0) { alert("لا توجد منتجات للتصدير"); return; }
     const data = products.map((p) => ({
+      "اسم المنتج": p.name,
+      "رابط صورة المنتج": p.image || "",
+      "سعر التكلفة": p.costPrice,
+      "سعر الجملة": p.wholesalePrice,
+      "نسبة الربح (%)": p.profitMargin,
+      "سعر المفرد": p.retailPrice,
+      "الكمية / المخزون": p.stock,
+      "اسم المورد": getSupplierName(p.supplierId),
+      "الوصف التفصيلي": p.notes,
       name: p.name,
+      image: p.image || "",
       costPrice: p.costPrice,
       wholesalePrice: p.wholesalePrice,
       profitMargin: p.profitMargin,
       retailPrice: p.retailPrice,
       stock: p.stock,
-      supplierId: p.supplierId,
+      supplier: getSupplierName(p.supplierId),
       notes: p.notes,
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Products");
-    XLSX.writeFile(wb, `products-${new Date().toISOString().slice(0, 10)}.xlsx`);
-    await logActivity({ user: settings.currentRole, action: "export", entity: "منتجات", details: `تصدير ${products.length} منتج` });
+    XLSX.writeFile(wb, `products-catalog-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    await logActivity({ user: settings.currentRole, action: "export", entity: "منتجات", details: `تصدير ${products.length} منتج شامل الصور والمعلومات الكاملة` });
   };
 
   const handleFullBackup = async () => {
@@ -171,7 +182,7 @@ export default function ImportExportBar() {
     a.download = `backup-${settings.siteName}-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    await logActivity({ user: settings.currentRole, action: "export", entity: "نسخة احتياطية", details: `تصدير نسخة احتياطية كاملة (${data.products.length} منتج، ${data.suppliers.length} مورد)` });
+    await logActivity({ user: settings.currentRole, action: "export", entity: "نسخة احتياطية", details: `تصدير نسخة احتياطية كاملة (${data.products.length} منتج شامل الصور والمعلومات، ${data.suppliers.length} مورد)` });
   };
 
   const handleRestoreBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -182,10 +193,10 @@ export default function ImportExportBar() {
       try {
         const data = JSON.parse(ev.target?.result as string);
         await importAllData(data);
-        await logActivity({ user: settings.currentRole, action: "import", entity: "نسخة احتياطية", details: `استيراد نسخة احتياطية من ${file.name}` });
-        alert("تم استيراد البيانات بنجاح");
-      } catch {
-        alert("خطأ في ملف النسخة الاحتياطية");
+        await logActivity({ user: settings.currentRole, action: "import", entity: "نسخة احتياطية", details: `استعادة نسخة احتياطية من ${file.name}` });
+        alert("🎉 تم استعادة النسخة الاحتياطية بنجاح وشملت جميع المنتجات وصورها المرفقة!");
+      } catch (err: any) {
+        alert(`❌ خطأ في استعادة النسخة الاحتياطية: ${err?.message || err}`);
       }
     };
     reader.readAsText(file);
@@ -196,17 +207,17 @@ export default function ImportExportBar() {
     <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
       <div className="flex flex-wrap gap-2">
         <button onClick={() => importRef.current?.click()} className="px-4 py-2 text-sm font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-2">
-          📥 استيراد المنتجات (Excel/CSV)
+          📥 استيراد المنتجات مع الصور (Excel/CSV)
         </button>
         <button onClick={handleExportProducts} className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
-          📤 تصدير المنتجات
+          📤 تصدير المنتجات مع الصور
         </button>
         <div className="w-px bg-gray-300 dark:bg-gray-600 mx-1" />
         <button onClick={handleFullBackup} className="px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2">
-          💾 نسخة احتياطية كاملة
+          💾 نسخة احتياطية (صور + بيانات)
         </button>
         <button onClick={() => backupRef.current?.click()} className="px-4 py-2 text-sm font-medium bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors flex items-center gap-2">
-          📂 استعادة نسخة احتياطية
+          📂 استعادة النسخة الاحتياطية
         </button>
         <input ref={importRef} type="file" accept=".xlsx,.csv,.xls" onChange={handleImportProducts} className="hidden" />
         <input ref={backupRef} type="file" accept=".json" onChange={handleRestoreBackup} className="hidden" />
