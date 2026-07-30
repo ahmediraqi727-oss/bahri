@@ -168,7 +168,8 @@ export default function DashboardAssistant() {
     processMessage(text);
   };
 
-  const theme = settings.roleThemes[settings.currentRole];
+  const currentRole = settings?.currentRole || "manager";
+  const theme = settings?.roleThemes?.[currentRole] || { primary: "#1e40af", secondary: "#7c3aed", accent: "#f59e0b" };
 
   return (
     <>

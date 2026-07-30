@@ -1,13 +1,12 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request: { headers: request.headers } });
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // Skip auth check if environment variables are not set or are placeholders
   if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes("placeholder")) {
     return response;
   }
@@ -51,7 +50,7 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(url);
     }
   } catch (err) {
-    console.error("Proxy middleware error:", err);
+    console.error("Middleware error:", err);
   }
 
   return response;

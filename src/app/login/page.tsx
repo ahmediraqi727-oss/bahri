@@ -50,7 +50,16 @@ export default function LoginPage() {
     );
   }
 
-  if (user) return null;
+  if (user) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 gap-4">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+        <p className="text-gray-700 dark:text-gray-300 font-semibold text-lg animate-pulse">
+          تم تسجيل الدخول بنجاح! جاري التوجيه...
+        </p>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

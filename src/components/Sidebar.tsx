@@ -51,8 +51,13 @@ export default function Sidebar() {
   const { settings, setCurrentRole } = useSettings();
   const { user, signOut } = useAuth();
   const { logActivity } = useActivityLog();
-  const { currentRole, roleThemes } = settings;
-  const theme = roleThemes[currentRole];
+  const currentRole = settings?.currentRole || "manager";
+  const roleThemes = settings?.roleThemes || {
+    manager: { primary: "#1e40af", secondary: "#7c3aed", accent: "#f59e0b" },
+    admin: { primary: "#059669", secondary: "#0891b2", accent: "#f97316" },
+    customer: { primary: "#2563eb", secondary: "#6366f1", accent: "#ec4899" },
+  };
+  const theme = roleThemes[currentRole] || roleThemes.manager;
 
   const [staffOpen, setStaffOpen] = useState(false);
   const [staff, setStaff] = useState<StaffUser[]>([]);

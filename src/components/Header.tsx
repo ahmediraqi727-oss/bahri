@@ -12,7 +12,9 @@ const ROLE_LABELS = {
 
 export default function Header() {
   const { settings, toggleDarkMode } = useSettings();
-  const theme = settings.roleThemes[settings.currentRole];
+  const currentRole = settings?.currentRole || "manager";
+  const theme = settings?.roleThemes?.[currentRole] || { primary: "#1e40af", secondary: "#7c3aed", accent: "#f59e0b" };
+  const roleLabel = ROLE_LABELS[currentRole] || "مدير النظام";
 
   return (
     <header className="h-16 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex items-center justify-between px-6">
@@ -24,7 +26,7 @@ export default function Header() {
           className="px-3 py-1 rounded-full text-xs font-medium text-white hidden sm:inline"
           style={{ backgroundColor: theme.primary }}
         >
-          {ROLE_LABELS[settings.currentRole]}
+          {roleLabel}
         </span>
       </div>
 

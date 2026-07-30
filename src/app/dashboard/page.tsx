@@ -11,7 +11,8 @@ export default function DashboardPage() {
   const { activities } = useActivityLog();
   const { items: trashItems } = useTrash();
   const { products, suppliers } = useData();
-  const theme = settings.roleThemes[settings.currentRole];
+  const currentRole = settings?.currentRole || "manager";
+  const theme = settings?.roleThemes?.[currentRole] || { primary: "#1e40af", secondary: "#7c3aed", accent: "#f59e0b" };
 
   const totalValue = products.reduce((sum, p) => sum + p.retailPrice * p.stock, 0);
 
