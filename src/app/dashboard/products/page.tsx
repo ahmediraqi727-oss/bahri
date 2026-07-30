@@ -68,12 +68,16 @@ export default function ProductsPage() {
 
   const totalValue = filtered.reduce((sum, p) => sum + p.retailPrice * p.stock, 0);
 
+  const isAdminOrManager = settings.currentRole === "manager" || settings.currentRole === "admin";
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">المنتجات</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">{filtered.length} منتج | إجمالي القيمة: {totalValue.toLocaleString()} د.ع</p>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">
+            {filtered.length} منتج {isAdminOrManager && `| إجمالي القيمة: ${totalValue.toLocaleString()} د.ع`}
+          </p>
         </div>
         <div className="flex gap-2">
           {canCreate && (
@@ -88,7 +92,7 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      <ImportExportBar />
+      {isAdminOrManager && <ImportExportBar />}
 
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
         <input
@@ -114,12 +118,12 @@ export default function ProductsPage() {
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
                   <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المنتج</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">التكاليف</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الجملة</th>
+                  {isAdminOrManager && <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">التكاليف</th>}
+                  {isAdminOrManager && <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الجملة</th>}
                   <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المفرد</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الكمية</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المورد</th>
-                  {canEdit && <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">إجراءات</th>}
+                  {isAdminOrManager && <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الكمية</th>}
+                  {isAdminOrManager && <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المورد</th>}
+                  {isAdminOrManager && canEdit && <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">إجراءات</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -138,30 +142,38 @@ export default function ProductsPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      {canEdit ? (
-                        <InlineNumber value={product.costPrice} onSave={(v) => handleInlineEdit(product.id, "costPrice", v)} />
-                      ) : (
-                        <span className="text-gray-900 dark:text-white">{product.costPrice.toLocaleString()}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {canEdit ? (
-                        <InlineNumber value={product.wholesalePrice} onSave={(v) => handleInlineEdit(product.id, "wholesalePrice", v)} />
-                      ) : (
-                        <span className="text-gray-900 dark:text-white">{product.wholesalePrice.toLocaleString()}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 font-bold text-gray-900 dark:text-white">{product.retailPrice.toLocaleString()}</td>
-                    <td className="px-4 py-3">
-                      {canEdit ? (
-                        <InlineNumber value={product.stock} onSave={(v) => handleInlineEdit(product.id, "stock", v)} isInteger />
-                      ) : (
-                        <span className="text-gray-900 dark:text-white">{product.stock}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-xs">{getSupplierName(product.supplierId)}</td>
-                    {canEdit && (
+                    {isAdminOrManager && (
+                      <td className="px-4 py-3">
+                        {canEdit ? (
+                          <InlineNumber value={product.costPrice} onSave={(v) => handleInlineEdit(product.id, "costPrice", v)} />
+                        ) : (
+                          <span className="text-gray-900 dark:text-white">{product.costPrice.toLocaleString()}</span>
+                        )}
+                      </td>
+                    )}
+                    {isAdminOrManager && (
+                      <td className="px-4 py-3">
+                        {canEdit ? (
+                          <InlineNumber value={product.wholesalePrice} onSave={(v) => handleInlineEdit(product.id, "wholesalePrice", v)} />
+                        ) : (
+                          <span className="text-gray-900 dark:text-white">{product.wholesalePrice.toLocaleString()}</span>
+                        )}
+                      </td>
+                    )}
+                    <td className="px-4 py-3 font-bold text-gray-900 dark:text-white">{product.retailPrice.toLocaleString()} د.ع</td>
+                    {isAdminOrManager && (
+                      <td className="px-4 py-3">
+                        {canEdit ? (
+                          <InlineNumber value={product.stock} onSave={(v) => handleInlineEdit(product.id, "stock", v)} isInteger />
+                        ) : (
+                          <span className="text-gray-900 dark:text-white">{product.stock}</span>
+                        )}
+                      </td>
+                    )}
+                    {isAdminOrManager && (
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-xs">{getSupplierName(product.supplierId)}</td>
+                    )}
+                    {isAdminOrManager && canEdit && (
                       <td className="px-4 py-3">
                         <div className="flex gap-1">
                           <button onClick={() => { setEditingProduct(product); setModalOpen(true); }} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg text-xs">تعديل</button>

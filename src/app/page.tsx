@@ -517,11 +517,13 @@ export default function Home() {
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-6xl text-gray-300">📦</div>
                       )}
-                      <div className="absolute top-3 right-3">
-                        <span className="px-2.5 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: theme.primary }}>
-                          {product.stock} {t.pieces}
-                        </span>
-                      </div>
+                      {isManager && (
+                        <div className="absolute top-3 right-3">
+                          <span className="px-2.5 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: theme.primary }}>
+                            {product.stock} {t.pieces}
+                          </span>
+                        </div>
+                      )}
                       {score !== undefined && (
                         <div className="absolute top-3 left-3">
                           <span className="px-2.5 py-1 rounded-full text-xs font-bold text-white bg-blue-600">
@@ -534,7 +536,7 @@ export default function Home() {
                     <div className="p-4 space-y-3">
                       <div>
                         <h3 className="font-bold text-gray-900 dark:text-white text-base leading-tight">{product.name}</h3>
-                        {supplier && <p className="text-xs text-gray-400 mt-1">🚚 {supplier.name}</p>}
+                        {isManager && supplier && <p className="text-xs text-gray-400 mt-1">🚚 {supplier.name}</p>}
                       </div>
 
                       {product.notes && <p className="text-xs text-gray-400 line-clamp-2">{product.notes}</p>}
@@ -545,7 +547,7 @@ export default function Home() {
                             {product.retailPrice.toLocaleString()}
                             <span className="text-xs font-normal text-gray-400 mr-1">{t.dinar}</span>
                           </p>
-                          {product.wholesalePrice > 0 && (
+                          {isManager && product.wholesalePrice > 0 && (
                             <p className="text-xs text-gray-400 line-through">{product.wholesalePrice.toLocaleString()} {t.dinar}</p>
                           )}
                         </div>
