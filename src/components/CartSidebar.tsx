@@ -148,71 +148,294 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
-    const itemsHtml = items
+    const invNum = `INV-${Date.now().toString().slice(-6)}`;
+    const dateStr = new Date().toLocaleDateString("ar-EG", { year: "numeric", month: "long", day: "numeric" });
+    const logoUrl = settings.logo || "/logo.jpg";
+
+    const rowsHtml = items
       .map(
-        (item, i) => `
+        (item) => `
         <tr>
-          <td style="padding: 8px; border-bottom: 1px solid #eee;">${i + 1}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee;">${item.name}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity}</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: left;">${item.retailPrice.toLocaleString()} د.ع</td>
-          <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: left; font-weight: bold;">${(
-            item.retailPrice * item.quantity
-          ).toLocaleString()} د.ع</td>
+          <td>
+            <div class="product-cell">
+              ${item.image ? `<img src="${item.image}" alt="" class="product-img" />` : '<div class="product-img" style="display:flex;align-items:center;justify-content:center;background:#f1f5f9;font-size:20px;">📦</div>'}
+              <span>${item.name}</span>
+            </div>
+          </td>
+          <td>${item.quantity}</td>
+          <td>${item.retailPrice.toLocaleString()} د.ع</td>
+          <td>${(item.retailPrice * item.quantity).toLocaleString()} د.ع</td>
         </tr>`
       )
       .join("");
 
-    printWindow.document.write(`
-      <html dir="rtl" lang="ar">
-        <head>
-          <title>فاتورة - ${name}</title>
-          <style>
-            body { font-family: 'Cairo', system-ui, sans-serif; padding: 20px; color: #111; }
-            .header { text-align: center; border-bottom: 2px solid #2563eb; padding-bottom: 15px; margin-bottom: 20px; }
-            .title { font-size: 22px; font-weight: bold; color: #2563eb; }
-            .subtitle { font-size: 14px; color: #666; margin-top: 5px; }
-            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; font-size: 14px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px; }
-            th { background: #f3f4f6; padding: 10px; text-align: right; border-bottom: 2px solid #ddd; }
-            .total-box { background: #eff6ff; border: 1px solid #bfdbfe; padding: 15px; border-radius: 8px; text-align: left; font-size: 18px; font-weight: bold; color: #1e40af; }
-            @media print { body { padding: 0; } }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div class="title">${settings.siteName}</div>
-            <div class="subtitle">فاتورة مبيعات رسمية • التاريخ: ${new Date().toLocaleDateString("ar-EG")} ${new Date().toLocaleTimeString("ar-EG", { hour: '2-digit', minute: '2-digit' })}</div>
+    printWindow.document.write(`<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <title>فاتورة مبيعات - ${name}</title>
+  <style>
+    :root {
+      --primary-color: #1e293b;
+      --accent-color: #2563eb;
+      --border-color: #e2e8f0;
+      --bg-light: #f8fafc;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Cairo', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    body {
+      background-color: #f1f5f9;
+      padding: 30px 15px;
+      color: var(--text-main);
+    }
+
+    .invoice-card {
+      position: relative;
+      max-width: 850px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+      overflow: hidden;
+    }
+
+    .watermark {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 380px;
+      opacity: 0.05;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .invoice-content {
+      position: relative;
+      z-index: 2;
+    }
+
+    .invoice-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 24px;
+      border-bottom: 2px solid var(--border-color);
+    }
+
+    .brand-logo {
+      max-width: 120px;
+      height: 120px;
+      object-fit: cover;
+      border-radius: 16px;
+    }
+
+    .invoice-title {
+      text-align: left;
+    }
+
+    .invoice-title h1 {
+      font-size: 26px;
+      color: var(--accent-color);
+      letter-spacing: -0.5px;
+    }
+
+    .invoice-title p {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .invoice-details {
+      display: flex;
+      justify-content: space-between;
+      margin: 28px 0;
+      background: var(--bg-light);
+      padding: 20px;
+      border-radius: 8px;
+      flex-wrap: wrap;
+      gap: 15px;
+    }
+
+    .info-block h4 {
+      font-size: 12px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .info-block p {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--primary-color);
+    }
+
+    .invoice-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    .invoice-table th {
+      background-color: var(--bg-light);
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 700;
+      text-align: right;
+      padding: 12px 16px;
+      border-bottom: 2px solid var(--border-color);
+    }
+
+    .invoice-table td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-color);
+      vertical-align: middle;
+      font-size: 14px;
+    }
+
+    .product-cell {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .product-img {
+      width: 48px;
+      height: 48px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+    }
+
+    .invoice-summary {
+      margin-top: 24px;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .summary-box {
+      width: 280px;
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      font-size: 14px;
+    }
+
+    .summary-row.total {
+      border-top: 2px solid var(--primary-color);
+      font-size: 18px;
+      font-weight: bold;
+      color: var(--accent-color);
+      padding-top: 12px;
+      margin-top: 6px;
+    }
+
+    .invoice-footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px dashed var(--border-color);
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    @media print {
+      body {
+        background: none;
+        padding: 0;
+      }
+
+      .invoice-card {
+        box-shadow: none;
+        border-radius: 0;
+        max-width: 100%;
+      }
+
+      .watermark {
+        opacity: 0.08 !important;
+        -webkit-print-color-adjust: exact;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="invoice-card">
+    <img src="${logoUrl}" alt="شعار خفي" class="watermark" />
+
+    <div class="invoice-content">
+      <header class="invoice-header">
+        <img src="${logoUrl}" alt="${settings.siteName}" class="brand-logo" />
+        <div class="invoice-title">
+          <h1>فاتورة مبيعات</h1>
+          <p>رقم الفاتورة: #${invNum}</p>
+          <p>التاريخ: ${dateStr}</p>
+        </div>
+      </header>
+
+      <section class="invoice-details">
+        <div class="info-block">
+          <h4>مُصدرة إلى:</h4>
+          <p>${name}</p>
+          <span style="font-size: 13px; color: var(--text-muted);">${address} | ${phone}</span>
+        </div>
+        <div class="info-block">
+          <h4>حالة الدفع:</h4>
+          <p style="color: #10b981;">مدفوع / مؤكد</p>
+        </div>
+        <div class="info-block">
+          <h4>طريقة الدفع:</h4>
+          <p>الدفع عند الاستلام</p>
+        </div>
+      </section>
+
+      <table class="invoice-table">
+        <thead>
+          <tr>
+            <th>المنتج</th>
+            <th>الكمية</th>
+            <th>سعر الوحدة</th>
+            <th>الإجمالي</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+
+      <section class="invoice-summary">
+        <div class="summary-box">
+          <div class="summary-row total">
+            <span>الإجمالي النهائي:</span>
+            <span>${total.toLocaleString()} د.ع</span>
           </div>
-          <div class="info-grid">
-            <div><strong>👤 الزبون:</strong> ${name}</div>
-            <div><strong>📞 رقم الهاتف:</strong> ${phone}</div>
-            <div><strong>📍 العنوان:</strong> ${address}</div>
-            ${notes ? `<div><strong>📝 ملاحظات:</strong> ${notes}</div>` : ''}
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>اسم المنتج</th>
-                <th style="text-align: center;">الكمية</th>
-                <th style="text-align: left;">سعر المفرد</th>
-                <th style="text-align: left;">المجموع</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${itemsHtml}
-            </tbody>
-          </table>
-          <div class="total-box">
-            المجموع الكلي: ${total.toLocaleString()} د.ع
-          </div>
-          <script>
-            window.onload = function() { window.print(); window.close(); };
-          </script>
-        </body>
-      </html>
-    `);
+        </div>
+      </section>
+
+      <footer class="invoice-footer">
+        <p>شكراً لتسوقكم من <strong>${settings.siteName}</strong>!</p>
+        ${notes ? `<p style="margin-top:4px;">ملاحظات: ${notes}</p>` : ''}
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    window.onload = function() { window.print(); };
+  </script>
+</body>
+</html>`);
     printWindow.document.close();
   };
 
