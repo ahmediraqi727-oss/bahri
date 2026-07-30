@@ -194,24 +194,46 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_hero_gallery_position ON hero_gallery(posi
 -- =====================
 -- 5. Auth Trigger
 -- =====================
-CREATE OR REPLACE FUNCTION handle_new_user()
+CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+    user_role_val public.user_role := 'customer';
 BEGIN
+    BEGIN
+        IF NEW.raw_user_meta_data->>'role' = 'admin' THEN
+            user_role_val := 'admin';
+        ELSIF NEW.raw_user_meta_data->>'role' = 'manager' THEN
+            user_role_val := 'manager';
+        ELSE
+            user_role_val := 'customer';
+        END IF;
+    EXCEPTION WHEN OTHERS THEN
+        user_role_val := 'customer';
+    END;
+
     INSERT INTO public.users (id, email, full_name, role)
     VALUES (
         NEW.id,
-        NEW.email,
+        COALESCE(NEW.email, ''),
         COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
-        COALESCE((NEW.raw_user_meta_data->>'role')::user_role, 'customer')
-    );
+        user_role_val
+    )
+    ON CONFLICT (id) DO UPDATE
+    SET email = EXCLUDED.email,
+        full_name = EXCLUDED.full_name,
+        role = EXCLUDED.role,
+        updated_at = NOW();
+
+    RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
-    FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- =====================
 -- 6. Price Trigger
