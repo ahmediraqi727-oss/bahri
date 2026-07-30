@@ -30,9 +30,10 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace(user.role === "customer" ? "/" : "/dashboard");
+      const target = user.role === "customer" ? "/" : "/dashboard";
+      window.location.href = target;
     }
-  }, [user, loading, router]);
+  }, [user, loading]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -79,7 +80,7 @@ export default function LoginPage() {
         setSubmitting(false);
         return;
       }
-      router.replace("/dashboard");
+      window.location.href = "/dashboard";
     } else if (mode === "signup") {
       const { error: authError } = await signUp(email, password, fullName, "customer");
       if (authError) {
@@ -92,7 +93,7 @@ export default function LoginPage() {
       // Attempt auto sign in after sign up
       const { error: autoSignInError } = await signIn(email, password);
       if (!autoSignInError) {
-        router.replace("/");
+        window.location.href = "/";
         return;
       }
       setError("");
