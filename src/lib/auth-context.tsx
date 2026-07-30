@@ -60,54 +60,82 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      setSession(s);
-      if (s?.user) {
-        fetchUserProfile(s.user).then((profile) => {
-          setUser(profile);
-          setLoading(false);
-        });
-      } else {
-        setLoading(false);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, s) => {
+    let mounted = true;
+    try {
+      supabase.auth.getSession().then(({ data: { session: s } }) => {
+        if (!mounted) return;
         setSession(s);
         if (s?.user) {
-          const profile = await fetchUserProfile(s.user);
-          setUser(profile);
+          fetchUserProfile(s.user).then((profile) => {
+            if (mounted) {
+              setUser(profile);
+              setLoading(false);
+            }
+          }).catch(() => {
+            if (mounted) setLoading(false);
+          });
         } else {
-          setUser(null);
+          setLoading(false);
         }
-      }
-    );
+      }).catch(() => {
+        if (mounted) setLoading(false);
+      });
 
-    return () => subscription.unsubscribe();
+      const { data } = supabase.auth.onAuthStateChange(
+        async (_event, s) => {
+          if (!mounted) return;
+          setSession(s);
+          if (s?.user) {
+            const profile = await fetchUserProfile(s.user);
+            if (mounted) setUser(profile);
+          } else {
+            if (mounted) setUser(null);
+          }
+        }
+      );
+
+      return () => {
+        mounted = false;
+        data?.subscription?.unsubscribe();
+      };
+    } catch {
+      if (mounted) setLoading(false);
+    }
   }, []);
 
   const signUp = useCallback(async (email: string, password: string, fullName: string, role: UserRole = "customer") => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: fullName, role },
-      },
-    });
-    return { error };
+    try {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: fullName, role },
+        },
+      });
+      return { error };
+    } catch (e: unknown) {
+      return { error: e as AuthError };
+    }
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error };
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      return { error };
+    } catch (e: unknown) {
+      return { error: e as AuthError };
+    }
   }, []);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch {}
     setUser(null);
     setSession(null);
-    localStorage.removeItem("guest-user");
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("guest-user");
+    }
   }, []);
 
   const guestLogin = useCallback((name: string, governorate: string) => {
@@ -119,11 +147,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       avatarUrl: "",
     };
     setUser(guest);
-    localStorage.setItem("guest-user", JSON.stringify({ ...guest, governorate }));
+    if (typeof window !== "undefined") {
+      localStorage.setItem("guest-user", JSON.stringify({ ...guest, governorate }));
+    }
   }, []);
 
   useEffect(() => {
-    if (!user && !session) {
+    if (typeof window !== "undefined" && !user && !session) {
       const saved = localStorage.getItem("guest-user");
       if (saved) {
         try { setUser(JSON.parse(saved)); } catch {}
