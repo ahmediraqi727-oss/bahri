@@ -21,18 +21,22 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
+function isUUID(str: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+}
+
 function rowToProduct(row: Record<string, unknown>): Product {
   return {
     id: row.id as string,
     name: row.name as string,
-    image: row.image as string || "",
+    image: (row.image as string) || "",
     costPrice: Number(row.cost_price) || 0,
     wholesalePrice: Number(row.wholesale_price) || 0,
     profitMargin: Number(row.profit_margin) || 0,
     retailPrice: Number(row.retail_price) || 0,
     stock: Number(row.stock) || 0,
     supplierId: (row.supplier_id as string) || "",
-    notes: row.notes as string || "",
+    notes: (row.notes as string) || "",
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -41,14 +45,17 @@ function rowToProduct(row: Record<string, unknown>): Product {
 function productToRow(product: Record<string, unknown>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if ("name" in product) row.name = product.name;
-  if ("image" in product) row.image = product.image;
-  if ("costPrice" in product) row.cost_price = product.costPrice;
-  if ("wholesalePrice" in product) row.wholesale_price = product.wholesalePrice;
-  if ("profitMargin" in product) row.profit_margin = product.profitMargin;
-  if ("retailPrice" in product) row.retail_price = product.retailPrice;
-  if ("stock" in product) row.stock = product.stock;
-  if ("supplierId" in product) row.supplier_id = product.supplierId || null;
-  if ("notes" in product) row.notes = product.notes;
+  if ("image" in product) row.image = product.image || "";
+  if ("costPrice" in product) row.cost_price = Number(product.costPrice) || 0;
+  if ("wholesalePrice" in product) row.wholesale_price = Number(product.wholesalePrice) || 0;
+  if ("profitMargin" in product) row.profit_margin = Number(product.profitMargin) || 0;
+  if ("retailPrice" in product) row.retail_price = Number(product.retailPrice) || 0;
+  if ("stock" in product) row.stock = Number(product.stock) || 0;
+  if ("supplierId" in product) {
+    const sid = String(product.supplierId || "").trim();
+    row.supplier_id = isUUID(sid) ? sid : null;
+  }
+  if ("notes" in product) row.notes = product.notes || "";
   return row;
 }
 
@@ -56,10 +63,10 @@ function rowToSupplier(row: Record<string, unknown>): Supplier {
   return {
     id: row.id as string,
     name: row.name as string,
-    phone: row.phone as string || "",
-    email: row.email as string || "",
-    address: row.address as string || "",
-    notes: row.notes as string || "",
+    phone: (row.phone as string) || "",
+    email: (row.email as string) || "",
+    address: (row.address as string) || "",
+    notes: (row.notes as string) || "",
     createdAt: row.created_at as string,
   };
 }
@@ -67,10 +74,10 @@ function rowToSupplier(row: Record<string, unknown>): Supplier {
 function supplierToRow(supplier: Record<string, unknown>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if ("name" in supplier) row.name = supplier.name;
-  if ("phone" in supplier) row.phone = supplier.phone;
-  if ("email" in supplier) row.email = supplier.email;
-  if ("address" in supplier) row.address = supplier.address;
-  if ("notes" in supplier) row.notes = supplier.notes;
+  if ("phone" in supplier) row.phone = supplier.phone || "";
+  if ("email" in supplier) row.email = supplier.email || "";
+  if ("address" in supplier) row.address = supplier.address || "";
+  if ("notes" in supplier) row.notes = supplier.notes || "";
   return row;
 }
 
@@ -88,8 +95,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         ]);
         if (productsRes.data) setProducts(productsRes.data.map(rowToProduct));
         if (suppliersRes.data) setSuppliers(suppliersRes.data.map(rowToSupplier));
-      } catch {
-        // Fallback gracefully on query error
+      } catch (err) {
+        console.error("Failed to load products/suppliers from DB:", err);
       } finally {
         setLoading(false);
       }
@@ -100,7 +107,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const addProduct = useCallback(async (data: Omit<Product, "id" | "createdAt" | "updatedAt">) => {
     const row = productToRow(data);
     const { data: created, error } = await supabase.from("products").insert(row).select().single();
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase insert product error:", error);
+      throw new Error(error.message);
+    }
     const product = rowToProduct(created);
     setProducts((prev) => [product, ...prev]);
     return product;
@@ -109,21 +119,30 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const updateProduct = useCallback(async (id: string, updates: Partial<Product>) => {
     const row = productToRow(updates);
     const { data: updated, error } = await supabase.from("products").update(row).eq("id", id).select().single();
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase update product error:", error);
+      throw new Error(error.message);
+    }
     const product = rowToProduct(updated);
     setProducts((prev) => prev.map((p) => (p.id === id ? product : p)));
   }, []);
 
   const deleteProduct = useCallback(async (id: string) => {
     const { error } = await supabase.from("products").delete().eq("id", id);
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase delete product error:", error);
+      throw new Error(error.message);
+    }
     setProducts((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
   const addSupplier = useCallback(async (data: Omit<Supplier, "id" | "createdAt">) => {
     const row = supplierToRow(data);
     const { data: created, error } = await supabase.from("suppliers").insert(row).select().single();
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase insert supplier error:", error);
+      throw new Error(error.message);
+    }
     const supplier = rowToSupplier(created);
     setSuppliers((prev) => [supplier, ...prev]);
     return supplier;
@@ -144,9 +163,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const importProducts = useCallback(async (items: Omit<Product, "id" | "createdAt" | "updatedAt">[]) => {
+    if (!items || items.length === 0) return 0;
     const rows = items.map((item) => productToRow(item));
     const { data: created, error } = await supabase.from("products").insert(rows).select();
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase importProducts error:", error);
+      throw new Error(error.message);
+    }
     if (created) {
       const newProducts = created.map(rowToProduct);
       setProducts((prev) => [...newProducts, ...prev]);

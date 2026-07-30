@@ -25,8 +25,12 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
   const [notes, setNotes] = useState("");
   const [newSupplierName, setNewSupplierName] = useState("");
   const [showNewSupplier, setShowNewSupplier] = useState(false);
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    setError("");
+    setSubmitting(false);
     if (product) {
       setName(product.name);
       setImage(product.image);
@@ -64,37 +68,47 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    let finalSupplierId = supplierId;
+    setError("");
+    setSubmitting(true);
 
-    if (showNewSupplier && newSupplierName.trim()) {
-      const newSup = await addSupplier({
-        name: newSupplierName.trim(),
-        phone: "",
-        email: "",
-        address: "",
-        notes: "أُضيف تلقائياً من صفحة المنتجات",
-      });
-      finalSupplierId = newSup.id;
+    try {
+      let finalSupplierId = supplierId;
+
+      if (showNewSupplier && newSupplierName.trim()) {
+        const newSup = await addSupplier({
+          name: newSupplierName.trim(),
+          phone: "",
+          email: "",
+          address: "",
+          notes: "أُضيف تلقائياً من صفحة المنتجات",
+        });
+        finalSupplierId = newSup.id;
+      }
+
+      const data = {
+        name: name.trim(),
+        image,
+        costPrice: parseFloat(costPrice) || 0,
+        wholesalePrice: parseFloat(wholesalePrice) || 0,
+        profitMargin: parseFloat(profitMargin) || 0,
+        retailPrice: parseFloat(retailPrice) || 0,
+        stock: parseInt(stock) || 0,
+        supplierId: finalSupplierId,
+        notes,
+      };
+
+      if (product) {
+        await updateProduct(product.id, data);
+      } else {
+        await addProduct(data);
+      }
+      onClose();
+    } catch (err: any) {
+      console.error("Error saving product:", err);
+      setError(err?.message || "حدث خطأ أثناء حفظ المنتج، يرجى المحاولة مرة أخرى.");
+    } finally {
+      setSubmitting(false);
     }
-
-    const data = {
-      name: name.trim(),
-      image,
-      costPrice: parseFloat(costPrice) || 0,
-      wholesalePrice: parseFloat(wholesalePrice) || 0,
-      profitMargin: parseFloat(profitMargin) || 0,
-      retailPrice: parseFloat(retailPrice) || 0,
-      stock: parseInt(stock) || 0,
-      supplierId: finalSupplierId,
-      notes,
-    };
-
-    if (product) {
-      await updateProduct(product.id, data);
-    } else {
-      await addProduct(data);
-    }
-    onClose();
   };
 
   if (!isOpen) return null;
@@ -112,6 +126,11 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-5">
+          {error && (
+            <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm font-medium">
+              ⚠️ {error}
+            </div>
+          )}
           {/* Image */}
           <div className="flex justify-center">
             <div

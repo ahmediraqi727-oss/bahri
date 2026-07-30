@@ -8,7 +8,7 @@ import { useActivityLog } from "@/lib/activity-log";
 import { calculateRetailPrice } from "@/lib/types";
 
 export default function ImportExportBar() {
-  const { products, suppliers, importProducts, exportAllData, importAllData } = useData();
+  const { products, suppliers, addSupplier, importProducts, exportAllData, importAllData } = useData();
   const { settings } = useSettings();
   const { logActivity } = useActivityLog();
   const importRef = useRef<HTMLInputElement>(null);
@@ -18,30 +18,109 @@ export default function ImportExportBar() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const findVal = (row: Record<string, any>, keys: string[]): any => {
+      for (const k of Object.keys(row)) {
+        const cleanK = k.trim().toLowerCase();
+        for (const key of keys) {
+          if (cleanK === key.toLowerCase()) return row[k];
+        }
+      }
+      for (const k of Object.keys(row)) {
+        const cleanK = k.trim().toLowerCase();
+        for (const key of keys) {
+          if (cleanK.includes(key.toLowerCase())) return row[k];
+        }
+      }
+      return undefined;
+    };
+
     const reader = new FileReader();
     reader.onload = async (ev) => {
       try {
         const data = new Uint8Array(ev.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: "array" });
         const sheetName = workbook.SheetNames[0];
+        if (!sheetName) throw new Error("الملف فارغ أو غير صالح");
         const sheet = workbook.Sheets[sheetName];
-        const rows = XLSX.utils.sheet_to_json<Record<string, string | number>>(sheet);
+        const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet);
 
-        const mapped = rows.map((row) => {
-          const costPrice = parseFloat(String(row["costPrice"] || row["سعر التكلفة"] || 0));
-          const profitMargin = parseFloat(String(row["profitMargin"] || row["هامش الربح"] || 0));
-          return {
-            name: String(row["name"] || row["الاسم"] || ""),
-            image: String(row["image"] || row["الصورة"] || ""),
+        if (!rows || rows.length === 0) {
+          alert("لم يتم العثور على أي صفوف في الملف");
+          return;
+        }
+
+        // Cache suppliers map
+        const supplierMap = new Map<string, string>();
+        suppliers.forEach((s) => {
+          supplierMap.set(s.id.toLowerCase(), s.id);
+          supplierMap.set(s.name.trim().toLowerCase(), s.id);
+        });
+
+        const mapped = [];
+        for (const row of rows) {
+          const nameVal = findVal(row, ["name", "اسم المنتج", "الاسم", "اسم", "product"]);
+          if (!nameVal) continue;
+
+          const nameStr = String(nameVal).trim();
+          if (!nameStr) continue;
+
+          const costPrice = parseFloat(String(findVal(row, ["costprice", "cost_price", "cost", "سعر التكلفة", "التكلفة", "تكلفة"]) || 0)) || 0;
+          const profitMargin = parseFloat(String(findVal(row, ["profitmargin", "profit_margin", "profit", "margin", "هامش الربح", "الربح", "نسبة الربح"]) || 0)) || 0;
+          let wholesalePrice = parseFloat(String(findVal(row, ["wholesaleprice", "wholesale_price", "wholesale", "سعر الجملة", "الجملة", "جملة"]) || 0)) || 0;
+          let retailPrice = parseFloat(String(findVal(row, ["retailprice", "retail_price", "retail", "price", "سعر المفرد", "المفرد", "السعر", "سعر البيع"]) || 0)) || 0;
+
+          if (retailPrice === 0 && costPrice > 0 && profitMargin > 0) {
+            retailPrice = calculateRetailPrice(costPrice, profitMargin);
+          }
+          if (wholesalePrice === 0) wholesalePrice = costPrice;
+
+          const stock = parseInt(String(findVal(row, ["stock", "quantity", "qty", "count", "الكمية", "المخزون", "العدد"]) || 0)) || 0;
+          const supplierVal = findVal(row, ["supplier", "supplierid", "supplier_id", "المورد", "اسم المورد", "مورد"]);
+          let supplierId = "";
+
+          if (supplierVal) {
+            const rawSup = String(supplierVal).trim();
+            const lowerSup = rawSup.toLowerCase();
+            if (supplierMap.has(lowerSup)) {
+              supplierId = supplierMap.get(lowerSup)!;
+            } else if (rawSup.length > 0) {
+              // Create supplier dynamically if not found
+              try {
+                const newSup = await addSupplier({
+                  name: rawSup,
+                  phone: "",
+                  email: "",
+                  address: "",
+                  notes: "أُضيف تلقائياً أثناء استيراد الملفات",
+                });
+                supplierId = newSup.id;
+                supplierMap.set(lowerSup, newSup.id);
+              } catch {
+                supplierId = "";
+              }
+            }
+          }
+
+          const notes = String(findVal(row, ["notes", "note", "description", "ملاحظات", "تفاصيل", "الوصف"]) || "");
+          const image = String(findVal(row, ["image", "img", "photo", "pic", "الصورة", "صورة"]) || "");
+
+          mapped.push({
+            name: nameStr,
+            image,
             costPrice,
-            wholesalePrice: parseFloat(String(row["wholesalePrice"] || row["سعر الجملة"] || 0)),
+            wholesalePrice,
             profitMargin,
-            retailPrice: parseFloat(String(row["retailPrice"] || row["سعر المفرد"] || calculateRetailPrice(costPrice, profitMargin))),
-            stock: parseInt(String(row["stock"] || row["الكمية"] || 0)),
-            supplierId: String(row["supplierId"] || row["المورد"] || ""),
-            notes: String(row["notes"] || row["ملاحظات"] || ""),
-          };
-        }).filter((p) => p.name);
+            retailPrice,
+            stock,
+            supplierId,
+            notes,
+          });
+        }
+
+        if (mapped.length === 0) {
+          alert("لم نتمكن من التعرف على اسم المنتجات في الملف. يرجى التأكد من أن رأس العمود يحتوي على كلمة 'الاسم' أو 'name'.");
+          return;
+        }
 
         const count = await importProducts(mapped);
         await logActivity({
@@ -50,9 +129,10 @@ export default function ImportExportBar() {
           entity: "منتجات",
           details: `استيراد ${count} منتج من ملف ${file.name}`,
         });
-        alert(`تم استيراد ${count} منتج بنجاح`);
-      } catch {
-        alert("خطأ في قراءة الملف. تأكد من الصيغة الصحيحة.");
+        alert(`🎉 تم استيراد ${count} منتج بنجاح!`);
+      } catch (err: any) {
+        console.error("Error importing products:", err);
+        alert(`❌ حدث خطأ أثناء استيراد الملف: ${err?.message || err}`);
       }
     };
     reader.readAsArrayBuffer(file);
