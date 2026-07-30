@@ -307,51 +307,90 @@ ALTER TABLE chat_cards ENABLE ROW LEVEL SECURITY;
 ALTER TABLE hero_gallery ENABLE ROW LEVEL SECURITY;
 
 -- =====================
+-- =====================
+-- 9.5 Helper Functions for RLS (Prevents Policy Recursion)
+-- =====================
+
+CREATE OR REPLACE FUNCTION public.is_manager_or_admin()
+RETURNS boolean AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.users
+    WHERE id = auth.uid() AND (role = 'manager' OR role = 'admin')
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.users
+    WHERE id = auth.uid() AND role = 'admin'
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+
+CREATE OR REPLACE FUNCTION public.is_manager()
+RETURNS boolean AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.users
+    WHERE id = auth.uid() AND role = 'manager'
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+
+GRANT EXECUTE ON FUNCTION public.is_manager_or_admin() TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.is_manager() TO authenticated, anon;
+
+-- =====================
 -- 10. RLS Policies
 -- =====================
 
 DROP POLICY IF EXISTS "Users can view own profile" ON users;
 DROP POLICY IF EXISTS "Managers can view all users" ON users;
 DROP POLICY IF EXISTS "Managers can update all users" ON users;
-CREATE POLICY "Users can view own profile" ON users FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Managers can view all users" ON users FOR SELECT USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'manager'));
-CREATE POLICY "Managers can update all users" ON users FOR UPDATE USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'manager'));
+DROP POLICY IF EXISTS "Admins can view all users" ON users;
+DROP POLICY IF EXISTS "Admins can update all users" ON users;
+
+CREATE POLICY "Users can view own profile" ON users FOR SELECT USING (auth.uid() = id OR public.is_manager_or_admin());
+CREATE POLICY "Managers and Admins can update users" ON users FOR UPDATE USING (public.is_manager_or_admin());
+CREATE POLICY "Managers and Admins can insert users" ON users FOR INSERT WITH CHECK (public.is_manager_or_admin() OR auth.uid() = id);
 
 DROP POLICY IF EXISTS "Anyone can view products" ON products;
 DROP POLICY IF EXISTS "Managers can manage products" ON products;
 DROP POLICY IF EXISTS "Admins can insert products" ON products;
 DROP POLICY IF EXISTS "Admins can update products" ON products;
 CREATE POLICY "Anyone can view products" ON products FOR SELECT USING (TRUE);
-CREATE POLICY "Managers can manage products" ON products FOR ALL USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'manager'));
-CREATE POLICY "Admins can insert products" ON products FOR INSERT WITH CHECK (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'));
-CREATE POLICY "Admins can update products" ON products FOR UPDATE USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'));
+CREATE POLICY "Managers and Admins can manage products" ON products FOR ALL USING (public.is_manager_or_admin());
 
 DROP POLICY IF EXISTS "Anyone can view suppliers" ON suppliers;
 DROP POLICY IF EXISTS "Managers can manage suppliers" ON suppliers;
 CREATE POLICY "Anyone can view suppliers" ON suppliers FOR SELECT USING (TRUE);
-CREATE POLICY "Managers can manage suppliers" ON suppliers FOR ALL USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'manager'));
+CREATE POLICY "Managers and Admins can manage suppliers" ON suppliers FOR ALL USING (public.is_manager_or_admin());
 
 DROP POLICY IF EXISTS "Anyone can create orders" ON orders;
 DROP POLICY IF EXISTS "Managers can view all orders" ON orders;
 DROP POLICY IF EXISTS "Admins can view orders" ON orders;
 DROP POLICY IF EXISTS "Managers can update orders" ON orders;
 CREATE POLICY "Anyone can create orders" ON orders FOR INSERT WITH CHECK (TRUE);
-CREATE POLICY "Managers can view all orders" ON orders FOR SELECT USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'manager'));
-CREATE POLICY "Admins can view orders" ON orders FOR SELECT USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin'));
-CREATE POLICY "Managers can update orders" ON orders FOR UPDATE USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'manager'));
+CREATE POLICY "Managers and Admins can view orders" ON orders FOR SELECT USING (public.is_manager_or_admin());
+CREATE POLICY "Managers and Admins can update orders" ON orders FOR UPDATE USING (public.is_manager_or_admin());
 
 DROP POLICY IF EXISTS "Managers can view sales" ON sales;
 DROP POLICY IF EXISTS "System can insert sales" ON sales;
-CREATE POLICY "Managers can view sales" ON sales FOR SELECT USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'manager'));
-CREATE POLICY "System can insert sales" ON sales FOR INSERT WITH CHECK (TRUE);
+CREATE POLICY "Managers and Admins can view sales" ON sales FOR SELECT USING (public.is_manager_or_admin());
+CREATE POLICY "System and Admins can insert sales" ON sales FOR INSERT WITH CHECK (TRUE);
 
 DROP POLICY IF EXISTS "Managers can view activity" ON activity_log;
 DROP POLICY IF EXISTS "System can insert activity" ON activity_log;
-CREATE POLICY "Managers can view activity" ON activity_log FOR SELECT USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'manager'));
+CREATE POLICY "Managers and Admins can view activity" ON activity_log FOR SELECT USING (public.is_manager_or_admin());
 CREATE POLICY "System can insert activity" ON activity_log FOR INSERT WITH CHECK (TRUE);
 
 DROP POLICY IF EXISTS "Managers can manage trash" ON trash;
-CREATE POLICY "Managers can manage trash" ON trash FOR ALL USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'manager'));
+CREATE POLICY "Managers and Admins can manage trash" ON trash FOR ALL USING (public.is_manager_or_admin());
 
 DROP POLICY IF EXISTS "Users can view own notifications" ON notifications;
 DROP POLICY IF EXISTS "System can insert notifications" ON notifications;
@@ -370,8 +409,8 @@ CREATE POLICY "Users can update own settings" ON settings FOR UPDATE USING (TRUE
 
 DROP POLICY IF EXISTS "Anyone can view active cards" ON chat_cards;
 DROP POLICY IF EXISTS "Managers can manage cards" ON chat_cards;
-CREATE POLICY "Anyone can view active cards" ON chat_cards FOR SELECT USING (is_active = TRUE);
-CREATE POLICY "Managers can manage cards" ON chat_cards FOR ALL USING (EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'manager'));
+CREATE POLICY "Anyone can view active cards" ON chat_cards FOR SELECT USING (is_active = TRUE OR public.is_manager_or_admin());
+CREATE POLICY "Managers and Admins can manage cards" ON chat_cards FOR ALL USING (public.is_manager_or_admin());
 
 DROP POLICY IF EXISTS "Public read hero gallery" ON hero_gallery;
 DROP POLICY IF EXISTS "Authenticated insert hero gallery" ON hero_gallery;
