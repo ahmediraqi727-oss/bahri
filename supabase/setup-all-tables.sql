@@ -339,10 +339,12 @@ CREATE POLICY "System can insert notifications" ON notifications FOR INSERT WITH
 CREATE POLICY "Users can update own notifications" ON notifications FOR UPDATE USING (user_id = auth.uid() OR user_id IS NULL);
 
 DROP POLICY IF EXISTS "Users can view own settings" ON settings;
+DROP POLICY IF EXISTS "Users can insert own settings" ON settings;
 DROP POLICY IF EXISTS "Users can update own settings" ON settings;
-CREATE POLICY "Users can view own settings" ON settings FOR SELECT USING (user_id = auth.uid());
-CREATE POLICY "Users can insert own settings" ON settings FOR INSERT WITH CHECK (user_id = auth.uid());
-CREATE POLICY "Users can update own settings" ON settings FOR UPDATE USING (user_id = auth.uid());
+DROP POLICY IF EXISTS "Anyone can view settings" ON settings;
+CREATE POLICY "Anyone can view settings" ON settings FOR SELECT USING (TRUE);
+CREATE POLICY "Users can insert own settings" ON settings FOR INSERT WITH CHECK (TRUE);
+CREATE POLICY "Users can update own settings" ON settings FOR UPDATE USING (TRUE);
 
 DROP POLICY IF EXISTS "Anyone can view active cards" ON chat_cards;
 DROP POLICY IF EXISTS "Managers can manage cards" ON chat_cards;
