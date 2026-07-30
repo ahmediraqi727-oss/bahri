@@ -7,6 +7,7 @@ import { useNotifications } from "@/lib/notifications";
 import { useActivityLog } from "@/lib/activity-log";
 import { useData } from "@/lib/data-context";
 import { useSales } from "@/lib/sales-context";
+import { useAuth } from "@/lib/auth-context";
 import { Order } from "@/lib/order-types";
 import jsPDF from "jspdf";
 
@@ -18,11 +19,14 @@ interface CartSidebarProps {
 export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
   const { items, removeItem, updateQuantity, clearCart, total, itemCount } = useCart();
   const { settings } = useSettings();
+  const { user } = useAuth();
   const { addNotification } = useNotifications();
   const { logActivity } = useActivityLog();
   const { products } = useData();
   const { addSale } = useSales();
   const theme = settings.roleThemes.customer;
+
+  const isManagerOrAdmin = user?.role === "manager" || user?.role === "admin" || settings.currentRole === "manager" || settings.currentRole === "admin";
 
   const [step, setStep] = useState<"cart" | "checkout" | "done">("cart");
   const [name, setName] = useState("");
@@ -116,6 +120,100 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
     msg += `\n💰 *المجموع الكلي:* ${total.toLocaleString()} د.ع\n`;
     if (notes) msg += `\n📝 *ملاحظات:* ${notes}\n`;
     return msg;
+  };
+
+  const shareInvoiceToCustomerWhatsApp = () => {
+    const msg = generateWhatsAppMessage();
+    const cleanPhone = phone.replace(/\D/g, "");
+    const formattedPhone = cleanPhone.startsWith("0") ? "964" + cleanPhone.slice(1) : cleanPhone;
+    if (formattedPhone) {
+      window.open(`https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(msg)}`, "_blank");
+    } else {
+      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank");
+    }
+  };
+
+  const shareInvoiceToCustomerTelegram = () => {
+    const msg = generateWhatsAppMessage();
+    const cleanPhone = phone.replace(/\D/g, "");
+    const formattedPhone = cleanPhone.startsWith("0") ? "964" + cleanPhone.slice(1) : cleanPhone;
+    if (formattedPhone) {
+      window.open(`https://t.me/+${formattedPhone}?text=${encodeURIComponent(msg)}`, "_blank");
+    } else {
+      window.open(`https://t.me/share/url?url=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin : '')}&text=${encodeURIComponent(msg)}`, "_blank");
+    }
+  };
+
+  const printInvoiceWindow = () => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+    const itemsHtml = items
+      .map(
+        (item, i) => `
+        <tr>
+          <td style="padding: 8px; border-bottom: 1px solid #eee;">${i + 1}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee;">${item.name}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: left;">${item.retailPrice.toLocaleString()} د.ع</td>
+          <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: left; font-weight: bold;">${(
+            item.retailPrice * item.quantity
+          ).toLocaleString()} د.ع</td>
+        </tr>`
+      )
+      .join("");
+
+    printWindow.document.write(`
+      <html dir="rtl" lang="ar">
+        <head>
+          <title>فاتورة - ${name}</title>
+          <style>
+            body { font-family: 'Cairo', system-ui, sans-serif; padding: 20px; color: #111; }
+            .header { text-align: center; border-bottom: 2px solid #2563eb; padding-bottom: 15px; margin-bottom: 20px; }
+            .title { font-size: 22px; font-weight: bold; color: #2563eb; }
+            .subtitle { font-size: 14px; color: #666; margin-top: 5px; }
+            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; font-size: 14px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px; }
+            th { background: #f3f4f6; padding: 10px; text-align: right; border-bottom: 2px solid #ddd; }
+            .total-box { background: #eff6ff; border: 1px solid #bfdbfe; padding: 15px; border-radius: 8px; text-align: left; font-size: 18px; font-weight: bold; color: #1e40af; }
+            @media print { body { padding: 0; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="title">${settings.siteName}</div>
+            <div class="subtitle">فاتورة مبيعات رسمية • التاريخ: ${new Date().toLocaleDateString("ar-EG")} ${new Date().toLocaleTimeString("ar-EG", { hour: '2-digit', minute: '2-digit' })}</div>
+          </div>
+          <div class="info-grid">
+            <div><strong>👤 الزبون:</strong> ${name}</div>
+            <div><strong>📞 رقم الهاتف:</strong> ${phone}</div>
+            <div><strong>📍 العنوان:</strong> ${address}</div>
+            ${notes ? `<div><strong>📝 ملاحظات:</strong> ${notes}</div>` : ''}
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>اسم المنتج</th>
+                <th style="text-align: center;">الكمية</th>
+                <th style="text-align: left;">سعر المفرد</th>
+                <th style="text-align: left;">المجموع</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+          </table>
+          <div class="total-box">
+            المجموع الكلي: ${total.toLocaleString()} د.ع
+          </div>
+          <script>
+            window.onload = function() { window.print(); window.close(); };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
   const sendViaWhatsApp = () => {
@@ -361,26 +459,50 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
                 </div>
               </div>
 
-              {/* Instant Communication Actions */}
-              <div className="space-y-2 pt-1">
-                <button onClick={sendViaWhatsApp} className="w-full py-3 bg-[#25D366] text-white rounded-xl font-bold hover:bg-[#20BD5A] transition-colors flex items-center justify-center gap-2 shadow-sm text-sm">
-                  💬 إرسال الطلب عبر واتساب
-                </button>
-                <button onClick={sendViaTelegram} className="w-full py-3 bg-[#0088cc] text-white rounded-xl font-bold hover:bg-[#006da3] transition-colors flex items-center justify-center gap-2 shadow-sm text-sm">
-                  ✈️ إرسال الطلب عبر تليجرام
-                </button>
-                {settings.messengerLink && (
-                  <button onClick={sendViaMessenger} className="w-full py-3 bg-[#0084FF] text-white rounded-xl font-bold hover:bg-[#0073E6] transition-colors flex items-center justify-center gap-2 shadow-sm text-sm">
-                    ⚡ إرسال الطلب عبر ماسنجر
+              {/* Action Buttons: Manager/Admin vs Customer */}
+              {isManagerOrAdmin ? (
+                <div className="space-y-2.5 pt-1">
+                  <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 py-1.5 px-3 rounded-lg text-xs font-bold text-center border border-blue-200 dark:border-blue-800">
+                    👑 خيارات الإدارة والمدير:
+                  </div>
+
+                  <button onClick={printInvoiceWindow} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-md text-sm">
+                    🖨️ طباعة الفاتورة (مباشر)
                   </button>
-                )}
-                <a href={`tel:${settings.phoneLink || "07800000000"}`} className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 shadow-sm text-sm block text-center">
-                  📞 اتصال مباشر للإدارة ({settings.phoneLink || "07800000000"})
-                </a>
-                <button onClick={generatePDF} className="w-full py-2.5 bg-gray-700 text-white rounded-xl font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 shadow-sm text-xs">
-                  📄 تحميل الفاتورة PDF
-                </button>
-              </div>
+
+                  <button onClick={shareInvoiceToCustomerWhatsApp} className="w-full py-3 bg-[#25D366] text-white rounded-xl font-bold hover:bg-[#20BD5A] transition-colors flex items-center justify-center gap-2 shadow-md text-sm">
+                    💬 إرسال الفاتورة إلى واتساب الزبون ({phone})
+                  </button>
+
+                  <button onClick={shareInvoiceToCustomerTelegram} className="w-full py-3 bg-[#0088cc] text-white rounded-xl font-bold hover:bg-[#006da3] transition-colors flex items-center justify-center gap-2 shadow-md text-sm">
+                    ✈️ إرسال الفاتورة إلى تليجرام الزبون ({phone})
+                  </button>
+
+                  <button onClick={generatePDF} className="w-full py-2.5 bg-gray-700 text-white rounded-xl font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 shadow-sm text-xs">
+                    📄 تحميل الفاتورة PDF
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2 pt-1">
+                  <button onClick={sendViaWhatsApp} className="w-full py-3 bg-[#25D366] text-white rounded-xl font-bold hover:bg-[#20BD5A] transition-colors flex items-center justify-center gap-2 shadow-sm text-sm">
+                    💬 إرسال الطلب عبر واتساب
+                  </button>
+                  <button onClick={sendViaTelegram} className="w-full py-3 bg-[#0088cc] text-white rounded-xl font-bold hover:bg-[#006da3] transition-colors flex items-center justify-center gap-2 shadow-sm text-sm">
+                    ✈️ إرسال الطلب عبر تليجرام
+                  </button>
+                  {settings.messengerLink && (
+                    <button onClick={sendViaMessenger} className="w-full py-3 bg-[#0084FF] text-white rounded-xl font-bold hover:bg-[#0073E6] transition-colors flex items-center justify-center gap-2 shadow-sm text-sm">
+                      ⚡ إرسال الطلب عبر ماسنجر
+                    </button>
+                  )}
+                  <a href={`tel:${settings.phoneLink || "07800000000"}`} className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 shadow-sm text-sm block text-center">
+                    📞 اتصال مباشر للإدارة ({settings.phoneLink || "07800000000"})
+                  </a>
+                  <button onClick={generatePDF} className="w-full py-2.5 bg-gray-700 text-white rounded-xl font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 shadow-sm text-xs">
+                    📄 تحميل الفاتورة PDF
+                  </button>
+                </div>
+              )}
 
               <button onClick={() => { clearCart(); setStep("cart"); setName(""); setPhone(""); setAddress(""); setNotes(""); onClose(); }} className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 underline block mx-auto pt-1">
                 إغلاق والعودة للمتجر
