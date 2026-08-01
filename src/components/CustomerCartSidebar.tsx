@@ -109,26 +109,42 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
     }
   };
 
-  // Deep Link Launchers
+  // Helper to format phone number to international Iraqi format (e.g. 0780... -> 964780...)
+  const formatAdminPhone = (raw: string) => {
+    const digits = raw.replace(/\D/g, "");
+    if (!digits) return "";
+    if (digits.startsWith("0")) return "964" + digits.slice(1);
+    if (digits.startsWith("7")) return "964" + digits;
+    return digits;
+  };
+
+  // Deep Link Launchers (STRICTLY TOWARDS STORE MANAGER / ADMIN RECIPIENTS)
   const handleWhatsApp = async () => {
     const msg = generateOrderMessage();
     let target = settings.whatsappLink?.trim() || "";
-    let cleanPhone = target ? target.replace(/\D/g, "") : "";
 
-    if (!cleanPhone && phone) {
-      const p = phone.replace(/\D/g, "");
-      cleanPhone = p.startsWith("0") ? "964" + p.slice(1) : p;
+    // Parse Store Admin WhatsApp Target
+    if (target.startsWith("http")) {
+      const url = `${target}${target.includes("?") ? "&" : "?"}text=${encodeURIComponent(msg)}`;
+      await recordOrderAndNotify("واتساب");
+      window.open(url, "_blank");
+      setStep("completed");
+      clearCart();
+      return;
     }
 
-    let url = "";
-    if (target && target.startsWith("http")) {
-      url = `${target}${target.includes("?") ? "&" : "?"}text=${encodeURIComponent(msg)}`;
-    } else if (cleanPhone) {
-      url = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(msg)}`;
-    } else {
-      url = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+    let adminPhone = "";
+    if (target) {
+      adminPhone = formatAdminPhone(target);
+    }
+    if (!adminPhone && settings.phoneLink) {
+      adminPhone = formatAdminPhone(settings.phoneLink);
+    }
+    if (!adminPhone) {
+      adminPhone = "9647800000000"; // Fallback store contact
     }
 
+    const url = `https://api.whatsapp.com/send?phone=${adminPhone}&text=${encodeURIComponent(msg)}`;
     await recordOrderAndNotify("واتساب");
     window.open(url, "_blank");
     setStep("completed");
@@ -140,12 +156,18 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
     let target = settings.telegramLink?.trim() || "";
     let url = "";
 
-    if (target && target.startsWith("http")) {
+    if (target.startsWith("http")) {
       url = `${target}${target.includes("?") ? "&" : "?"}text=${encodeURIComponent(msg)}`;
-    } else if (target && target.startsWith("@")) {
-      url = `https://t.me/${target.replace("@", "")}?text=${encodeURIComponent(msg)}`;
+    } else if (target.startsWith("@")) {
+      url = `https://t.me/${target.slice(1)}?text=${encodeURIComponent(msg)}`;
     } else if (target) {
-      url = `https://t.me/${target}?text=${encodeURIComponent(msg)}`;
+      const clean = target.replace(/\D/g, "");
+      if (clean && clean.length >= 8) {
+        const phoneFormatted = formatAdminPhone(target);
+        url = `https://t.me/+${phoneFormatted}?text=${encodeURIComponent(msg)}`;
+      } else {
+        url = `https://t.me/${target}?text=${encodeURIComponent(msg)}`;
+      }
     } else {
       url = `https://t.me/share/url?url=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "")}&text=${encodeURIComponent(msg)}`;
     }
@@ -161,7 +183,7 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
     let target = settings.messengerLink?.trim() || "";
     let url = "";
 
-    if (target && target.startsWith("http")) {
+    if (target.startsWith("http")) {
       url = target;
     } else if (target) {
       url = `https://m.me/${target.replace("@", "")}`;
@@ -184,9 +206,9 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
   };
 
   const handlePhoneCall = async () => {
-    let target = settings.phoneLink?.trim() || "07800000000";
+    let adminPhone = settings.phoneLink?.trim() || settings.whatsappLink?.trim() || "07800000000";
     await recordOrderAndNotify("اتصال مباشر");
-    window.location.href = `tel:${target}`;
+    window.location.href = `tel:${adminPhone}`;
     setStep("completed");
     clearCart();
   };
