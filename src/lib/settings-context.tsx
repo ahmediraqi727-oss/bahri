@@ -14,7 +14,7 @@ interface SettingsContextType {
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
-const SETTINGS_USER_ID = "00000000-0000-0000-0000-000000000001";
+const STORAGE_KEY = "app_site_settings_cache";
 
 function rowToSettings(row: Record<string, unknown>): SiteSettings {
   const rt = (row.role_themes as Record<string, Record<string, string>>) || {};
@@ -74,7 +74,6 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
 
 function settingsToRow(settings: SiteSettings): Record<string, unknown> {
   return {
-    user_id: SETTINGS_USER_ID,
     site_name: settings.siteName,
     logo: settings.logo,
     hero_image: settings.heroImage,
@@ -109,7 +108,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [settingsId, setSettingsId] = useState<string | null>(null);
 
-  // Apply Dark Mode & Font to DOM root (HTML element)
+  // Synchronize Dark Mode & Font to DOM document element
   useEffect(() => {
     if (typeof document !== "undefined") {
       if (settings.darkMode) {
@@ -121,15 +120,37 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [settings.darkMode, settings.fontFamily]);
 
-  // Load public global settings for ALL users (authenticated or visitors)
+  // Read cached settings from localStorage on initial render for instant display
   useEffect(() => {
-    async function load() {
+    if (typeof window !== "undefined") {
       try {
-        const { data } = await supabase.from("settings").select("*").limit(1).maybeSingle();
+        const cached = localStorage.getItem(STORAGE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && typeof parsed === "object") {
+            setSettings((prev) => ({ ...prev, ...parsed }));
+          }
+        }
+      } catch (err) {
+        console.warn("Error reading settings cache:", err);
+      }
+    }
+  }, []);
+
+  // Load public global settings from Supabase database for ALL visitors
+  useEffect(() => {
+    async function loadFromDb() {
+      try {
+        const { data, error } = await supabase.from("settings").select("*").limit(1).maybeSingle();
         if (data) {
           const parsed = rowToSettings(data);
           setSettings(parsed);
           setSettingsId(data.id);
+          if (typeof window !== "undefined") {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+          }
+        } else if (error) {
+          console.warn("Supabase settings fetch warning:", error.message);
         }
       } catch (err) {
         console.warn("Settings fetch error:", err);
@@ -137,9 +158,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
       }
     }
-    load();
+    loadFromDb();
 
-    // Supabase Real-Time Settings Listener
+    // Supabase Real-Time Settings Subscription
     const channel = supabase
       .channel("public:settings")
       .on(
@@ -149,6 +170,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           if (payload.new && typeof payload.new === "object") {
             const updated = rowToSettings(payload.new as Record<string, unknown>);
             setSettings(updated);
+            if (typeof window !== "undefined") {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+            }
           }
         }
       )
@@ -161,42 +185,56 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const updateSettings = useCallback(
     async (updates: Partial<SiteSettings>) => {
-      setSettings((prev) => {
-        const merged = { ...prev, ...updates };
-        const row = settingsToRow(merged);
-        if (settingsId) {
-          supabase.from("settings").update(row).eq("id", settingsId).then(({ error }) => {
-            if (error) console.error("Error updating settings:", error);
-          });
+      const merged = { ...settings, ...updates };
+      const row = settingsToRow(merged);
+
+      // Update local state and localStorage cache immediately
+      setSettings(merged);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+      }
+
+      // Persist to Supabase database cleanly
+      let resultData: Record<string, unknown> | null = null;
+      let queryError = null;
+
+      if (settingsId) {
+        const res = await supabase.from("settings").update(row).eq("id", settingsId).select().single();
+        resultData = res.data;
+        queryError = res.error;
+      } else {
+        // Check if a row already exists in table
+        const existing = await supabase.from("settings").select("id").limit(1).maybeSingle();
+        if (existing.data) {
+          setSettingsId(existing.data.id);
+          const res = await supabase.from("settings").update(row).eq("id", existing.data.id).select().single();
+          resultData = res.data;
+          queryError = res.error;
         } else {
-          supabase.from("settings").insert(row).select().single().then(({ data, error }) => {
-            if (error) console.error("Error inserting settings:", error);
-            if (data) setSettingsId(data.id);
-          });
+          const res = await supabase.from("settings").insert(row).select().single();
+          resultData = res.data;
+          queryError = res.error;
         }
-        return merged;
-      });
+      }
+
+      if (queryError) {
+        console.error("Failed to save settings to database:", queryError);
+        throw new Error(queryError.message || "فشل حفظ الإعدادات في قاعدة البيانات");
+      }
+
+      if (resultData && resultData.id) {
+        setSettingsId(resultData.id as string);
+      }
     },
-    [settingsId]
+    [settings, settingsId]
   );
 
   const updateRoleTheme = useCallback(
     async (role: UserRole, theme: Partial<RoleTheme>) => {
-      setSettings((prev) => {
-        const newThemes = { ...prev.roleThemes, [role]: { ...prev.roleThemes[role], ...theme } };
-        const updated = { ...prev, roleThemes: newThemes };
-        const row = settingsToRow(updated);
-        if (settingsId) {
-          supabase.from("settings").update(row).eq("id", settingsId);
-        } else {
-          supabase.from("settings").insert(row).select().single().then(({ data }) => {
-            if (data) setSettingsId(data.id);
-          });
-        }
-        return updated;
-      });
+      const newThemes = { ...settings.roleThemes, [role]: { ...settings.roleThemes[role], ...theme } };
+      await updateSettings({ roleThemes: newThemes });
     },
-    [settingsId]
+    [settings, updateSettings]
   );
 
   const setCurrentRole = useCallback((role: UserRole) => {
@@ -204,20 +242,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toggleDarkMode = useCallback(async () => {
-    setSettings((prev) => {
-      const nextDark = !prev.darkMode;
-      const updated = { ...prev, darkMode: nextDark };
-      const row = settingsToRow(updated);
-      if (settingsId) {
-        supabase.from("settings").update(row).eq("id", settingsId);
-      } else {
-        supabase.from("settings").insert(row).select().single().then(({ data }) => {
-          if (data) setSettingsId(data.id);
-        });
-      }
-      return updated;
-    });
-  }, [settingsId]);
+    await updateSettings({ darkMode: !settings.darkMode });
+  }, [settings.darkMode, updateSettings]);
 
   return (
     <SettingsContext.Provider
