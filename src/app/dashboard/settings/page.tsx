@@ -1,9 +1,11 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useSettings } from "@/lib/settings-context";
+import { useActivityLog } from "@/lib/activity-log";
 import ColorPicker from "@/components/ColorPicker";
 import ImageUploader from "@/components/ImageUploader";
-import { UserRole } from "@/lib/types";
+import { SiteSettings, UserRole } from "@/lib/types";
 
 const FONT_OPTIONS = [
   { label: "Cairo", value: "Cairo" },
@@ -27,115 +29,206 @@ const ROLE_COLORS: Record<UserRole, { bg: string; border: string }> = {
 };
 
 export default function SettingsPage() {
-  const { settings, updateSettings, updateRoleTheme } = useSettings();
+  const { settings, updateSettings, loading } = useSettings();
+  const { logActivity } = useActivityLog();
+
+  // Local draft state for explicit Save / Cancel controls
+  const [formData, setFormData] = useState<SiteSettings>(settings);
+  const [saving, setSaving] = useState(false);
+  const [savedSuccess, setSavedSuccess] = useState(false);
+
+  // Sync draft state when settings load
+  useEffect(() => {
+    if (settings) {
+      setFormData(settings);
+    }
+  }, [settings]);
+
+  const handleChange = (fields: Partial<SiteSettings>) => {
+    setFormData((prev) => ({ ...prev, ...fields }));
+    setSavedSuccess(false);
+  };
+
+  const handleRoleThemeChange = (role: UserRole, themeUpdates: Partial<SiteSettings["roleThemes"][UserRole]>) => {
+    setFormData((prev) => ({
+      ...prev,
+      roleThemes: {
+        ...prev.roleThemes,
+        [role]: {
+          ...prev.roleThemes[role],
+          ...themeUpdates,
+        },
+      },
+    }));
+    setSavedSuccess(false);
+  };
+
+  // Check if form has unsaved changes
+  const isDirty = JSON.stringify(formData) !== JSON.stringify(settings);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateSettings(formData);
+      await logActivity({
+        user: settings.currentRole,
+        action: "update",
+        entity: "إعدادات الموقع",
+        details: "حفظ وتحديث إعدادات الموقع وروابط التواصل بالكامل",
+      });
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 4000);
+    } catch (err) {
+      alert("حدث خطأ أثناء حفظ الإعدادات!");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setFormData(settings);
+    setSavedSuccess(false);
+  };
+
+  const isManagerOrAdmin = settings.currentRole === "manager" || settings.currentRole === "admin";
+
+  if (loading) {
+    return (
+      <div className="p-12 text-center text-gray-500 dark:text-gray-400">
+        <span className="text-3xl animate-spin block mb-2">🔄</span>
+        <p>جاري تحميل الإعدادات...</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">الإعدادات</h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">تخصيص المظهر والإعدادات العامة للموقع</p>
+    <div className="space-y-6 max-w-4xl pb-24" dir="rtl">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">إعدادات النظام والمظهر</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">تخصيص روابط التواصل، الهوية، المظهر، وألوان الأدوار</p>
+        </div>
+
+        {isDirty && (
+          <span className="px-3 py-1.5 bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-xs font-bold rounded-full animate-pulse flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+            توجد تغييرات غير محفوظة!
+          </span>
+        )}
       </div>
 
+      {/* Success Notification Banner */}
+      {savedSuccess && (
+        <div className="p-4 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700 rounded-2xl flex items-center justify-between text-emerald-800 dark:text-emerald-300 text-sm font-bold animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🎉</span>
+            <span>تم حفظ جميع التغييرات والإعدادات بنجاح في قاعدة البيانات!</span>
+          </div>
+          <button onClick={() => setSavedSuccess(false)} className="text-emerald-600 hover:text-emerald-800 text-xs">✕</button>
+        </div>
+      )}
+
       {/* === Section 1: Branding === */}
-      <section className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xl">🎨</span>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">الشعار والصور</h2>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">الشعار وصور الهوية</h2>
         </div>
 
         <div>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-2">
-            اسم الموقع
+          <label className="text-sm font-bold text-gray-700 dark:text-gray-300 block mb-2">
+            اسم الموقع والمتجر
           </label>
           <input
             type="text"
-            value={settings.siteName}
-            onChange={(e) => updateSettings({ siteName: e.target.value })}
-            className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent outline-none"
+            value={formData.siteName}
+            onChange={(e) => handleChange({ siteName: e.target.value })}
+            className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium"
           />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <ImageUploader
             label="الشعار (Logo)"
-            image={settings.logo}
-            onUpload={(img) => updateSettings({ logo: img })}
+            image={formData.logo}
+            onUpload={(img) => handleChange({ logo: img })}
             aspect="aspect-square"
           />
           <ImageUploader
             label="صورة الواجهة (Hero)"
-            image={settings.heroImage}
-            onUpload={(img) => updateSettings({ heroImage: img })}
+            image={formData.heroImage}
+            onUpload={(img) => handleChange({ heroImage: img })}
           />
           <ImageUploader
             label="صورة التذييل (Footer)"
-            image={settings.footerImage}
-            onUpload={(img) => updateSettings({ footerImage: img })}
+            image={formData.footerImage}
+            onUpload={(img) => handleChange({ footerImage: img })}
           />
         </div>
       </section>
 
       {/* === Section 1.5: Contact Links (روابط الاتصال والتواصل) === */}
-      {(settings.currentRole === "manager" || settings.currentRole === "admin") && (
-        <section className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+      {isManagerOrAdmin && (
+        <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xl">📞</span>
             <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">روابط الاتصال والتواصل (خاصة بالمدير)</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">تظهر هذه الروابط للزبائن بعد إكمال الشراء لتأكيد الطلب مباشرة</p>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">روابط الاتصال والتواصل للإدارة</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">تُستخدم هذه الروابط في نافذة الطلب المباشر للزبائن للتواصل معكم</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1.5 flex items-center gap-2">
+              <label className="text-sm font-bold text-gray-700 dark:text-gray-300 block mb-1.5 flex items-center gap-2">
                 <span>💬</span> رابط / رقم الواتساب (WhatsApp)
               </label>
               <input
                 type="text"
-                placeholder="مثال: https://wa.me/9647800000000 أو 07800000000"
-                value={settings.whatsappLink || ""}
-                onChange={(e) => updateSettings({ whatsappLink: e.target.value })}
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none text-sm"
+                placeholder="مثال: 07800000000 أو 9647800000000"
+                value={formData.whatsappLink || ""}
+                onChange={(e) => handleChange({ whatsappLink: e.target.value })}
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
               />
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1.5 flex items-center gap-2">
+              <label className="text-sm font-bold text-gray-700 dark:text-gray-300 block mb-1.5 flex items-center gap-2">
                 <span>✈️</span> رابط / يوزر التليكرام (Telegram)
               </label>
               <input
                 type="text"
                 placeholder="مثال: https://t.me/username أو @username"
-                value={settings.telegramLink || ""}
-                onChange={(e) => updateSettings({ telegramLink: e.target.value })}
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none text-sm"
+                value={formData.telegramLink || ""}
+                onChange={(e) => handleChange({ telegramLink: e.target.value })}
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-sky-500 outline-none text-sm"
               />
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1.5 flex items-center gap-2">
-                <span>⚡</span> رابط الماسنجر (Facebook Messenger)
+              <label className="text-sm font-bold text-gray-700 dark:text-gray-300 block mb-1.5 flex items-center gap-2">
+                <span>⚡</span> رابط الماسنجر (Messenger)
               </label>
               <input
                 type="text"
                 placeholder="مثال: https://m.me/page_name أو اسم الصفحة"
-                value={settings.messengerLink || ""}
-                onChange={(e) => updateSettings({ messengerLink: e.target.value })}
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none text-sm"
+                value={formData.messengerLink || ""}
+                onChange={(e) => handleChange({ messengerLink: e.target.value })}
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
               />
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1.5 flex items-center gap-2">
+              <label className="text-sm font-bold text-gray-700 dark:text-gray-300 block mb-1.5 flex items-center gap-2">
                 <span>📞</span> رقم الاتصال المباشر (Phone Call)
               </label>
               <input
                 type="text"
                 placeholder="مثال: 07800000000"
-                value={settings.phoneLink || ""}
-                onChange={(e) => updateSettings({ phoneLink: e.target.value })}
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none text-sm"
+                value={formData.phoneLink || ""}
+                onChange={(e) => handleChange({ phoneLink: e.target.value })}
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-purple-500 outline-none text-sm"
               />
             </div>
           </div>
@@ -143,22 +236,22 @@ export default function SettingsPage() {
       )}
 
       {/* === Section 2: Appearance === */}
-      <section className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xl">✏️</span>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">تخصيص المظهر</h2>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">تخصيص المظهر والخطوط</h2>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label className="text-sm font-bold text-gray-700 dark:text-gray-300">
               نوع الخط
             </label>
             <select
-              value={settings.fontFamily}
-              onChange={(e) => updateSettings({ fontFamily: e.target.value })}
-              className="px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none"
-              style={{ fontFamily: settings.fontFamily }}
+              value={formData.fontFamily}
+              onChange={(e) => handleChange({ fontFamily: e.target.value })}
+              className="px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium"
+              style={{ fontFamily: formData.fontFamily }}
             >
               {FONT_OPTIONS.map((f) => (
                 <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>
@@ -169,17 +262,17 @@ export default function SettingsPage() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              حجم الخط: {settings.fontSize}px
+            <label className="text-sm font-bold text-gray-700 dark:text-gray-300">
+              حجم الخط الأساسي: {formData.fontSize}px
             </label>
             <input
               type="range"
               min="12"
               max="24"
               step="1"
-              value={settings.fontSize}
-              onChange={(e) => updateSettings({ fontSize: Number(e.target.value) })}
-              className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[var(--primary)]"
+              value={formData.fontSize}
+              onChange={(e) => handleChange({ fontSize: Number(e.target.value) })}
+              className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
             />
             <div className="flex justify-between text-xs text-gray-400">
               <span>12px</span>
@@ -189,137 +282,151 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">معاينة الخط:</p>
-          <p style={{ fontFamily: settings.fontFamily, fontSize: settings.fontSize }} className="text-gray-900 dark:text-white">
-            هذا نص تجريبي لمعاينة حجم ونوع الخط المختار. موقع أحمد بحري - متجر إلكتروني ونظام ERP.
+        <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+          <p className="text-xs text-gray-400 mb-2 font-bold">معاينة الخط والحجم:</p>
+          <p style={{ fontFamily: formData.fontFamily, fontSize: formData.fontSize }} className="text-gray-900 dark:text-white font-medium">
+            هذا نص تجريبي لمعاينة حجم ونوع الخط المختار في موقع أحمد بحري متجر الأجزاء وإدارة المبيعات.
           </p>
         </div>
       </section>
 
-      {/* === Section 3: Colors === */}
-      <section className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+      {/* === Section 3: Colors & Dark Mode === */}
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xl">🎯</span>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">الألوان العامة</h2>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">الألوان العامة والوضع المظلم</h2>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <ColorPicker
             label="اللون الأساسي"
-            color={settings.primaryColor}
-            onChange={(c) => updateSettings({ primaryColor: c })}
+            color={formData.primaryColor}
+            onChange={(c) => handleChange({ primaryColor: c })}
           />
           <ColorPicker
             label="اللون الثانوي"
-            color={settings.secondaryColor}
-            onChange={(c) => updateSettings({ secondaryColor: c })}
+            color={formData.secondaryColor}
+            onChange={(c) => handleChange({ secondaryColor: c })}
           />
           <ColorPicker
             label="لون التمييز"
-            color={settings.accentColor}
-            onChange={(c) => updateSettings({ accentColor: c })}
+            color={formData.accentColor}
+            onChange={(c) => handleChange({ accentColor: c })}
           />
         </div>
 
-        <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">معاينة الألوان:</p>
-          <div className="flex gap-3">
-            <div className="w-16 h-16 rounded-lg shadow-inner" style={{ backgroundColor: settings.primaryColor }} />
-            <div className="w-16 h-16 rounded-lg shadow-inner" style={{ backgroundColor: settings.secondaryColor }} />
-            <div className="w-16 h-16 rounded-lg shadow-inner" style={{ backgroundColor: settings.accentColor }} />
-          </div>
-        </div>
-
         {/* Dark Mode Toggle */}
-        <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+        <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
           <div>
-            <h3 className="font-medium text-gray-900 dark:text-white">الوضع المظلم (Dark Mode)</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">تبديل بين الوضع المضيء والمظلم</p>
+            <h3 className="font-bold text-sm text-gray-900 dark:text-white">الوضع المظلم (Dark Mode)</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">تبديل ثيم المظهر بين المضيء والمظلم</p>
           </div>
           <button
-            onClick={() => updateSettings({ darkMode: !settings.darkMode })}
+            onClick={() => handleChange({ darkMode: !formData.darkMode })}
             className={`relative w-14 h-7 rounded-full transition-colors ${
-              settings.darkMode ? "bg-[var(--primary)]" : "bg-gray-300 dark:bg-gray-600"
+              formData.darkMode ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-600"
             }`}
           >
             <div
               className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-transform flex items-center justify-center text-xs ${
-                settings.darkMode ? "right-0.5" : "right-7"
+                formData.darkMode ? "right-0.5" : "right-7"
               }`}
             >
-              {settings.darkMode ? "🌙" : "☀️"}
+              {formData.darkMode ? "🌙" : "☀️"}
             </div>
           </button>
         </div>
       </section>
 
       {/* === Section 4: Role Themes === */}
-      <section className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xl">👤</span>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">تمييز الأدوار بالألوان</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mr-2">
-            تخصيص ألوان مميزة لكل دور يظهر عند الدخول
-          </p>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">تخصيص ثيمات الأدوار</h2>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {(["manager", "admin", "customer"] as UserRole[]).map((role) => {
             const colors = ROLE_COLORS[role];
+            const currentRoleTheme = formData.roleThemes[role];
             return (
               <div
                 key={role}
-                className={`rounded-xl border-2 p-5 space-y-4 ${colors.bg} ${colors.border}`}
+                className={`rounded-2xl border-2 p-5 space-y-4 ${colors.bg} ${colors.border}`}
               >
-                <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2 text-sm">
                   <div
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: settings.roleThemes[role].primary }}
+                    className="w-3.5 h-3.5 rounded-full shadow-sm"
+                    style={{ backgroundColor: currentRoleTheme.primary }}
                   />
                   {ROLE_LABELS[role]}
                 </h3>
 
                 <ColorPicker
                   label="الأساسي"
-                  color={settings.roleThemes[role].primary}
-                  onChange={(c) => updateRoleTheme(role, { primary: c })}
+                  color={currentRoleTheme.primary}
+                  onChange={(c) => handleRoleThemeChange(role, { primary: c })}
                 />
                 <ColorPicker
                   label="الثانوي"
-                  color={settings.roleThemes[role].secondary}
-                  onChange={(c) => updateRoleTheme(role, { secondary: c })}
+                  color={currentRoleTheme.secondary}
+                  onChange={(c) => handleRoleThemeChange(role, { secondary: c })}
                 />
                 <ColorPicker
                   label="التمييز"
-                  color={settings.roleThemes[role].accent}
-                  onChange={(c) => updateRoleTheme(role, { accent: c })}
+                  color={currentRoleTheme.accent}
+                  onChange={(c) => handleRoleThemeChange(role, { accent: c })}
                 />
-
-                <div className="flex gap-2 pt-2">
-                  <div
-                    className="flex-1 h-8 rounded-lg"
-                    style={{ backgroundColor: settings.roleThemes[role].primary }}
-                  />
-                  <div
-                    className="flex-1 h-8 rounded-lg"
-                    style={{ backgroundColor: settings.roleThemes[role].secondary }}
-                  />
-                  <div
-                    className="flex-1 h-8 rounded-lg"
-                    style={{ backgroundColor: settings.roleThemes[role].accent }}
-                  />
-                </div>
               </div>
             );
           })}
         </div>
       </section>
 
-      {/* Save indicator */}
-      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 pb-4">
-        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-        <span>جميع التغييرات تُحفظ تلقائياً</span>
+      {/* === Sticky Action Bar at Bottom of Screen (أزرار الحفظ والإلغاء) === */}
+      <div className="fixed bottom-0 inset-x-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 p-4 z-40 shadow-2xl">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-4" dir="rtl">
+          <div className="flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300">
+            {isDirty ? (
+              <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-bold">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
+                ⚠️ لديك تغييرات غير محفوظة
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                جميع الإعدادات مطابقة لآخر حفظ
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleCancel}
+              disabled={!isDirty || saving}
+              className="px-5 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-bold text-sm hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 transition-colors"
+            >
+              إلغاء التعديلات ❌
+            </button>
+
+            <button
+              onClick={handleSave}
+              disabled={!isDirty || saving}
+              className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-lg disabled:opacity-40 transition-all flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98]"
+            >
+              {saving ? (
+                <>
+                  <span className="animate-spin text-base">🔄</span>
+                  <span>جاري الحفظ...</span>
+                </>
+              ) : (
+                <>
+                  <span>حفظ التغييرات 💾</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
