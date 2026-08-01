@@ -67,8 +67,11 @@ export default function SettingsPage() {
   // Check if form has unsaved changes
   const isDirty = JSON.stringify(formData) !== JSON.stringify(settings);
 
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
   const handleSave = async () => {
     setSaving(true);
+    setErrorMsg(null);
     try {
       await updateSettings(formData);
       await logActivity({
@@ -79,8 +82,10 @@ export default function SettingsPage() {
       });
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 4000);
-    } catch (err) {
-      alert("حدث خطأ أثناء حفظ الإعدادات!");
+    } catch (err: unknown) {
+      console.error("[Settings Save Failure Details]:", err);
+      const detailedMessage = err instanceof Error ? err.message : String(err);
+      setErrorMsg(`تعذر حفظ الإعدادات في قاعدة البيانات: ${detailedMessage}`);
     } finally {
       setSaving(false);
     }
@@ -89,6 +94,7 @@ export default function SettingsPage() {
   const handleCancel = () => {
     setFormData(settings);
     setSavedSuccess(false);
+    setErrorMsg(null);
   };
 
   const isManagerOrAdmin = settings.currentRole === "manager" || settings.currentRole === "admin";
@@ -127,6 +133,17 @@ export default function SettingsPage() {
             <span>تم حفظ جميع التغييرات والإعدادات بنجاح وتطبيقها فوراً لجميع المستخدمين!</span>
           </div>
           <button onClick={() => setSavedSuccess(false)} className="text-emerald-600 hover:text-emerald-800 text-xs">✕</button>
+        </div>
+      )}
+
+      {/* Error Notification Banner */}
+      {errorMsg && (
+        <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-2xl flex items-center justify-between text-red-800 dark:text-red-300 text-sm font-bold animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">⚠️</span>
+            <span>{errorMsg}</span>
+          </div>
+          <button onClick={() => setErrorMsg(null)} className="text-red-600 hover:text-red-800 text-xs font-bold">✕</button>
         </div>
       )}
 

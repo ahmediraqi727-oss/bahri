@@ -21,18 +21,18 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
   return {
     siteName: (row.site_name as string) || DEFAULT_SETTINGS.siteName,
     logo: (row.logo as string) || "",
-    heroImage: (row.hero_image as string) || "",
-    footerImage: (row.footer_image as string) || "",
+    heroImage: (row.hero_image as string) || (row.hero_image_url as string) || "",
+    footerImage: (row.footer_image as string) || (row.footer_image_url as string) || "",
     fontFamily: (row.font_family as string) || "Cairo",
     fontSize: Number(row.font_size) || 16,
     primaryColor: (row.primary_color as string) || "#2563eb",
     secondaryColor: (row.secondary_color as string) || "#7c3aed",
     accentColor: (row.accent_color as string) || "#f59e0b",
     darkMode: Boolean(row.dark_mode) || false,
-    whatsappLink: (row.whatsapp_link as string) || "",
-    telegramLink: (row.telegram_link as string) || "",
-    messengerLink: (row.messenger_link as string) || "",
-    phoneLink: (row.phone_link as string) || "07800000000",
+    whatsappLink: (row.whatsapp_link as string) || (row.whatsapp_number as string) || "",
+    telegramLink: (row.telegram_link as string) || (row.telegram_url as string) || "",
+    messengerLink: (row.messenger_link as string) || (row.messenger_url as string) || "",
+    phoneLink: (row.phone_link as string) || (row.direct_phone as string) || "07800000000",
 
     // Icons & Custom Sizing
     homeIcon: (row.home_icon as string) || "",
@@ -77,7 +77,9 @@ function settingsToRow(settings: SiteSettings): Record<string, unknown> {
     site_name: settings.siteName,
     logo: settings.logo,
     hero_image: settings.heroImage,
+    hero_image_url: settings.heroImage,
     footer_image: settings.footerImage,
+    footer_image_url: settings.footerImage,
     font_family: settings.fontFamily,
     font_size: settings.fontSize,
     primary_color: settings.primaryColor,
@@ -85,9 +87,13 @@ function settingsToRow(settings: SiteSettings): Record<string, unknown> {
     accent_color: settings.accentColor,
     dark_mode: settings.darkMode,
     whatsapp_link: settings.whatsappLink || "",
+    whatsapp_number: settings.whatsappLink || "",
     telegram_link: settings.telegramLink || "",
+    telegram_url: settings.telegramLink || "",
     messenger_link: settings.messengerLink || "",
+    messenger_url: settings.messengerLink || "",
     phone_link: settings.phoneLink || "",
+    direct_phone: settings.phoneLink || "",
     home_icon: settings.homeIcon || "",
     home_icon_size: settings.homeIconSize || 28,
     search_icon: settings.searchIcon || "",
@@ -196,25 +202,31 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
       // Persist to Supabase database cleanly
       let resultData: Record<string, unknown> | null = null;
-      let queryError = null;
+      let queryError: { message: string; details?: string; hint?: string } | null = null;
 
-      if (settingsId) {
-        const res = await supabase.from("settings").update(row).eq("id", settingsId).select().single();
-        resultData = res.data;
-        queryError = res.error;
-      } else {
-        // Check if a row already exists in table
-        const existing = await supabase.from("settings").select("id").limit(1).maybeSingle();
-        if (existing.data) {
-          setSettingsId(existing.data.id);
-          const res = await supabase.from("settings").update(row).eq("id", existing.data.id).select().single();
+      try {
+        if (settingsId) {
+          const res = await supabase.from("settings").update(row).eq("id", settingsId).select().single();
           resultData = res.data;
           queryError = res.error;
         } else {
-          const res = await supabase.from("settings").insert(row).select().single();
-          resultData = res.data;
-          queryError = res.error;
+          // Check if a row already exists in table
+          const existing = await supabase.from("settings").select("id").limit(1).maybeSingle();
+          if (existing.data) {
+            setSettingsId(existing.data.id);
+            const res = await supabase.from("settings").update(row).eq("id", existing.data.id).select().single();
+            resultData = res.data;
+            queryError = res.error;
+          } else {
+            const res = await supabase.from("settings").insert(row).select().single();
+            resultData = res.data;
+            queryError = res.error;
+          }
         }
+      } catch (err: unknown) {
+        console.error("Database query exception:", err);
+        const message = err instanceof Error ? err.message : String(err);
+        queryError = { message };
       }
 
       if (queryError) {
