@@ -7,7 +7,7 @@ import { useData } from "@/lib/data-context";
 import { useCart } from "@/lib/cart-context";
 import { useAuth } from "@/lib/auth-context";
 import ImageSearch from "@/components/ImageSearch";
-import CartSidebar from "@/components/CartSidebar";
+import CustomerCartSidebar from "@/components/CustomerCartSidebar";
 import { supabase } from "@/lib/supabase-client";
 import { useLang, Lang } from "@/lib/lang-context";
 
@@ -630,7 +630,7 @@ export default function Home() {
         </div>
       )}
 
-      <CartSidebar isOpen={cartOpen} onClose={() => setCartOpen(false)} />
+      <CustomerCartSidebar isOpen={cartOpen} onClose={() => setCartOpen(false)} />
       {eyeCare && <div className="fixed inset-0 bg-amber-900/15 pointer-events-none z-50" />}
     </div>
   );
