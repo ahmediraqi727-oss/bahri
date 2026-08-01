@@ -74,7 +74,7 @@ export default function SettingsPage() {
         user: settings.currentRole,
         action: "update",
         entity: "إعدادات الموقع",
-        details: "حفظ وتحديث إعدادات الموقع وروابط التواصل بالكامل",
+        details: "حفظ وتحديث إعدادات الموقع، الصور، الأيقونات والتذييل بالكامل",
       });
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 4000);
@@ -102,12 +102,12 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl pb-24" dir="rtl">
+    <div className="space-y-6 max-w-4xl pb-28" dir="rtl">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">إعدادات النظام والمظهر</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">تخصيص روابط التواصل، الهوية، المظهر، وألوان الأدوار</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">إعدادات النظام والشكل العام</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">تخصيص الهوية، الأيقونات والأحجام، تذييل الصفحة، وروابط التواصل</p>
         </div>
 
         {isDirty && (
@@ -123,17 +123,17 @@ export default function SettingsPage() {
         <div className="p-4 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700 rounded-2xl flex items-center justify-between text-emerald-800 dark:text-emerald-300 text-sm font-bold animate-fadeIn">
           <div className="flex items-center gap-2">
             <span className="text-xl">🎉</span>
-            <span>تم حفظ جميع التغييرات والإعدادات بنجاح في قاعدة البيانات!</span>
+            <span>تم حفظ جميع التغييرات والإعدادات بنجاح وتطبيقها فوراً لجميع المستخدمين!</span>
           </div>
           <button onClick={() => setSavedSuccess(false)} className="text-emerald-600 hover:text-emerald-800 text-xs">✕</button>
         </div>
       )}
 
-      {/* === Section 1: Branding === */}
+      {/* === Section 1: Branding Images === */}
       <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-xl">🎨</span>
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white">الشعار وصور الهوية</h2>
+          <span className="text-xl">🖼️</span>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">الشعار وصور الهوية البصرية</h2>
         </div>
 
         <div>
@@ -150,21 +150,170 @@ export default function SettingsPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <ImageUploader
-            label="الشعار (Logo)"
+            label="الشعار الرسمي (Logo)"
             image={formData.logo}
             onUpload={(img) => handleChange({ logo: img })}
             aspect="aspect-square"
           />
           <ImageUploader
-            label="صورة الواجهة (Hero)"
+            label="صورة الواجهة (Hero Header)"
             image={formData.heroImage}
             onUpload={(img) => handleChange({ heroImage: img })}
           />
           <ImageUploader
-            label="صورة التذييل (Footer)"
+            label="صورة تذييل الصفحة (Footer Image)"
             image={formData.footerImage}
             onUpload={(img) => handleChange({ footerImage: img })}
           />
+        </div>
+      </section>
+
+      {/* === Section 1.8: Custom Header Icons & Sizing (أيقونات الواجهة وأحجامها) === */}
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xl">⚙️</span>
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">تخصيص أيقونات الواجهة وأحجامها</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">تغيير صور وأيقونات القائمة، البحث، وسلة المشتريات والتحكم بأحجامها</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Main Menu / Home Icon */}
+          <div className="space-y-3 bg-gray-50 dark:bg-gray-800/60 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+            <ImageUploader
+              label="أيقونة القائمة الرئيسية"
+              image={formData.homeIcon || ""}
+              onUpload={(img) => handleChange({ homeIcon: img })}
+              aspect="aspect-square"
+            />
+            <div>
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                حجم الأيقونة: {formData.homeIconSize || 28}px
+              </label>
+              <input
+                type="range"
+                min="16"
+                max="64"
+                value={formData.homeIconSize || 28}
+                onChange={(e) => handleChange({ homeIconSize: Number(e.target.value) })}
+                className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              />
+            </div>
+          </div>
+
+          {/* Search Icon */}
+          <div className="space-y-3 bg-gray-50 dark:bg-gray-800/60 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+            <ImageUploader
+              label="أيقونة البحث"
+              image={formData.searchIcon || ""}
+              onUpload={(img) => handleChange({ searchIcon: img })}
+              aspect="aspect-square"
+            />
+            <div>
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                حجم الأيقونة: {formData.searchIconSize || 28}px
+              </label>
+              <input
+                type="range"
+                min="16"
+                max="64"
+                value={formData.searchIconSize || 28}
+                onChange={(e) => handleChange({ searchIconSize: Number(e.target.value) })}
+                className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              />
+            </div>
+          </div>
+
+          {/* Cart Icon */}
+          <div className="space-y-3 bg-gray-50 dark:bg-gray-800/60 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+            <ImageUploader
+              label="أيقونة السلة"
+              image={formData.cartIcon || ""}
+              onUpload={(img) => handleChange({ cartIcon: img })}
+              aspect="aspect-square"
+            />
+            <div>
+              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+                حجم الأيقونة: {formData.cartIconSize || 28}px
+              </label>
+              <input
+                type="range"
+                min="16"
+                max="64"
+                value={formData.cartIconSize || 28}
+                onChange={(e) => handleChange({ cartIconSize: Number(e.target.value) })}
+                className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* === Section 1.9: Footer Customization (تخصيص تذييل الصفحة) === */}
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xl">📐</span>
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">التحكم الكامل بتذييل الصفحة (Footer)</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">تعديل ارتفاع التذييل والنصوص الثلاثة المعروضة في الأسفل</p>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">
+            ارتفاع تذييل الصفحة (Height / Vertical Padding): {formData.footerHeight || 120}px
+          </label>
+          <input
+            type="range"
+            min="60"
+            max="300"
+            step="10"
+            value={formData.footerHeight || 120}
+            onChange={(e) => handleChange({ footerHeight: Number(e.target.value) })}
+            className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+              ➡️ نص جهة اليمين بالتذييل:
+            </label>
+            <input
+              type="text"
+              placeholder="مثال: جميع الحقوق محفوظة © 2026"
+              value={formData.footerRightText || ""}
+              onChange={(e) => handleChange({ footerRightText: e.target.value })}
+              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+              ⏺️ نص الوسط بالتذييل:
+            </label>
+            <input
+              type="text"
+              placeholder="مثال: أفضل المنتجات لخدمتكم"
+              value={formData.footerCenterText || ""}
+              onChange={(e) => handleChange({ footerCenterText: e.target.value })}
+              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
+              ⬅️ نص جهة اليسار بالتذييل:
+            </label>
+            <input
+              type="text"
+              placeholder="مثال: للطلب: 07800000000"
+              value={formData.footerLeftText || ""}
+              onChange={(e) => handleChange({ footerLeftText: e.target.value })}
+              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm outline-none"
+            />
+          </div>
         </div>
       </section>
 
@@ -235,7 +384,7 @@ export default function SettingsPage() {
         </section>
       )}
 
-      {/* === Section 2: Appearance === */}
+      {/* === Section 2: Appearance & Fonts === */}
       <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xl">✏️</span>
@@ -280,13 +429,6 @@ export default function SettingsPage() {
               <span>24px</span>
             </div>
           </div>
-        </div>
-
-        <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-          <p className="text-xs text-gray-400 mb-2 font-bold">معاينة الخط والحجم:</p>
-          <p style={{ fontFamily: formData.fontFamily, fontSize: formData.fontSize }} className="text-gray-900 dark:text-white font-medium">
-            هذا نص تجريبي لمعاينة حجم ونوع الخط المختار في موقع أحمد بحري متجر الأجزاء وإدارة المبيعات.
-          </p>
         </div>
       </section>
 

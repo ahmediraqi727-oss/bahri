@@ -20,6 +20,8 @@ export default function Home() {
   const theme = settings.roleThemes.customer;
 
   const [search, setSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [addedId, setAddedId] = useState<string | null>(null);
   const [imageResults, setImageResults] = useState<{ id: string; score: number }[] | null>(null);
@@ -35,20 +37,47 @@ export default function Home() {
   const [contactSent, setContactSent] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [heroGallery, setHeroGallery] = useState<{ position: number; image_url: string }[]>([]);
+  
   const menuRef = useRef<HTMLDivElement>(null);
+  const categoriesRef = useRef<HTMLDivElement>(null);
 
   const isManager = user?.role === "manager" || user?.role === "admin";
 
   const allAvailableProducts = useMemo(() => products.filter((p) => p.stock > 0), [products]);
 
-  const textFilteredProducts = useMemo(() => {
-    if (!search) return allAvailableProducts;
-    const q = search.toLowerCase();
-    return allAvailableProducts.filter((p) => {
-      const supplier = suppliers.find((s) => s.id === p.supplierId);
-      return p.name.toLowerCase().includes(q) || (supplier?.name.toLowerCase().includes(q));
+  // Extract all categories dynamically from product notes / category fields
+  const categoriesList = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach((p) => {
+      if (!p.notes) return;
+      if (p.notes.includes("الفئة:")) {
+        const cat = p.notes.split("الفئة:")[1]?.split("|")[0]?.trim();
+        if (cat) set.add(cat);
+      } else {
+        const parts = p.notes.split(/[\n|,]/);
+        if (parts[0] && parts[0].length <= 35) set.add(parts[0].trim());
+      }
     });
-  }, [allAvailableProducts, search, suppliers]);
+    return Array.from(set).filter(Boolean);
+  }, [products]);
+
+  const textFilteredProducts = useMemo(() => {
+    let result = allAvailableProducts;
+
+    if (selectedCategory) {
+      result = result.filter((p) => p.notes && p.notes.toLowerCase().includes(selectedCategory.toLowerCase()));
+    }
+
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter((p) => {
+        const supplier = suppliers.find((s) => s.id === p.supplierId);
+        return p.name.toLowerCase().includes(q) || (supplier?.name.toLowerCase().includes(q)) || (p.notes && p.notes.toLowerCase().includes(q));
+      });
+    }
+
+    return result;
+  }, [allAvailableProducts, search, selectedCategory, suppliers]);
 
   const similarProducts = useMemo(() => {
     if (!search || textFilteredProducts.length > 0 || !searchSubmitted) return [];
@@ -110,6 +139,7 @@ export default function Home() {
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+      if (categoriesRef.current && !categoriesRef.current.contains(e.target as Node)) setCategoriesOpen(false);
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -147,491 +177,387 @@ export default function Home() {
   };
 
   return (
-    <div className={`min-h-screen ${settings.darkMode ? "dark" : ""}`} style={{ fontFamily: settings.fontFamily }}>
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-
-        {/* Navbar */}
-        <nav className="sticky top-0 z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-800">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16" dir="rtl">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors" style={{ fontFamily: settings.fontFamily }}>
+      
+      {/* Sticky Responsive Header */}
+      <nav className="sticky top-0 z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 shadow-sm transition-colors">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16 sm:h-20" dir="rtl">
+            
+            {/* Right: Logo & Navigation Controls */}
+            <div className="flex items-center gap-2 sm:gap-4">
+              
+              {/* Main Menu Dropdown */}
               <div className="relative" ref={menuRef}>
                 <button
                   onClick={() => setMenuOpen(!menuOpen)}
-                  className="flex items-center gap-2 px-4 py-2.5 text-base font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800"
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm sm:text-base font-bold text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800"
+                  title="القائمة الرئيسية"
                 >
-                  <span className="text-2xl">🏠</span>
+                  {settings.homeIcon ? (
+                    <img src={settings.homeIcon} alt="القائمة" style={{ width: settings.homeIconSize || 28, height: settings.homeIconSize || 28 }} className="object-contain" />
+                  ) : (
+                    <span style={{ fontSize: (settings.homeIconSize || 28) * 0.8 }}>🏠</span>
+                  )}
+                  <span className="hidden md:inline">الرئيسية</span>
                   <svg className={`w-4 h-4 transition-transform ${menuOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
+
                 {menuOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden z-50">
-                    <div className="p-2">
+                  <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fadeIn">
+                    <div className="p-2 space-y-1">
                       {isManager ? (
                         <>
                           <Link href="/dashboard" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                             <span className="text-xl">👤</span>
-                            <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{t.dashboard}</span>
+                            <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t.dashboard}</span>
                           </Link>
                           <Link href="/dashboard/products" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                             <span className="text-xl">📦</span>
-                            <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{t.products}</span>
+                            <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t.products}</span>
                           </Link>
                           <Link href="/dashboard/settings" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                             <span className="text-xl">⚙️</span>
-                            <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{t.settings}</span>
+                            <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t.settings}</span>
                           </Link>
                           <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
                           <button onClick={() => { signOut(); setMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                             <span className="text-xl">🚪</span>
-                            <span className="text-sm font-medium text-red-600 dark:text-red-400">{t.logout}</span>
+                            <span className="text-sm font-bold text-red-600 dark:text-red-400">{t.logout}</span>
                           </button>
                         </>
                       ) : user ? (
                         <>
                           <div className="flex items-center gap-3 px-4 py-3">
                             <span className="text-xl">👤</span>
-                            <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">{user.fullName}</span>
+                            <span className="text-sm font-bold text-gray-700 dark:text-gray-200 truncate">{user.fullName}</span>
                           </div>
                           <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
                           <button onClick={() => { signOut(); setMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                             <span className="text-xl">🚪</span>
-                            <span className="text-sm font-medium text-red-600 dark:text-red-400">{t.logout}</span>
+                            <span className="text-sm font-bold text-red-600 dark:text-red-400">{t.logout}</span>
                           </button>
-                          <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
                         </>
                       ) : (
                         <>
                           <Link href="/login" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                             <span className="text-xl">👤</span>
-                            <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{t.login}</span>
+                            <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t.login}</span>
                           </Link>
-                          <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
                         </>
                       )}
+                      
+                      <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
+                      
                       <button onClick={() => { toggleDarkMode(); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                         <span className="text-xl">{settings.darkMode ? "☀️" : "🌙"}</span>
-                        <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{settings.darkMode ? t.lightMode : t.darkMode}</span>
+                        <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{settings.darkMode ? t.lightMode : t.darkMode}</span>
                       </button>
+
                       <button onClick={() => { setEyeCare(!eyeCare); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                         <span className="text-xl">{eyeCare ? "👁️" : "🕶️"}</span>
-                        <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{eyeCare ? t.eyeCareOff : t.eyeCare}</span>
+                        <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{eyeCare ? t.eyeCareOff : t.eyeCare}</span>
                       </button>
+
                       <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
-                      <div className="flex items-center gap-2 px-4 py-2">
-                        <button onClick={() => setFontSize(Math.max(12, fontSize - 2))} className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm font-medium text-gray-700 dark:text-gray-200">
-                          <span>A</span><span className="text-xs">−</span>
-                        </button>
-                        <span className="text-xs text-gray-400 min-w-[3rem] text-center">{fontSize}px</span>
-                        <button onClick={() => setFontSize(Math.min(28, fontSize + 2))} className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm font-medium text-gray-700 dark:text-gray-200">
-                          <span>A</span><span className="text-lg">+</span>
-                        </button>
-                      </div>
-                      <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
-                      <div className="px-4 py-2">
-                        <p className="text-xs text-gray-400 mb-2">{t.language}</p>
-                        <div className="flex gap-1">
-                          {([
-                            { code: "ar" as Lang, label: "العربية", flag: "🇸🇦" },
-                            { code: "en" as Lang, label: "English", flag: "🇬🇧" },
-                          ]).map((l) => (
-                            <button key={l.code} onClick={() => { setLang(l.code); setMenuOpen(false); }} className={`flex-1 flex flex-col items-center gap-0.5 py-2 rounded-lg text-xs font-medium transition-colors ${lang === l.code ? "text-white" : "bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200"}`} style={lang === l.code ? { backgroundColor: theme.primary } : {}}>
-                              <span className="text-base">{l.flag}</span><span>{l.label}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
+                      
                       <button onClick={() => { setContactOpen(true); setMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                         <span className="text-xl">💬</span>
-                        <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{t.help}</span>
+                        <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t.help}</span>
                       </button>
                     </div>
                   </div>
                 )}
               </div>
 
-              <div className="flex items-center gap-3 sm:gap-4">
+              {/* Categories Button ("الأقسام") - Visible to EVERYONE */}
+              <div className="relative" ref={categoriesRef}>
                 <button
-                  onClick={() => setSearchOpen(!searchOpen)}
-                  className="relative p-1.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                  title={t.search}
+                  onClick={() => setCategoriesOpen(!categoriesOpen)}
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm sm:text-base font-bold text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 bg-gray-100 dark:bg-gray-800 rounded-xl hover:bg-gray-200 transition-colors"
+                  title="أقسام المنتجات"
                 >
-                  <img src="/search-icon.png" alt={t.search} className="w-11 h-11 rounded-xl object-cover" />
-                  {imageResults && (
-                    <span className="absolute -top-0.5 -left-0.5 w-3 h-3 bg-blue-500 rounded-full border-2 border-white dark:border-gray-900" />
+                  <span className="text-xl">📁</span>
+                  <span>الأقسام</span>
+                  {selectedCategory && (
+                    <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
                   )}
+                  <svg className={`w-4 h-4 transition-transform ${categoriesOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
                 </button>
 
-                <button onClick={() => setCartOpen(true)} className="relative p-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                  <span className="text-2xl">🛒</span>
-                  {itemCount > 0 && (
-                    <span className="absolute -top-1 -left-1 w-5 h-5 text-white text-xs font-bold rounded-full flex items-center justify-center" style={{ backgroundColor: theme.primary }}>
-                      {itemCount > 9 ? "9+" : itemCount}
-                    </span>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </nav>
-
-        {/* Search Panel */}
-        {searchOpen && (
-          <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-sm">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                <div className="flex-1 relative w-full max-w-lg">
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => handleSearchChange(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSearchSubmit()}
-                    placeholder={t.searchPlaceholder}
-                    autoFocus
-                    className="w-full py-3 pl-16 pr-12 border border-gray-200 dark:border-gray-700 rounded-full bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                  />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                  </div>
-                  <button
-                    onClick={() => { handleSearchSubmit(); setSearchOpen(false); }}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-full text-xs font-medium transition-colors"
-                  >
-                    {t.search}
-                  </button>
-                  {suggestions.length > 0 && (
-                    <div className="absolute top-full mt-2 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl overflow-hidden z-50">
-                      {suggestions.map((p) => (
-                        <button
-                          key={p.id}
-                          onClick={() => handleSuggestionClick(p.name)}
-                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-right"
-                        >
-                          {p.image ? (
-                            <img src={p.image} alt="" className="w-10 h-10 rounded-lg object-cover" />
-                          ) : (
-                            <span className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-lg">📦</span>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{p.name}</p>
-                            <p className="text-xs text-gray-400">{p.retailPrice.toLocaleString()} {t.dinar}</p>
-                          </div>
-                          <span className="text-xs text-gray-400">{p.stock} {t.pieces}</span>
+                {categoriesOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden z-50 p-2 space-y-1 animate-fadeIn">
+                    <div className="px-3 py-2 text-xs font-bold text-gray-400 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
+                      <span>جميع الأقسام والفئات</span>
+                      {selectedCategory && (
+                        <button onClick={() => setSelectedCategory(null)} className="text-blue-600 dark:text-blue-400 hover:underline text-[11px]">
+                          إلغاء التصفية
                         </button>
-                      ))}
+                      )}
                     </div>
-                  )}
-                </div>
-                <ImageSearch onResults={handleImageResults} onClear={handleClearImage} isSearching={false} />
-              </div>
-              {imageResults && (
-                <div className="mt-2 flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  <span>{imageResults.length} {t.resultCount}</span>
-                </div>
-              )}
-
-            </div>
-          </div>
-        )}
-
-        {/* Hero */}
-        <section className="relative overflow-hidden">
-          {settings.heroImage ? (
-            <div className="relative h-[420px]">
-              <img src={settings.heroImage} alt="Hero" className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent flex items-end">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 w-full">
-                  <h2 className="text-3xl sm:text-5xl font-bold text-white mb-3 drop-shadow-lg">
-                    مرحباً بك في {settings.siteName}
-                  </h2>
-                  <p className="text-lg text-gray-200 max-w-xl">
-                    اكتشف أفضل المنتجات بأسعار مميزة
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="h-[380px] flex items-center justify-center relative" style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})` }}>
-              <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "radial-gradient(circle at 25% 25%, white 1px, transparent 1px)", backgroundSize: "50px 50px" }} />
-              <div className="text-center text-white relative z-10 px-4">
-                <img src="/logo.jpg" alt="شعار أحمد بحري" className="w-28 h-28 rounded-3xl object-cover mx-auto mb-6 shadow-2xl ring-4 ring-white/20" />
-                <h2 className="text-3xl sm:text-5xl font-bold mb-3 drop-shadow-lg">
-                  مرحباً بك في {settings.siteName}
-                </h2>
-                <p className="text-lg text-white/80 max-w-xl mx-auto">
-                  اكتشف أفضل المنتجات بأسعار مميزة
-                </p>
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* Hero Gallery */}
-        {heroGallery.length > 0 && (
-          <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {heroGallery.map((img) => (
-                <div key={img.position} className="aspect-square rounded-2xl overflow-hidden shadow-sm">
-                  <img
-                    src={img.image_url}
-                    alt={`معرض ${img.position + 1}`}
-                    className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-                    loading="lazy"
-                  />
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Search & Stats */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-10">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-4 flex flex-col sm:flex-row gap-4 items-center">
-            <div className="flex-1 relative w-full max-w-lg">
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearchSubmit()}
-                placeholder={t.searchPlaceholder}
-                className="w-full py-3 pl-16 pr-12 border border-gray-200 dark:border-gray-700 rounded-full bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-              />
-              <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-              <button
-                onClick={() => { handleSearchSubmit(); setSearchOpen(true); }}
-                className="absolute left-2 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-full text-xs font-medium transition-colors"
-              >
-                {t.search}
-              </button>
-              {suggestions.length > 0 && (
-                <div className="absolute top-full mt-2 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl overflow-hidden z-50">
-                  {suggestions.map((p) => (
                     <button
-                      key={p.id}
-                      onClick={() => handleSuggestionClick(p.name)}
-                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-right"
+                      onClick={() => { setSelectedCategory(null); setCategoriesOpen(false); }}
+                      className={`w-full text-right px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
+                        !selectedCategory ? "bg-blue-600 text-white" : "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+                      }`}
                     >
-                      {p.image ? (
-                        <img src={p.image} alt="" className="w-10 h-10 rounded-lg object-cover" />
-                      ) : (
-                        <span className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-lg">📦</span>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{p.name}</p>
-                        <p className="text-xs text-gray-400">{p.retailPrice.toLocaleString()} {t.dinar}</p>
-                      </div>
-                      <span className="text-xs text-gray-400">{p.stock} {t.pieces}</span>
+                      عرض جميع الأقسام ({products.length})
                     </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="flex gap-4 text-sm text-gray-500 dark:text-gray-400">
-              <span>📦 {availableProducts.length} {t.productCount}</span>
-              {isManager && <span>🚚 {suppliers.length} {t.supplierCount}</span>}
-            </div>
-          </div>
-        </section>
-
-        {/* Products Grid */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-          {/* Hidden images for AI analysis */}
-          <div className="hidden">
-            {allAvailableProducts.map((p) =>
-              p.image ? (
-                <img key={p.id} src={p.image} alt="" data-product-id={p.id} data-product-image="true" />
-              ) : null
-            )}
-          </div>
-
-          {availableProducts.length === 0 ? (
-            <div className="text-center py-12">
-              <span className="text-6xl block mb-4">📭</span>
-              {search && searchSubmitted ? (
-                <>
-                  <p className="text-xl font-bold text-gray-700 dark:text-gray-200 mb-1">
-                    {t.productUnavailable}
-                  </p>
-                  <p className="text-sm text-gray-400 mb-6">{t.similarProducts}</p>
-                  {similarProducts.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-4xl mx-auto">
-                      {similarProducts.map((p) => (
-                        <div key={p.id} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-lg transition-all">
-                          <div className="aspect-square bg-gray-100 dark:bg-gray-800 flex items-center justify-center overflow-hidden">
-                            {p.image ? (
-                              <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
-                            ) : (
-                              <span className="text-5xl">📦</span>
-                            )}
-                          </div>
-                          <div className="p-3">
-                            <p className="font-bold text-gray-900 dark:text-white text-sm truncate">{p.name}</p>
-                            <p className="text-lg font-extrabold mt-1" style={{ color: theme.primary }}>
-                              {p.retailPrice.toLocaleString()} <span className="text-xs font-normal text-gray-400">{t.dinar}</span>
-                            </p>
-                            <button
-                              onClick={() => { setSearch(p.name); setSearchSubmitted(false); setSuggestions([]); }}
-                              className="mt-2 w-full text-xs py-1.5 rounded-lg font-medium border transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
-                              style={{ borderColor: theme.primary, color: theme.primary }}
-                            >
-                              {t.viewProduct}
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-400">{t.noSimilar}</p>
-                  )}
-                </>
-              ) : (
-                <p className="text-xl text-gray-500 dark:text-gray-400">
-                  {imageResults ? t.noSimilar : t.noProducts}
-                </p>
-              )}
-              {(search || imageResults) && (
-                <button onClick={() => { setSearch(""); setImageResults(null); setSearchSubmitted(false); setSuggestions([]); }} className="mt-4 text-sm underline" style={{ color: theme.primary }}>
-                  {t.clearSearch}
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-              {availableProducts.map((product) => {
-                const supplier = suppliers.find((s) => s.id === product.supplierId);
-                const isAdded = addedId === product.id;
-                const score = imageResults?.find((r) => r.id === product.id)?.score;
-                return (
-                  <div key={product.id} className="group bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-                    <div className="relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800">
-                      {product.image ? (
-                        <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-6xl text-gray-300">📦</div>
-                      )}
-                      {isManager && (
-                        <div className="absolute top-3 right-3">
-                          <span className="px-2.5 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: theme.primary }}>
-                            {product.stock} {t.pieces}
-                          </span>
-                        </div>
-                      )}
-                      {score !== undefined && (
-                        <div className="absolute top-3 left-3">
-                          <span className="px-2.5 py-1 rounded-full text-xs font-bold text-white bg-blue-600">
-                            {Math.round(score * 100)}% {t.match}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="p-4 space-y-3">
-                      <div>
-                        <h3 className="font-bold text-gray-900 dark:text-white text-base leading-tight">{product.name}</h3>
-                        {isManager && supplier && <p className="text-xs text-gray-400 mt-1">🚚 {supplier.name}</p>}
-                      </div>
-
-                      {product.notes && <p className="text-xs text-gray-400 line-clamp-2">{product.notes}</p>}
-
-                      <div className="flex items-end justify-between">
-                        <div>
-                          <p className="text-2xl font-extrabold" style={{ color: theme.primary }}>
-                            {product.retailPrice.toLocaleString()}
-                            <span className="text-xs font-normal text-gray-400 mr-1">{t.dinar}</span>
-                          </p>
-                          {isManager && product.wholesalePrice > 0 && (
-                            <p className="text-xs text-gray-400 line-through">{product.wholesalePrice.toLocaleString()} {t.dinar}</p>
-                          )}
-                        </div>
+                    {categoriesList.length === 0 ? (
+                      <p className="px-3 py-2 text-xs text-gray-400">لا توجد أقسام مخصصة بعد</p>
+                    ) : (
+                      categoriesList.map((cat) => (
                         <button
-                          onClick={() => handleAdd(product)}
-                          disabled={isAdded}
-                          className="px-4 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:scale-105 active:scale-95 disabled:scale-100"
-                          style={{ backgroundColor: isAdded ? "#10b981" : theme.primary }}
+                          key={cat}
+                          onClick={() => { setSelectedCategory(cat); setCategoriesOpen(false); }}
+                          className={`w-full text-right px-3 py-2 rounded-xl text-xs font-bold transition-colors truncate ${
+                            selectedCategory === cat ? "bg-blue-600 text-white" : "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+                          }`}
                         >
-                          {isAdded ? `✓ ${t.added}` : t.addToCart}
+                          📁 {cat}
                         </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        {/* Footer */}
-        <footer className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            {settings.footerImage && (
-              <img src={settings.footerImage} alt="Footer" className="w-full h-28 object-cover rounded-xl mb-6" />
-            )}
-            <div className="flex flex-col items-center gap-4">
-              <img src="/logo.jpg" alt="شعار أحمد بحري" className="w-16 h-16 rounded-2xl object-cover shadow-lg" />
-              <div className="text-center text-gray-500 dark:text-gray-400 text-sm">
-                <p>&copy; 2026 {settings.siteName} - جميع الحقوق محفوظة</p>
-              </div>
-            </div>
-          </div>
-        </footer>
-      </div>
-
-      {/* Contact Modal for Customers */}
-      {contactOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setContactOpen(false)}>
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-              <h3 className="font-bold text-lg text-gray-900 dark:text-white">{t.contactUs}</h3>
-              <button onClick={() => setContactOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl">&times;</button>
-            </div>
-            <div className="p-5 space-y-4">
-              <a href="tel:+9647800000000" className="flex items-center gap-3 p-3 rounded-xl bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors">
-                <span className="text-2xl">📞</span>
-                <div>
-                  <p className="text-sm font-bold text-gray-900 dark:text-white">{t.callUs}</p>
-                  <p className="text-xs text-gray-500" dir="ltr">+964 780 000 0000</p>
-                </div>
-              </a>
-              <a href="mailto:info@ahmedbahri.com" className="flex items-center gap-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors">
-                <span className="text-2xl">📧</span>
-                <div>
-                  <p className="text-sm font-bold text-gray-900 dark:text-white">{t.emailUs}</p>
-                  <p className="text-xs text-gray-500">info@ahmedbahri.com</p>
-                </div>
-              </a>
-              <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                <p className="text-sm font-bold text-gray-900 dark:text-white mb-3">{t.sendMessage}</p>
-                {contactSent ? (
-                  <div className="text-center py-4">
-                    <span className="text-3xl block mb-2">✅</span>
-                    <p className="text-sm text-green-600 dark:text-green-400 font-medium">{t.messageSent}</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <input type="text" value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder={t.yourName} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                    <input type="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder={t.yourPhone} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                    <textarea value={contactMsg} onChange={(e) => setContactMsg(e.target.value)} placeholder={t.yourMessage} rows={3} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
-                    <button onClick={() => { if (contactName && contactMsg) { setContactSent(true); setTimeout(() => setContactSent(false), 3000); } }} className="w-full py-2.5 rounded-xl text-white text-sm font-medium transition-colors" style={{ backgroundColor: theme.primary }}>
-                      {t.send}
-                    </button>
+                      ))
+                    )}
                   </div>
                 )}
               </div>
+
+              {/* Logo / Brand Name */}
+              <Link href="/" className="flex items-center gap-2 mr-2">
+                {settings.logo ? (
+                  <img src={settings.logo} alt={settings.siteName} className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl object-cover shadow-sm" />
+                ) : (
+                  <img src="/logo.jpg" alt="Logo" className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl object-cover shadow-sm" />
+                )}
+                <span className="font-extrabold text-base sm:text-lg text-gray-900 dark:text-white hidden lg:inline">
+                  {settings.siteName}
+                </span>
+              </Link>
+            </div>
+
+            {/* Left: Search & Cart Action Icons */}
+            <div className="flex items-center gap-2 sm:gap-3">
+              {/* Search Toggle Icon */}
+              <button
+                onClick={() => setSearchOpen(!searchOpen)}
+                className="relative p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center justify-center"
+                title={t.search}
+              >
+                {settings.searchIcon ? (
+                  <img src={settings.searchIcon} alt={t.search} style={{ width: settings.searchIconSize || 28, height: settings.searchIconSize || 28 }} className="object-contain" />
+                ) : (
+                  <span style={{ fontSize: (settings.searchIconSize || 28) * 0.8 }}>🔍</span>
+                )}
+              </button>
+
+              {/* Customer Cart Icon */}
+              <button
+                onClick={() => setCartOpen(true)}
+                className="relative p-2.5 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center justify-center"
+                title="سلة المشتريات"
+              >
+                {settings.cartIcon ? (
+                  <img src={settings.cartIcon} alt="السلة" style={{ width: settings.cartIconSize || 28, height: settings.cartIconSize || 28 }} className="object-contain" />
+                ) : (
+                  <span style={{ fontSize: (settings.cartIconSize || 28) * 0.8 }}>🛒</span>
+                )}
+                {itemCount > 0 && (
+                  <span
+                    className="absolute -top-1 -left-1 w-5 h-5 text-white text-xs font-bold rounded-full flex items-center justify-center shadow-md animate-scaleUp"
+                    style={{ backgroundColor: theme.primary }}
+                  >
+                    {itemCount > 9 ? "9+" : itemCount}
+                  </span>
+                )}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </nav>
+
+      {/* Expanded Search Panel */}
+      {searchOpen && (
+        <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-lg animate-fadeIn">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="flex-1 relative w-full">
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearchSubmit()}
+                  placeholder={t.searchPlaceholder}
+                  autoFocus
+                  className="w-full py-3 pl-16 pr-12 border border-gray-300 dark:border-gray-700 rounded-full bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium"
+                />
+                <button
+                  onClick={() => { handleSearchSubmit(); setSearchOpen(false); }}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-full text-xs font-bold transition-colors"
+                >
+                  {t.search}
+                </button>
+              </div>
+              <ImageSearch onResults={handleImageResults} onClear={handleClearImage} isSearching={false} />
             </div>
           </div>
         </div>
       )}
 
+      {/* Hero Banner Section */}
+      <section className="relative overflow-hidden">
+        {settings.heroImage ? (
+          <div className="relative h-[260px] sm:h-[380px] lg:h-[450px]">
+            <img src={settings.heroImage} alt="Hero" className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent flex items-end">
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8 sm:pb-12 w-full text-right" dir="rtl">
+                <h2 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold text-white mb-2 drop-shadow-lg">
+                  مرحباً بك في {settings.siteName}
+                </h2>
+                <p className="text-sm sm:text-lg text-gray-200 max-w-xl font-medium">
+                  تسوق أفضل منتجات وقطع الغيار بأسعار وجودة مميزة
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="h-[280px] sm:h-[380px] flex items-center justify-center relative" style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})` }}>
+            <div className="text-center text-white relative z-10 px-4">
+              {settings.logo ? (
+                <img src={settings.logo} alt="Logo" className="w-20 h-20 sm:w-28 sm:h-28 rounded-3xl object-cover mx-auto mb-4 shadow-2xl ring-4 ring-white/20" />
+              ) : (
+                <img src="/logo.jpg" alt="Logo" className="w-20 h-20 sm:w-28 sm:h-28 rounded-3xl object-cover mx-auto mb-4 shadow-2xl ring-4 ring-white/20" />
+              )}
+              <h2 className="text-2xl sm:text-4xl font-extrabold mb-2 drop-shadow-lg">
+                مرحباً بك في {settings.siteName}
+              </h2>
+              <p className="text-sm sm:text-base text-white/80 max-w-xl mx-auto font-medium">
+                تصفح المنتجات واطلبها مباشرة بسهولة
+              </p>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Category Filter Active Pill Banner */}
+      {selectedCategory && (
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+          <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-2xl p-4 flex items-center justify-between" dir="rtl">
+            <div className="flex items-center gap-2 text-sm font-bold text-blue-900 dark:text-blue-200">
+              <span>📁 تصفية حسب القسم:</span>
+              <span className="bg-blue-600 text-white px-3 py-1 rounded-xl text-xs">{selectedCategory}</span>
+            </div>
+            <button
+              onClick={() => setSelectedCategory(null)}
+              className="text-xs font-bold text-red-600 dark:text-red-400 hover:underline"
+            >
+              إلغاء التصفية ✕
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Products Grid Section */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {availableProducts.length === 0 ? (
+          <div className="text-center py-16 bg-white dark:bg-gray-900 rounded-3xl border border-gray-200 dark:border-gray-800 p-8 shadow-sm">
+            <span className="text-6xl block mb-4">📭</span>
+            <p className="text-xl font-bold text-gray-700 dark:text-gray-200 mb-2">
+              {selectedCategory ? `لا توجد منتجات متوفرة حالياً في قسم "${selectedCategory}"` : "لا توجد منتجات مطابقة للبحث"}
+            </p>
+            <button
+              onClick={() => { setSearch(""); setSelectedCategory(null); setImageResults(null); }}
+              className="mt-4 px-6 py-2.5 rounded-xl text-white text-sm font-bold shadow-md"
+              style={{ backgroundColor: theme.primary }}
+            >
+              عرض جميع المنتجات
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+            {availableProducts.map((product) => {
+              const isAdded = addedId === product.id;
+              return (
+                <div
+                  key={product.id}
+                  className="group bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col justify-between"
+                  dir="rtl"
+                >
+                  <div className="relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800">
+                    {product.image ? (
+                      <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-5xl text-gray-300">📦</div>
+                    )}
+                  </div>
+
+                  <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                    <div>
+                      <h3 className="font-bold text-gray-900 dark:text-white text-sm sm:text-base leading-tight line-clamp-2">{product.name}</h3>
+                      {product.notes && <p className="text-xs text-gray-400 mt-1 line-clamp-2">{product.notes}</p>}
+                    </div>
+
+                    <div className="pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                      <div>
+                        <p className="text-xl sm:text-2xl font-extrabold text-blue-600 dark:text-blue-400">
+                          {product.retailPrice.toLocaleString()}
+                          <span className="text-xs font-normal text-gray-400 mr-1">{t.dinar}</span>
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => handleAdd(product)}
+                        disabled={isAdded}
+                        className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold text-white transition-all hover:scale-105 active:scale-95 disabled:scale-100 shadow-md"
+                        style={{ backgroundColor: isAdded ? "#10b981" : theme.primary }}
+                      >
+                        {isAdded ? "✓ تم الإضافة" : "أضف للسلة 🛒"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Customizable Dynamic Footer */}
+      <footer
+        className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 transition-colors"
+        style={{ minHeight: settings.footerHeight || 120, padding: "30px 15px" }}
+      >
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 text-sm text-gray-600 dark:text-gray-300" dir="rtl">
+          {/* Right Column Text */}
+          <div className="text-right font-bold text-xs sm:text-sm">
+            {settings.footerRightText || `جميع الحقوق محفوظة © 2026 ${settings.siteName}`}
+          </div>
+
+          {/* Center Column Image & Text */}
+          <div className="text-center space-y-2">
+            {settings.footerImage ? (
+              <img src={settings.footerImage} alt="Footer" className="h-14 object-contain mx-auto rounded-xl" />
+            ) : (
+              <img src={settings.logo || "/logo.jpg"} alt="Logo" className="w-12 h-12 rounded-xl object-cover mx-auto shadow-md" />
+            )}
+            <p className="font-extrabold text-gray-900 dark:text-white text-xs sm:text-sm">
+              {settings.footerCenterText || "أفضل المنتجات والخدمات لعملائنا الكرام"}
+            </p>
+          </div>
+
+          {/* Left Column Text */}
+          <div className="text-left font-bold text-xs sm:text-sm">
+            {settings.footerLeftText || `للطلب والتواصل: ${settings.phoneLink || "07800000000"}`}
+          </div>
+        </div>
+      </footer>
+
+      {/* Customer Cart Drawer */}
       <CustomerCartSidebar isOpen={cartOpen} onClose={() => setCartOpen(false)} />
-      {eyeCare && <div className="fixed inset-0 bg-amber-900/15 pointer-events-none z-50" />}
     </div>
   );
 }

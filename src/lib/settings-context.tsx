@@ -14,13 +14,12 @@ interface SettingsContextType {
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
-
 const SETTINGS_USER_ID = "00000000-0000-0000-0000-000000000001";
 
 function rowToSettings(row: Record<string, unknown>): SiteSettings {
-  const rt = row.role_themes as Record<string, Record<string, string>> || {};
+  const rt = (row.role_themes as Record<string, Record<string, string>>) || {};
   return {
-    siteName: (row.site_name as string) || "موقع أحمد بحري",
+    siteName: (row.site_name as string) || DEFAULT_SETTINGS.siteName,
     logo: (row.logo as string) || "",
     heroImage: (row.hero_image as string) || "",
     footerImage: (row.footer_image as string) || "",
@@ -29,16 +28,43 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
     primaryColor: (row.primary_color as string) || "#2563eb",
     secondaryColor: (row.secondary_color as string) || "#7c3aed",
     accentColor: (row.accent_color as string) || "#f59e0b",
-    darkMode: (row.dark_mode as boolean) || false,
+    darkMode: Boolean(row.dark_mode) || false,
     whatsappLink: (row.whatsapp_link as string) || "",
     telegramLink: (row.telegram_link as string) || "",
     messengerLink: (row.messenger_link as string) || "",
     phoneLink: (row.phone_link as string) || "07800000000",
+
+    // Icons & Custom Sizing
+    homeIcon: (row.home_icon as string) || "",
+    homeIconSize: Number(row.home_icon_size) || 28,
+    searchIcon: (row.search_icon as string) || "",
+    searchIconSize: Number(row.search_icon_size) || 28,
+    cartIcon: (row.cart_icon as string) || "",
+    cartIconSize: Number(row.cart_icon_size) || 28,
+
+    // Footer Customization
+    footerHeight: Number(row.footer_height) || 120,
+    footerRightText: (row.footer_right_text as string) || DEFAULT_SETTINGS.footerRightText,
+    footerCenterText: (row.footer_center_text as string) || DEFAULT_SETTINGS.footerCenterText,
+    footerLeftText: (row.footer_left_text as string) || DEFAULT_SETTINGS.footerLeftText,
+
     currentRole: "manager",
     roleThemes: {
-      manager: { primary: rt.manager?.primary || "#1e40af", secondary: rt.manager?.secondary || "#7c3aed", accent: rt.manager?.accent || "#f59e0b" },
-      admin: { primary: rt.admin?.primary || "#059669", secondary: rt.admin?.secondary || "#0891b2", accent: rt.admin?.accent || "#f97316" },
-      customer: { primary: rt.customer?.primary || "#2563eb", secondary: rt.customer?.secondary || "#6366f1", accent: rt.customer?.accent || "#ec4899" },
+      manager: {
+        primary: rt.manager?.primary || "#1e40af",
+        secondary: rt.manager?.secondary || "#7c3aed",
+        accent: rt.manager?.accent || "#f59e0b",
+      },
+      admin: {
+        primary: rt.admin?.primary || "#059669",
+        secondary: rt.admin?.secondary || "#0891b2",
+        accent: rt.admin?.accent || "#f97316",
+      },
+      customer: {
+        primary: rt.customer?.primary || "#2563eb",
+        secondary: rt.customer?.secondary || "#6366f1",
+        accent: rt.customer?.accent || "#ec4899",
+      },
     },
   };
 }
@@ -60,6 +86,16 @@ function settingsToRow(settings: SiteSettings): Record<string, unknown> {
     telegram_link: settings.telegramLink || "",
     messenger_link: settings.messengerLink || "",
     phone_link: settings.phoneLink || "",
+    home_icon: settings.homeIcon || "",
+    home_icon_size: settings.homeIconSize || 28,
+    search_icon: settings.searchIcon || "",
+    search_icon_size: settings.searchIconSize || 28,
+    cart_icon: settings.cartIcon || "",
+    cart_icon_size: settings.cartIconSize || 28,
+    footer_height: settings.footerHeight || 120,
+    footer_right_text: settings.footerRightText || "",
+    footer_center_text: settings.footerCenterText || "",
+    footer_left_text: settings.footerLeftText || "",
     role_themes: settings.roleThemes,
   };
 }
@@ -69,53 +105,95 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [settingsId, setSettingsId] = useState<string | null>(null);
 
+  // Apply Dark Mode & Font to DOM root (HTML element)
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      if (settings.darkMode) {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
+      document.documentElement.style.fontFamily = settings.fontFamily || "Cairo";
+    }
+  }, [settings.darkMode, settings.fontFamily]);
+
+  // Load public global settings for ALL users (authenticated or visitors)
   useEffect(() => {
     async function load() {
       try {
-        const { data } = await supabase.from("settings").select("*").eq("user_id", SETTINGS_USER_ID).maybeSingle();
+        const { data } = await supabase.from("settings").select("*").limit(1).maybeSingle();
         if (data) {
-          setSettings(rowToSettings(data));
+          const parsed = rowToSettings(data);
+          setSettings(parsed);
           setSettingsId(data.id);
         }
-      } catch {
-        // Fallback gracefully to DEFAULT_SETTINGS
+      } catch (err) {
+        console.warn("Settings fetch error:", err);
       } finally {
         setLoading(false);
       }
     }
     load();
+
+    // Supabase Real-Time Settings Listener
+    const channel = supabase
+      .channel("public:settings")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "settings" },
+        (payload) => {
+          if (payload.new && typeof payload.new === "object") {
+            const updated = rowToSettings(payload.new as Record<string, unknown>);
+            setSettings(updated);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
-  const updateSettings = useCallback(async (updates: Partial<SiteSettings>) => {
-    setSettings((prev) => {
-      const merged = { ...prev, ...updates };
-      const row = settingsToRow(merged);
-      if (settingsId) {
-        supabase.from("settings").update(row).eq("id", settingsId);
-      } else {
-        supabase.from("settings").insert(row).select().single().then(({ data }) => {
-          if (data) setSettingsId(data.id);
-        });
-      }
-      return merged;
-    });
-  }, [settingsId]);
+  const updateSettings = useCallback(
+    async (updates: Partial<SiteSettings>) => {
+      setSettings((prev) => {
+        const merged = { ...prev, ...updates };
+        const row = settingsToRow(merged);
+        if (settingsId) {
+          supabase.from("settings").update(row).eq("id", settingsId).then(({ error }) => {
+            if (error) console.error("Error updating settings:", error);
+          });
+        } else {
+          supabase.from("settings").insert(row).select().single().then(({ data, error }) => {
+            if (error) console.error("Error inserting settings:", error);
+            if (data) setSettingsId(data.id);
+          });
+        }
+        return merged;
+      });
+    },
+    [settingsId]
+  );
 
-  const updateRoleTheme = useCallback(async (role: UserRole, theme: Partial<RoleTheme>) => {
-    setSettings((prev) => {
-      const newThemes = { ...prev.roleThemes, [role]: { ...prev.roleThemes[role], ...theme } };
-      const updated = { ...prev, roleThemes: newThemes };
-      const row = settingsToRow(updated);
-      if (settingsId) {
-        supabase.from("settings").update(row).eq("id", settingsId);
-      } else {
-        supabase.from("settings").insert(row).select().single().then(({ data }) => {
-          if (data) setSettingsId(data.id);
-        });
-      }
-      return updated;
-    });
-  }, [settingsId]);
+  const updateRoleTheme = useCallback(
+    async (role: UserRole, theme: Partial<RoleTheme>) => {
+      setSettings((prev) => {
+        const newThemes = { ...prev.roleThemes, [role]: { ...prev.roleThemes[role], ...theme } };
+        const updated = { ...prev, roleThemes: newThemes };
+        const row = settingsToRow(updated);
+        if (settingsId) {
+          supabase.from("settings").update(row).eq("id", settingsId);
+        } else {
+          supabase.from("settings").insert(row).select().single().then(({ data }) => {
+            if (data) setSettingsId(data.id);
+          });
+        }
+        return updated;
+      });
+    },
+    [settingsId]
+  );
 
   const setCurrentRole = useCallback((role: UserRole) => {
     setSettings((prev) => ({ ...prev, currentRole: role }));
@@ -123,7 +201,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const toggleDarkMode = useCallback(async () => {
     setSettings((prev) => {
-      const updated = { ...prev, darkMode: !prev.darkMode };
+      const nextDark = !prev.darkMode;
+      const updated = { ...prev, darkMode: nextDark };
       const row = settingsToRow(updated);
       if (settingsId) {
         supabase.from("settings").update(row).eq("id", settingsId);

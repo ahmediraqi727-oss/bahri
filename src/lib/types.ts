@@ -22,6 +22,18 @@ export interface SiteSettings {
   telegramLink?: string;
   messengerLink?: string;
   phoneLink?: string;
+  // Header Custom Icons & Sizes
+  homeIcon?: string;
+  homeIconSize?: number;
+  searchIcon?: string;
+  searchIconSize?: number;
+  cartIcon?: string;
+  cartIconSize?: number;
+  // Footer Customization
+  footerHeight?: number;
+  footerRightText?: string;
+  footerCenterText?: string;
+  footerLeftText?: string;
   roleThemes: {
     manager: RoleTheme;
     admin: RoleTheme;
@@ -45,6 +57,16 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   telegramLink: "",
   messengerLink: "",
   phoneLink: "07800000000",
+  homeIcon: "",
+  homeIconSize: 28,
+  searchIcon: "",
+  searchIconSize: 28,
+  cartIcon: "",
+  cartIconSize: 28,
+  footerHeight: 120,
+  footerRightText: "جميع الحقوق محفوظة © 2026 موقع أحمد بحري",
+  footerCenterText: "أفضل المنتجات والخدمات لعملائنا الكرام",
+  footerLeftText: "للطلب والتواصل: 07800000000",
   roleThemes: {
     manager: { primary: "#1e40af", secondary: "#7c3aed", accent: "#f59e0b" },
     admin: { primary: "#059669", secondary: "#0891b2", accent: "#f97316" },
