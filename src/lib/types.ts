@@ -34,6 +34,8 @@ export interface SiteSettings {
   footerRightText?: string;
   footerCenterText?: string;
   footerLeftText?: string;
+  // Categories Carousel Toggle
+  showCategoriesCarousel?: boolean;
   roleThemes: {
     manager: RoleTheme;
     admin: RoleTheme;
@@ -67,12 +69,22 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   footerRightText: "جميع الحقوق محفوظة © 2026 موقع أحمد بحري",
   footerCenterText: "أفضل المنتجات والخدمات لعملائنا الكرام",
   footerLeftText: "للطلب والتواصل: 07800000000",
+  showCategoriesCarousel: true,
   roleThemes: {
     manager: { primary: "#1e40af", secondary: "#7c3aed", accent: "#f59e0b" },
     admin: { primary: "#059669", secondary: "#0891b2", accent: "#f97316" },
     customer: { primary: "#2563eb", secondary: "#6366f1", accent: "#ec4899" },
   },
 };
+
+export interface CategoryItem {
+  id: string;
+  name: string;
+  image: string;
+  priority: number;
+  isActive: boolean;
+  createdAt?: string;
+}
 
 export interface NavItem {
   label: string;

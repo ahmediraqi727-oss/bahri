@@ -48,6 +48,9 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
     footerCenterText: (row.footer_center_text as string) || DEFAULT_SETTINGS.footerCenterText,
     footerLeftText: (row.footer_left_text as string) || DEFAULT_SETTINGS.footerLeftText,
 
+    // Carousel toggle
+    showCategoriesCarousel: row.show_categories_carousel !== undefined ? Boolean(row.show_categories_carousel) : true,
+
     currentRole: "manager",
     roleThemes: {
       manager: {
@@ -96,6 +99,7 @@ function settingsToRow(settings: SiteSettings): Record<string, unknown> {
     footer_right_text: settings.footerRightText || "",
     footer_center_text: settings.footerCenterText || "",
     footer_left_text: settings.footerLeftText || "",
+    show_categories_carousel: settings.showCategoriesCarousel !== undefined ? settings.showCategoriesCarousel : true,
     role_themes: settings.roleThemes,
   };
 }

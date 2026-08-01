@@ -5,6 +5,7 @@ import { useSettings } from "@/lib/settings-context";
 import { useActivityLog } from "@/lib/activity-log";
 import ColorPicker from "@/components/ColorPicker";
 import ImageUploader from "@/components/ImageUploader";
+import CategoriesManager from "@/components/CategoriesManager";
 import { SiteSettings, UserRole } from "@/lib/types";
 
 const FONT_OPTIONS = [
@@ -248,6 +249,18 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+      </section>
+
+      {/* === Section 1.85: Categories Management (إدارة وتخصيص الأقسام) === */}
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xl">📁</span>
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">إدارة وتخصيص أقسام المنتجات</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">إضافة صور وأسماء الأقسام، ترتيب أولوية الظهور، وتفعيل/تعطيل الشريط المتحرك</p>
+          </div>
+        </div>
+        <CategoriesManager />
       </section>
 
       {/* === Section 1.9: Footer Customization (تخصيص تذييل الصفحة) === */}

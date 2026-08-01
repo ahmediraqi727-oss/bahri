@@ -1,12 +1,13 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { Product, Supplier } from "./types";
+import { Product, Supplier, CategoryItem } from "./types";
 import { supabase } from "./supabase-client";
 
 interface DataContextType {
   products: Product[];
   suppliers: Supplier[];
+  categories: CategoryItem[];
   loading: boolean;
   addProduct: (product: Omit<Product, "id" | "createdAt" | "updatedAt">) => Promise<Product>;
   updateProduct: (id: string, updates: Partial<Product>) => Promise<void>;
@@ -14,9 +15,12 @@ interface DataContextType {
   addSupplier: (supplier: Omit<Supplier, "id" | "createdAt">) => Promise<Supplier>;
   updateSupplier: (id: string, updates: Partial<Supplier>) => Promise<void>;
   deleteSupplier: (id: string) => Promise<void>;
+  addCategory: (cat: Omit<CategoryItem, "id">) => Promise<CategoryItem>;
+  updateCategory: (id: string, updates: Partial<CategoryItem>) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
   importProducts: (items: Omit<Product, "id" | "createdAt" | "updatedAt">[]) => Promise<number>;
-  exportAllData: () => { products: Product[]; suppliers: Supplier[]; exportedAt: string };
-  importAllData: (data: { products?: Product[]; suppliers?: Supplier[] }) => Promise<void>;
+  exportAllData: () => { products: Product[]; suppliers: Supplier[]; categories: CategoryItem[]; exportedAt: string };
+  importAllData: (data: { products?: Product[]; suppliers?: Supplier[]; categories?: CategoryItem[] }) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -81,71 +85,107 @@ function supplierToRow(supplier: Record<string, unknown>): Record<string, unknow
   return row;
 }
 
+function rowToCategory(row: Record<string, unknown>): CategoryItem {
+  return {
+    id: row.id as string,
+    name: (row.name as string) || "",
+    image: (row.image as string) || "",
+    priority: Number(row.priority) || 0,
+    isActive: row.is_active !== undefined ? Boolean(row.is_active) : true,
+    createdAt: row.created_at as string,
+  };
+}
+
+function categoryToRow(cat: Record<string, unknown>): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  if ("name" in cat) row.name = cat.name;
+  if ("image" in cat) row.image = cat.image || "";
+  if ("priority" in cat) row.priority = Number(cat.priority) || 0;
+  if ("isActive" in cat) row.is_active = Boolean(cat.isActive);
+  return row;
+}
+
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [productsRes, suppliersRes] = await Promise.all([
+        const [productsRes, suppliersRes, categoriesRes] = await Promise.all([
           supabase.from("products").select("*").order("created_at", { ascending: false }),
           supabase.from("suppliers").select("*").order("created_at", { ascending: false }),
+          supabase.from("categories").select("*").order("priority", { ascending: true }),
         ]);
+
         if (productsRes.data) setProducts(productsRes.data.map(rowToProduct));
         if (suppliersRes.data) setSuppliers(suppliersRes.data.map(rowToSupplier));
+        if (categoriesRes.data) {
+          setCategories(categoriesRes.data.map(rowToCategory));
+        }
       } catch (err) {
-        console.error("Failed to load products/suppliers from DB:", err);
+        console.error("DataProvider loadData error:", err);
       } finally {
         setLoading(false);
       }
     }
+
     loadData();
+
+    // Supabase Real-Time Listeners
+    const channel = supabase
+      .channel("public:all_data")
+      .on("postgres_changes", { event: "*", schema: "public", table: "categories" }, async () => {
+        const { data } = await supabase.from("categories").select("*").order("priority", { ascending: true });
+        if (data) setCategories(data.map(rowToCategory));
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "products" }, async () => {
+        const { data } = await supabase.from("products").select("*").order("created_at", { ascending: false });
+        if (data) setProducts(data.map(rowToProduct));
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "suppliers" }, async () => {
+        const { data } = await supabase.from("suppliers").select("*").order("created_at", { ascending: false });
+        if (data) setSuppliers(data.map(rowToSupplier));
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
-  const addProduct = useCallback(async (data: Omit<Product, "id" | "createdAt" | "updatedAt">) => {
-    const row = productToRow(data);
+  const addProduct = useCallback(async (product: Omit<Product, "id" | "createdAt" | "updatedAt">) => {
+    const row = productToRow(product);
     const { data: created, error } = await supabase.from("products").insert(row).select().single();
-    if (error) {
-      console.error("Supabase insert product error:", error);
-      throw new Error(error.message);
-    }
-    const product = rowToProduct(created);
-    setProducts((prev) => [product, ...prev]);
-    return product;
+    if (error) throw error;
+    const newProduct = rowToProduct(created);
+    setProducts((prev) => [newProduct, ...prev]);
+    return newProduct;
   }, []);
 
   const updateProduct = useCallback(async (id: string, updates: Partial<Product>) => {
     const row = productToRow(updates);
     const { data: updated, error } = await supabase.from("products").update(row).eq("id", id).select().single();
-    if (error) {
-      console.error("Supabase update product error:", error);
-      throw new Error(error.message);
-    }
+    if (error) throw error;
     const product = rowToProduct(updated);
     setProducts((prev) => prev.map((p) => (p.id === id ? product : p)));
   }, []);
 
   const deleteProduct = useCallback(async (id: string) => {
     const { error } = await supabase.from("products").delete().eq("id", id);
-    if (error) {
-      console.error("Supabase delete product error:", error);
-      throw new Error(error.message);
-    }
+    if (error) throw error;
     setProducts((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
-  const addSupplier = useCallback(async (data: Omit<Supplier, "id" | "createdAt">) => {
-    const row = supplierToRow(data);
+  const addSupplier = useCallback(async (supplier: Omit<Supplier, "id" | "createdAt">) => {
+    const row = supplierToRow(supplier);
     const { data: created, error } = await supabase.from("suppliers").insert(row).select().single();
-    if (error) {
-      console.error("Supabase insert supplier error:", error);
-      throw new Error(error.message);
-    }
-    const supplier = rowToSupplier(created);
-    setSuppliers((prev) => [supplier, ...prev]);
-    return supplier;
+    if (error) throw error;
+    const newSupplier = rowToSupplier(created);
+    setSuppliers((prev) => [newSupplier, ...prev]);
+    return newSupplier;
   }, []);
 
   const updateSupplier = useCallback(async (id: string, updates: Partial<Supplier>) => {
@@ -160,6 +200,42 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.from("suppliers").delete().eq("id", id);
     if (error) throw error;
     setSuppliers((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
+  const addCategory = useCallback(async (cat: Omit<CategoryItem, "id">) => {
+    const row = categoryToRow(cat);
+    const { data: created, error } = await supabase.from("categories").insert(row).select().single();
+    if (error) {
+      // Fallback local creation if table does not exist
+      const localCat: CategoryItem = { id: Date.now().toString(), ...cat };
+      setCategories((prev) => [...prev, localCat].sort((a, b) => a.priority - b.priority));
+      return localCat;
+    }
+    const newCat = rowToCategory(created);
+    setCategories((prev) => [...prev, newCat].sort((a, b) => a.priority - b.priority));
+    return newCat;
+  }, []);
+
+  const updateCategory = useCallback(async (id: string, updates: Partial<CategoryItem>) => {
+    const row = categoryToRow(updates);
+    const { data: updated, error } = await supabase.from("categories").update(row).eq("id", id).select().single();
+    if (error) {
+      setCategories((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, ...updates } : c)).sort((a, b) => a.priority - b.priority)
+      );
+      return;
+    }
+    const cat = rowToCategory(updated);
+    setCategories((prev) => prev.map((c) => (c.id === id ? cat : c)).sort((a, b) => a.priority - b.priority));
+  }, []);
+
+  const deleteCategory = useCallback(async (id: string) => {
+    const { error } = await supabase.from("categories").delete().eq("id", id);
+    if (error) {
+      setCategories((prev) => prev.filter((c) => c.id !== id));
+      return;
+    }
+    setCategories((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
   const importProducts = useCallback(async (items: Omit<Product, "id" | "createdAt" | "updatedAt">[]) => {
@@ -178,10 +254,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const exportAllData = useCallback(() => {
-    return { products, suppliers, exportedAt: new Date().toISOString() };
-  }, [products, suppliers]);
+    return { products, suppliers, categories, exportedAt: new Date().toISOString() };
+  }, [products, suppliers, categories]);
 
-  const importAllData = useCallback(async (data: { products?: Product[]; suppliers?: Supplier[] }) => {
+  const importAllData = useCallback(async (data: { products?: Product[]; suppliers?: Supplier[]; categories?: CategoryItem[] }) => {
     if (data.suppliers && data.suppliers.length > 0) {
       const rows = data.suppliers.map((s) => supplierToRow(s as unknown as Record<string, unknown>));
       await supabase.from("suppliers").upsert(rows);
@@ -190,20 +266,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const rows = data.products.map((p) => productToRow(p as unknown as Record<string, unknown>));
       await supabase.from("products").upsert(rows);
     }
-    const [productsRes, suppliersRes] = await Promise.all([
+    if (data.categories && data.categories.length > 0) {
+      const rows = data.categories.map((c) => categoryToRow(c as unknown as Record<string, unknown>));
+      await supabase.from("categories").upsert(rows);
+    }
+    const [productsRes, suppliersRes, categoriesRes] = await Promise.all([
       supabase.from("products").select("*").order("created_at", { ascending: false }),
       supabase.from("suppliers").select("*").order("created_at", { ascending: false }),
+      supabase.from("categories").select("*").order("priority", { ascending: true }),
     ]);
     if (productsRes.data) setProducts(productsRes.data.map(rowToProduct));
     if (suppliersRes.data) setSuppliers(suppliersRes.data.map(rowToSupplier));
+    if (categoriesRes.data) setCategories(categoriesRes.data.map(rowToCategory));
   }, []);
 
   return (
     <DataContext.Provider
       value={{
-        products, suppliers, loading,
+        products, suppliers, categories, loading,
         addProduct, updateProduct, deleteProduct,
         addSupplier, updateSupplier, deleteSupplier,
+        addCategory, updateCategory, deleteCategory,
         importProducts, exportAllData, importAllData,
       }}
     >

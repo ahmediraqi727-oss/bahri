@@ -8,6 +8,7 @@ import { useCart } from "@/lib/cart-context";
 import { useAuth } from "@/lib/auth-context";
 import ImageSearch from "@/components/ImageSearch";
 import CustomerCartSidebar from "@/components/CustomerCartSidebar";
+import CategoriesCarousel from "@/components/CategoriesCarousel";
 import { supabase } from "@/lib/supabase-client";
 import { useLang, Lang } from "@/lib/lang-context";
 
@@ -442,6 +443,14 @@ export default function Home() {
           </div>
         )}
       </section>
+
+      {/* Interactive Categories Carousel Slider */}
+      {settings.showCategoriesCarousel !== false && (
+        <CategoriesCarousel
+          selectedCategory={selectedCategory}
+          onSelectCategory={(cat) => setSelectedCategory(cat)}
+        />
+      )}
 
       {/* Category Filter Active Pill Banner */}
       {selectedCategory && (
