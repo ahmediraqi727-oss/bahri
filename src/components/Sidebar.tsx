@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { label: "الموردين", href: "/dashboard/suppliers", icon: "🚚", roles: ["manager", "admin"] as UserRole[] },
   { label: "المخزون", href: "/dashboard/inventory", icon: "📊", roles: ["manager", "admin"] as UserRole[] },
   { label: "الطلبات", href: "/dashboard/orders", icon: "🛒", roles: ["manager", "admin"] as UserRole[] },
+  { label: "الفواتير", href: "/dashboard/invoices", icon: "🧾", roles: ["manager", "admin"] as UserRole[] },
   { label: "التقارير", href: "/dashboard/analytics", icon: "📈", roles: ["manager"] as UserRole[] },
   { label: "الزبائن", href: "/dashboard/customers", icon: "👥", roles: ["manager", "admin"] as UserRole[] },
   { label: "إدارة الحسابات", href: "/dashboard/accounts", icon: "👤", roles: ["manager"] as UserRole[] },

@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS products (
 
 CREATE TABLE IF NOT EXISTS orders (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    serial_number BIGSERIAL,
     customer_name TEXT NOT NULL,
     customer_phone TEXT NOT NULL,
     customer_address TEXT NOT NULL,

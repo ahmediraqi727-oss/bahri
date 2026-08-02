@@ -32,8 +32,8 @@ export async function createOrderAndNotify(data: {
     createdAt,
   };
 
-  // 1. Insert order into Supabase database
-  const { error: orderErr } = await supabase.from("orders").insert({
+  // 1. Insert order into Supabase database and retrieve assigned serial number
+  const { data: createdRow, error: orderErr } = await supabase.from("orders").insert({
     id: orderData.id,
     customer_name: orderData.customerName,
     customer_phone: orderData.customerPhone,
@@ -45,10 +45,14 @@ export async function createOrderAndNotify(data: {
     status: orderData.status,
     notes: orderData.notes,
     created_at: orderData.createdAt,
-  });
+  }).select().maybeSingle();
 
   if (orderErr) {
     console.error("Supabase insert order error:", orderErr.message);
+  }
+
+  if (createdRow && createdRow.serial_number) {
+    orderData.serialNumber = Number(createdRow.serial_number);
   }
 
   // 2. Insert notification into Supabase notifications table

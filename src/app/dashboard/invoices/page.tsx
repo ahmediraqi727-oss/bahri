@@ -25,38 +25,20 @@ const STATUS_COLORS: Record<Order["status"], { bg: string; text: string; border:
   cancelled: { bg: "bg-red-50 dark:bg-red-950/30", text: "text-red-700 dark:text-red-400", border: "border-red-200 dark:border-red-800" },
 };
 
-function formatPlatformBadge(notes?: string) {
-  if (!notes) return { label: "متجر مباشر", icon: "🏬" };
-  if (notes.includes("واتساب")) return { label: "واتساب", icon: "💬" };
-  if (notes.includes("تليجرام")) return { label: "تليجرام", icon: "✈️" };
-  if (notes.includes("ماسنجر")) return { label: "ماسنجر", icon: "⚡" };
-  if (notes.includes("اتصال")) return { label: "اتصال مباشر", icon: "📞" };
-  return { label: "متجر مباشر", icon: "🏬" };
-}
-
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "الآن";
-  if (mins < 60) return `منذ ${mins} دقيقة`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `منذ ${hours} ساعة`;
-  const days = Math.floor(hours / 24);
-  return `منذ ${days} يوم`;
-}
-
-export default function OrdersPage() {
+export default function InvoicesPage() {
   const { products } = useData();
   const { settings } = useSettings();
   const { logActivity } = useActivityLog();
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Search & Filtering State
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [dateFilter, setDateFilter] = useState<string>("all");
 
-  // Edit Invoice Modal Draft State
+  // Selected Order for Invoice Viewing / Editing
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [editCustomerName, setEditCustomerName] = useState("");
   const [editCustomerPhone, setEditCustomerPhone] = useState("");
@@ -70,8 +52,8 @@ export default function OrdersPage() {
   const [savingOrder, setSavingOrder] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Load Orders from Supabase
-  const loadOrders = useCallback(async () => {
+  // Load Invoices / Orders from Supabase
+  const loadInvoices = useCallback(async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
@@ -104,19 +86,19 @@ export default function OrdersPage() {
   }, []);
 
   useEffect(() => {
-    loadOrders();
+    loadInvoices();
 
     const channel = supabase
-      .channel("public:orders_page")
+      .channel("public:invoices_page")
       .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
-        loadOrders();
+        loadInvoices();
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [loadOrders]);
+  }, [loadInvoices]);
 
   // Subtotal & Grand Total Calculation
   const productsSubtotal = useMemo(() => {
@@ -127,9 +109,8 @@ export default function OrdersPage() {
     return productsSubtotal + (Number(editDeliveryFee) || 0);
   }, [productsSubtotal, editDeliveryFee]);
 
-  // Open Invoice Modal
+  // Open Invoice Viewer Modal
   const openInvoiceModal = (order: Order) => {
-    setSelectedOrder(order);
     setEditingOrder(order);
     setEditCustomerName(order.customerName);
     setEditCustomerPhone(order.customerPhone);
@@ -144,7 +125,6 @@ export default function OrdersPage() {
 
   // Close Modal
   const closeModal = () => {
-    setSelectedOrder(null);
     setEditingOrder(null);
   };
 
@@ -182,35 +162,15 @@ export default function OrdersPage() {
         action: "update",
         entity: "فاتورة طلب",
         entityId: editingOrder.id,
-        details: `تحديث الفاتورة ${formatInvoiceSerial(editingOrder)} للزبون ${editCustomerName} - التوصيل: ${finalFee.toLocaleString()} د.ع - الإجمالي: ${finalTotal.toLocaleString()} د.ع`,
+        details: `تحديث الفاتورة ${formatInvoiceSerial(editingOrder)} - الإجمالي: ${finalTotal.toLocaleString()} د.ع`,
       });
 
-      await loadOrders();
+      await loadInvoices();
     } catch (err) {
       console.error("Save invoice error:", err);
       alert("حدث خطأ أثناء حفظ الفاتورة في قاعدة البيانات.");
     } finally {
       setSavingOrder(false);
-    }
-  };
-
-  // Delete Order
-  const handleDeleteOrder = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!confirm("هل أنت تأكد من رغبتك في حذف هذا الطلب نهائياً؟")) return;
-    try {
-      await supabase.from("orders").delete().eq("id", id);
-      setOrders((prev) => prev.filter((o) => o.id !== id));
-      if (selectedOrder?.id === id) closeModal();
-      await logActivity({
-        user: "manager",
-        action: "delete",
-        entity: "طلب",
-        entityId: id,
-        details: `حذف الطلب رقم ${id}`,
-      });
-    } catch (err) {
-      console.error("Delete order error:", err);
     }
   };
 
@@ -424,7 +384,7 @@ export default function OrdersPage() {
     printWindow.document.close();
   };
 
-  // Generate PDF
+  // Generate PDF Export
   const generatePDF = () => {
     if (!editingOrder) return;
     const doc = new jsPDF("p", "mm", "a4");
@@ -478,13 +438,14 @@ export default function OrdersPage() {
     if (!editCustomerPhone || !editingOrder) return;
     const serialStr = formatInvoiceSerial(editingOrder);
 
-    let msg = `📋 *الفاتورة الرسمية رقم: (${serialStr})*\n`;
+    let msg = `🧾 *الفاتورة الرسمية رقم: (${serialStr})*\n`;
     msg += `-----------------------------------\n`;
+    msg += `🏢 *المتجر:* ${settings.siteName}\n`;
     msg += `👤 *الزبون:* ${editCustomerName}\n`;
     msg += `📍 *العنوان:* ${editCustomerAddress}\n`;
-    msg += `🚚 *مدة التوصيل المتوقعة:* ${editDeliveryDuration || "خلال أيام عمل"}\n`;
-    msg += `📊 *حالة الطلب:* ${STATUS_LABELS[editStatus]}\n\n`;
-    msg += `🛍️ *المنتجات:*\n`;
+    msg += `🚚 *مدة التوصيل:* ${editDeliveryDuration || "خلال أيام عمل"}\n`;
+    msg += `📊 *الحالة:* ${STATUS_LABELS[editStatus]}\n\n`;
+    msg += `🛍️ *المنتجات المشتراة:*\n`;
     editItems.forEach((it, idx) => {
       msg += `${idx + 1}. ${it.name} × ${it.quantity} = ${(it.retailPrice * it.quantity).toLocaleString()} د.ع\n`;
     });
@@ -499,261 +460,276 @@ export default function OrdersPage() {
     window.open(`https://api.whatsapp.com/send?phone=${cleanNum}&text=${encodeURIComponent(msg)}`, "_blank");
   };
 
-  // Filtered Orders List
-  const filteredOrders = useMemo(() => {
+  // Filtered Invoices Search Engine Logic
+  const filteredInvoices = useMemo(() => {
     return orders.filter((o) => {
+      // 1. Status Filter
       const matchStatus = statusFilter === "all" || o.status === statusFilter;
+
+      // 2. Date Filter
+      let matchDate = true;
+      if (dateFilter !== "all") {
+        const orderDate = new Date(o.createdAt);
+        const now = new Date();
+        if (dateFilter === "today") {
+          matchDate = orderDate.toDateString() === now.toDateString();
+        } else if (dateFilter === "week") {
+          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          matchDate = orderDate >= weekAgo;
+        } else if (dateFilter === "month") {
+          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          matchDate = orderDate >= monthAgo;
+        }
+      }
+
+      // 3. Smart Search Query Engine (Serial Number, Name, Phone, Address, Date)
       const q = searchQuery.toLowerCase().trim();
       const serialStr = formatInvoiceSerial(o).toLowerCase();
+      const rawSerialNum = o.serialNumber ? String(o.serialNumber) : "";
+
       const matchSearch =
         !q ||
         serialStr.includes(q) ||
+        rawSerialNum.includes(q) ||
+        o.id.toLowerCase().includes(q) ||
         o.customerName.toLowerCase().includes(q) ||
         o.customerPhone.includes(q) ||
         o.customerAddress.toLowerCase().includes(q) ||
-        o.id.toLowerCase().includes(q);
-      return matchStatus && matchSearch;
+        o.createdAt.includes(q);
+
+      return matchStatus && matchDate && matchSearch;
     });
-  }, [orders, statusFilter, searchQuery]);
+  }, [orders, statusFilter, dateFilter, searchQuery]);
 
   // Analytics Stats Summary
   const stats = useMemo(() => {
     const totalCount = orders.length;
-    const pendingCount = orders.filter((o) => o.status === "pending").length;
-    const completedCount = orders.filter((o) => o.status === "delivered" || o.status === "confirmed").length;
     const totalRevenue = orders.reduce((sum, o) => sum + o.total, 0);
-    return { totalCount, pendingCount, completedCount, totalRevenue };
+    const completedCount = orders.filter((o) => o.status === "delivered" || o.status === "confirmed").length;
+    const pendingCount = orders.filter((o) => o.status === "pending").length;
+    return { totalCount, totalRevenue, completedCount, pendingCount };
   }, [orders]);
 
   return (
     <PermissionGate permission="orders.view">
       <div className="space-y-6" dir="rtl">
-        {/* Top Header */}
+        {/* Top Title Bar */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <span>🛒</span>
-              <span>إدارة الطلبات والجريدة اليومية</span>
+              <span>🧾</span>
+              <span>نظام الفواتير والأرشيف التسلسلي الرسمـي</span>
             </h1>
             <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm">
-              متابعة جميع طلبات الزبائن الواردة وتعديل الفواتير والتوصيل وإرسالها مباشرة
+              محرك بحث متطور ومؤرشف للفواتير بالرقم التسلسلي والتاريخ والهاتف والطباعة بالهوية الرسمية
             </p>
           </div>
 
           <button
-            onClick={loadOrders}
-            className="px-4 py-2.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl font-bold text-xs hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors flex items-center gap-2 w-fit border border-blue-200 dark:border-blue-800"
+            onClick={loadInvoices}
+            className="px-4 py-2.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl font-bold text-xs hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors flex items-center gap-2 w-fit border border-blue-200 dark:border-blue-800 shadow-sm"
           >
-            <span>🔄 تحديث البيانات</span>
+            <span>🔄 تحديث الأرشيف</span>
           </button>
         </div>
 
-        {/* Analytics Summary Cards */}
+        {/* Analytics Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-200 dark:border-gray-800 shadow-sm">
             <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-              <span>إجمالي الطلبات</span>
-              <span className="text-xl">📊</span>
+              <span>إجمالي الفواتير المؤرشفة</span>
+              <span className="text-xl">📄</span>
             </div>
             <p className="text-2xl font-extrabold text-gray-900 dark:text-white">{stats.totalCount}</p>
           </div>
 
-          <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-amber-200 dark:border-amber-800/60 bg-amber-50/20 shadow-sm">
-            <div className="flex items-center justify-between text-xs text-amber-600 dark:text-amber-400 mb-1">
-              <span>طلب قيد الانتظار</span>
-              <span className="text-xl">⚠️</span>
-            </div>
-            <p className="text-2xl font-extrabold text-amber-600 dark:text-amber-400">{stats.pendingCount}</p>
-          </div>
-
-          <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/20 shadow-sm">
-            <div className="flex items-center justify-between text-xs text-emerald-600 dark:text-emerald-400 mb-1">
-              <span>طلبات مكتملة / مؤكدة</span>
-              <span className="text-xl">✅</span>
-            </div>
-            <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{stats.completedCount}</p>
-          </div>
-
           <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-blue-200 dark:border-blue-800/60 bg-blue-50/20 shadow-sm">
             <div className="flex items-center justify-between text-xs text-blue-600 dark:text-blue-400 mb-1">
-              <span>قيمة الطلبات الكلية</span>
+              <span>مجموع مبالغ الفواتير</span>
               <span className="text-xl">💰</span>
             </div>
             <p className="text-xl font-extrabold text-blue-600 dark:text-blue-400 truncate">
               {stats.totalRevenue.toLocaleString()} د.ع
             </p>
           </div>
+
+          <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/20 shadow-sm">
+            <div className="flex items-center justify-between text-xs text-emerald-600 dark:text-emerald-400 mb-1">
+              <span>فواتير مكتملة / مفرغة</span>
+              <span className="text-xl">✅</span>
+            </div>
+            <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{stats.completedCount}</p>
+          </div>
+
+          <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-amber-200 dark:border-amber-800/60 bg-amber-50/20 shadow-sm">
+            <div className="flex items-center justify-between text-xs text-amber-600 dark:text-amber-400 mb-1">
+              <span>فواتير قيد الانتظار</span>
+              <span className="text-xl">⏳</span>
+            </div>
+            <p className="text-2xl font-extrabold text-amber-600 dark:text-amber-400">{stats.pendingCount}</p>
+          </div>
         </div>
 
-        {/* Filter & Search Bar */}
-        <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-200 dark:border-gray-800 shadow-sm space-y-3">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-            {/* Search Input */}
-            <div className="relative flex-1">
-              <span className="absolute right-3.5 top-2.5 text-gray-400 text-base">🔍</span>
+        {/* Advanced Search Engine & Filter Bar */}
+        <div className="bg-white dark:bg-gray-900 rounded-2xl p-5 border border-gray-200 dark:border-gray-800 shadow-sm space-y-4">
+          <div className="flex items-center gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
+            <span className="text-lg">🔍</span>
+            <h2 className="font-bold text-sm text-gray-900 dark:text-white">محرك البحث الذكي في الفواتير:</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            {/* Search Query Input */}
+            <div className="md:col-span-2 relative">
+              <span className="absolute right-3.5 top-2.5 text-gray-400 text-base">🔎</span>
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="ابحث بالرقم التسلسلي (INV-2026-001)، اسم الزبون، الهاتف، أو العنوان..."
-                className="w-full pr-10 pl-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none text-gray-900 dark:text-white font-bold"
+                placeholder="ابحث بالرقم التسلسلي (INV-2026-001)، اسم الزبون، الهاتف، أو المحافظة..."
+                className="w-full pr-10 pl-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
 
-            {/* Status Filter Buttons */}
-            <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1">
-              <button
-                onClick={() => setStatusFilter("all")}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                  statusFilter === "all"
-                    ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900 shadow-sm"
-                    : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200"
-                }`}
+            {/* Date Filter */}
+            <div>
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
               >
-                الكل ({orders.length})
-              </button>
+                <option value="all">📅 كل التواريخ والأرشيف</option>
+                <option value="today">اليوم</option>
+                <option value="week">آخر 7 أيام</option>
+                <option value="month">آخر 30 يوم</option>
+              </select>
+            </div>
 
-              {(["pending", "confirmed", "shipped", "delivered", "cancelled"] as Order["status"][]).map((st) => {
-                const count = orders.filter((o) => o.status === st).length;
-                return (
-                  <button
-                    key={st}
-                    onClick={() => setStatusFilter(st)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                      statusFilter === st
-                        ? `${STATUS_COLORS[st].bg} ${STATUS_COLORS[st].text} border ${STATUS_COLORS[st].border} shadow-sm`
-                        : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200"
-                    }`}
-                  >
-                    {STATUS_LABELS[st]} ({count})
-                  </button>
-                );
-              })}
+            {/* Status Filter */}
+            <div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-full px-3 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                <option value="all">جميع الحالات</option>
+                <option value="pending">⚠️ قيد الانتظار</option>
+                <option value="confirmed">✓ مؤكد</option>
+                <option value="shipped">🚚 قيد الشحن</option>
+                <option value="delivered">✅ مكتمل</option>
+                <option value="cancelled">❌ ملغي</option>
+              </select>
             </div>
           </div>
         </div>
 
-        {/* Orders Grid / List */}
+        {/* Invoices List / Table */}
         {loading ? (
           <div className="p-16 text-center text-gray-400 animate-pulse">
             <span className="text-4xl block mb-2">🔄</span>
-            <p>جاري تحميل قائمة الطلبات من قاعدة البيانات...</p>
+            <p>جاري استرجاع الفواتير الموثقة من الأرشيف...</p>
           </div>
-        ) : filteredOrders.length === 0 ? (
+        ) : filteredInvoices.length === 0 ? (
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-16 text-center text-gray-400 space-y-3">
-            <span className="text-5xl block">🛒</span>
-            <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200">لا توجد طلبات تطابق هذا البحث</h3>
-            <p className="text-xs">عند إتمام الزبائن لعمليات الشراء، ستظهر طلباتهم وفواتيرهم هنا فوراً</p>
+            <span className="text-5xl block">📑</span>
+            <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200">لا توجد فواتير تطابق شروط البحث</h3>
+            <p className="text-xs">تأكد من كتابة الرقم التسلسلي أو جزء من اسم الزبون أو الهاتف بشكل صحيح</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredOrders.map((order) => {
-              const platform = formatPlatformBadge(order.notes);
-              const statusStyle = STATUS_COLORS[order.status];
-              const serialStr = formatInvoiceSerial(order);
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+            <table className="w-full text-right text-xs">
+              <thead className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold border-b border-gray-200 dark:border-gray-700">
+                <tr>
+                  <th className="p-3.5 text-center">الرقم التسلسلي</th>
+                  <th className="p-3.5">الزبون والهاتف</th>
+                  <th className="p-3.5">المحافظة والعنوان</th>
+                  <th className="p-3.5 text-center">عدد المنتجات</th>
+                  <th className="p-3.5 text-center">تكلفة التوصيل</th>
+                  <th className="p-3.5 text-left">الإجمالي النهائي</th>
+                  <th className="p-3.5 text-center">حالة الفاتورة</th>
+                  <th className="p-3.5 text-center">تاريخ الإصدار</th>
+                  <th className="p-3.5 text-center">الإجراء</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {filteredInvoices.map((inv) => {
+                  const serialStr = formatInvoiceSerial(inv);
+                  const statusStyle = STATUS_COLORS[inv.status];
 
-              return (
-                <div
-                  key={order.id}
-                  onClick={() => openInvoiceModal(order)}
-                  className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 hover:shadow-xl transition-all cursor-pointer flex flex-col justify-between space-y-4 group relative overflow-hidden"
-                >
-                  <div className="space-y-3">
-                    {/* Header: Platform & Status */}
-                    <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
-                      <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-800 py-1 px-2.5 rounded-lg text-xs font-bold text-gray-700 dark:text-gray-300">
-                        <span>{platform.icon}</span>
-                        <span>{platform.label}</span>
-                        <span className="font-mono text-[10px] text-blue-600 dark:text-blue-400 border-r pr-1.5 border-gray-300 dark:border-gray-700">{serialStr}</span>
-                      </div>
+                  return (
+                    <tr
+                      key={inv.id}
+                      onClick={() => openInvoiceModal(inv)}
+                      className="hover:bg-blue-50/40 dark:hover:bg-gray-800/60 transition-colors cursor-pointer"
+                    >
+                      <td className="p-3.5 text-center font-mono font-bold text-blue-600 dark:text-blue-400">
+                        {serialStr}
+                      </td>
 
-                      <span
-                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold border ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}
-                      >
-                        {STATUS_LABELS[order.status]}
-                      </span>
-                    </div>
+                      <td className="p-3.5">
+                        <p className="font-bold text-gray-900 dark:text-white">{inv.customerName}</p>
+                        <p className="text-[11px] text-gray-500 font-mono" dir="ltr">{inv.customerPhone}</p>
+                      </td>
 
-                    {/* Customer Info */}
-                    <div className="space-y-1">
-                      <h3 className="font-bold text-gray-900 dark:text-white text-base group-hover:text-blue-600 transition-colors flex items-center gap-2">
-                        <span>👤</span>
-                        <span>{order.customerName}</span>
-                      </h3>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                        <span>📞</span>
-                        <span dir="ltr" className="font-mono">{order.customerPhone}</span>
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                        <span>📍</span>
-                        <span className="truncate">{order.customerAddress}</span>
-                      </p>
-                      {order.deliveryDuration && (
-                        <p className="text-[11px] text-blue-600 dark:text-blue-400 font-bold flex items-center gap-1">
-                          <span>🚚</span>
-                          <span>التوصيل: {order.deliveryDuration} ({order.deliveryFee ? `${order.deliveryFee.toLocaleString()} د.ع` : "مجاني"})</span>
-                        </p>
-                      )}
-                    </div>
+                      <td className="p-3.5 text-gray-700 dark:text-gray-300 max-w-[180px] truncate">
+                        {inv.customerAddress}
+                      </td>
 
-                    {/* Products Summary */}
-                    <div className="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-3 space-y-1 text-xs">
-                      <p className="font-bold text-gray-700 dark:text-gray-300 mb-1">📦 المنتجات ({order.items.length}):</p>
-                      {order.items.slice(0, 3).map((item, idx) => (
-                        <div key={idx} className="flex justify-between text-gray-600 dark:text-gray-400">
-                          <span className="truncate max-w-[180px]">• {item.name}</span>
-                          <span className="font-semibold">x{item.quantity}</span>
-                        </div>
-                      ))}
-                      {order.items.length > 3 && (
-                        <p className="text-[10px] text-blue-500 font-bold pt-0.5">+ {order.items.length - 3} منتجات أخرى...</p>
-                      )}
-                    </div>
-                  </div>
+                      <td className="p-3.5 text-center font-semibold">
+                        {inv.items.length} منتجات
+                      </td>
 
-                  {/* Footer: Date & Total */}
-                  <div className="border-t border-gray-100 dark:border-gray-800 pt-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] text-gray-400">{timeAgo(order.createdAt)}</p>
-                      <p className="text-base font-extrabold text-blue-600 dark:text-blue-400">
-                        {order.total.toLocaleString()} د.ع
-                      </p>
-                    </div>
+                      <td className="p-3.5 text-center text-blue-600 dark:text-blue-400 font-semibold">
+                        {inv.deliveryFee ? `${inv.deliveryFee.toLocaleString()} د.ع` : "مجاني"}
+                      </td>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={(e) => handleDeleteOrder(order.id, e)}
-                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors text-xs"
-                        title="حذف الطلب"
-                      >
-                        🗑️
-                      </button>
-                      <span className="px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-xs shadow-sm group-hover:bg-blue-700 transition-colors">
-                        👁️ التفاصيل والطباعة
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+                      <td className="p-3.5 text-left font-black text-emerald-600 dark:text-emerald-400 text-sm">
+                        {inv.total.toLocaleString()} د.ع
+                      </td>
+
+                      <td className="p-3.5 text-center">
+                        <span className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}>
+                          {STATUS_LABELS[inv.status]}
+                        </span>
+                      </td>
+
+                      <td className="p-3.5 text-center text-gray-500 text-[11px]">
+                        {new Date(inv.createdAt).toLocaleDateString("ar-EG")}
+                      </td>
+
+                      <td className="p-3.5 text-center">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openInvoiceModal(inv);
+                          }}
+                          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-[11px] hover:bg-blue-700 transition-colors shadow-sm"
+                        >
+                          👁️ معاينة وطباعة
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
 
-        {/* ================= Editable Invoice Modal (نافذة تفاصيل وتعديل الفاتورة والتوصيل) ================= */}
+        {/* ================= Official Invoice Preview Modal ================= */}
         {editingOrder && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn" dir="rtl">
             <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col overflow-hidden text-right">
-              {/* Modal Header */}
+              {/* Header */}
               <div className="p-5 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-gray-50/80 dark:bg-gray-800/80">
                 <div className="flex items-center gap-3">
                   <img src={settings.logo || "/logo.jpg"} alt="" className="w-10 h-10 rounded-xl object-cover shadow-sm" />
                   <div>
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                      <span>فاتورة طلب رقم:</span>
-                      <span className="font-mono text-sm text-blue-600 dark:text-blue-400">{formatInvoiceSerial(editingOrder)}</span>
+                    <h2 className="text-base font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
+                      <span>الفاتورة الرسمية:</span>
+                      <span className="font-mono text-blue-600 dark:text-blue-400">{formatInvoiceSerial(editingOrder)}</span>
                     </h2>
                     <p className="text-xs text-gray-500">
-                      تم إنشاء الطلب بتاريخ: {new Date(editingOrder.createdAt).toLocaleString("ar-EG")}
+                      تاريخ التوثيق: {new Date(editingOrder.createdAt).toLocaleString("ar-EG")}
                     </p>
                   </div>
                 </div>
@@ -766,148 +742,124 @@ export default function OrdersPage() {
                 </button>
               </div>
 
-              {/* Modal Body */}
+              {/* Modal Content */}
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
                 {saveSuccess && (
                   <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-bold flex items-center gap-2 animate-fadeIn">
                     <span>✅</span>
-                    <span>تم حفظ كافة تعديلات الفاتورة والتوصيل وتحديث قاعدة البيانات بنجاح!</span>
+                    <span>تم تحديث كافة بيانات الفاتورة في قاعدة البيانات بنجاح!</span>
                   </div>
                 )}
 
-                {/* Section 1: Customer Details & Order Status */}
-                <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-4">
-                  <h3 className="font-bold text-gray-900 dark:text-white text-sm flex items-center gap-2">
+                {/* Customer Details Form */}
+                <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-3">
+                  <h3 className="font-bold text-gray-900 dark:text-white text-xs flex items-center gap-2">
                     <span>👤</span>
-                    <span>بيانات الزبون وحالة الطلب:</span>
+                    <span>معلومات الزبون والشحن:</span>
                   </h3>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div>
-                      <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">اسم الزبون</label>
+                      <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400 block mb-1">اسم الزبون</label>
                       <input
                         type="text"
                         value={editCustomerName}
                         onChange={(e) => setEditCustomerName(e.target.value)}
-                        className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl text-xs text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none font-bold"
+                        className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl text-xs font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
 
                     <div>
-                      <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">رقم الهاتف</label>
+                      <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400 block mb-1">رقم الهاتف</label>
                       <input
                         type="text"
                         value={editCustomerPhone}
                         onChange={(e) => setEditCustomerPhone(e.target.value)}
-                        className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl text-xs text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none font-bold"
+                        className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl text-xs font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
 
                     <div>
-                      <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">حالة الطلب</label>
+                      <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400 block mb-1">حالة الطلب</label>
                       <select
                         value={editStatus}
                         onChange={(e) => setEditStatus(e.target.value as Order["status"])}
-                        className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl text-xs font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl text-xs font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="pending">⚠️ قيد الانتظار</option>
                         <option value="confirmed">✓ مؤكد</option>
                         <option value="shipped">🚚 قيد الشحن</option>
-                        <option value="delivered">✅ مكتمل (تم التوصيل)</option>
+                        <option value="delivered">✅ مكتمل</option>
                         <option value="cancelled">❌ ملغي</option>
                       </select>
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">المحافظة والعنوان الكامل</label>
+                    <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400 block mb-1">المحافظة والعنوان الكامل</label>
                     <input
                       type="text"
                       value={editCustomerAddress}
                       onChange={(e) => setEditCustomerAddress(e.target.value)}
-                      className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl text-xs text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl text-xs text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
 
-                {/* Section 2: Delivery & Shipping Settings for this Order */}
+                {/* Delivery Settings */}
                 <div className="bg-blue-50/50 dark:bg-blue-950/30 p-4 rounded-2xl border border-blue-200 dark:border-blue-800 space-y-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-blue-900 dark:text-blue-200 text-sm flex items-center gap-2">
+                    <h3 className="font-bold text-blue-900 dark:text-blue-200 text-xs flex items-center gap-2">
                       <span>🚚</span>
-                      <span>إضافة / تعديل التوصيل والشحن لهذه الفاتورة:</span>
+                      <span>رسوم وتفاصيل التوصيل للفاتورة:</span>
                     </h3>
 
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => setEditDeliveryFee(0)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${
-                          editDeliveryFee === 0
-                            ? "bg-emerald-600 text-white border-emerald-600"
-                            : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700 hover:bg-gray-100"
-                        }`}
-                      >
-                        توصيل مجاني (0 د.ع)
-                      </button>
-
-                      <button
-                        onClick={() => setEditDeliveryFee(settings.defaultDeliveryFee ?? 5000)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${
-                          editDeliveryFee === (settings.defaultDeliveryFee ?? 5000)
-                            ? "bg-blue-600 text-white border-blue-600"
-                            : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700 hover:bg-gray-100"
-                        }`}
-                      >
-                        افتراضي ({settings.defaultDeliveryFee?.toLocaleString() ?? "5,000"} د.ع)
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => setEditDeliveryFee(0)}
+                      className="px-2.5 py-1 rounded-lg text-xs font-bold bg-white dark:bg-gray-800 text-emerald-600 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-700"
+                    >
+                      توصيل مجاني (0 د.ع)
+                    </button>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                     <div>
-                      <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block mb-1">
-                        تكلفة التوصيل (د.ع)
-                      </label>
+                      <label className="text-[11px] font-semibold text-gray-700 dark:text-gray-300 block mb-1">تكلفة التوصيل (د.ع)</label>
                       <input
                         type="number"
                         value={editDeliveryFee}
                         onChange={(e) => setEditDeliveryFee(Number(e.target.value) || 0)}
-                        className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl text-xs font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        placeholder="5000"
+                        className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl text-xs font-bold text-gray-900 dark:text-white outline-none"
                       />
                     </div>
 
                     <div>
-                      <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block mb-1">
-                        مدة التوصيل المتوقعة
-                      </label>
+                      <label className="text-[11px] font-semibold text-gray-700 dark:text-gray-300 block mb-1">مدة التوصيل</label>
                       <input
                         type="text"
                         value={editDeliveryDuration}
                         onChange={(e) => setEditDeliveryDuration(e.target.value)}
-                        className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl text-xs font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                        placeholder="مثال: توصيل سريع / خلال 24 ساعة"
+                        className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl text-xs font-bold text-gray-900 dark:text-white outline-none"
                       />
                     </div>
                   </div>
                 </div>
 
-                {/* Section 3: Products Table & Item Controls */}
+                {/* Items Table with Product Thumbnails */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-gray-900 dark:text-white text-sm flex items-center gap-2">
+                    <h3 className="font-bold text-gray-900 dark:text-white text-xs flex items-center gap-2">
                       <span>📦</span>
-                      <span>جدول المنتجات في الفاتورة:</span>
+                      <span>جدول منتجات الفاتورة:</span>
                     </h3>
 
-                    {/* Add Product Dropdown */}
                     <div className="flex items-center gap-2">
                       <select
                         value={addingProductId}
                         onChange={(e) => setAddingProductId(e.target.value)}
                         className="px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl text-xs text-gray-900 dark:text-white outline-none max-w-[200px]"
                       >
-                        <option value="">+ اختر منتجاً لإضافته للفاتورة...</option>
+                        <option value="">+ إضافة منتج...</option>
                         {products.map((p) => (
                           <option key={p.id} value={p.id}>
                             {p.name} ({p.retailPrice.toLocaleString()} د.ع)
@@ -918,7 +870,7 @@ export default function OrdersPage() {
                       <button
                         onClick={handleAddProductToInvoice}
                         disabled={!addingProductId}
-                        className="px-3 py-1.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 disabled:opacity-40 transition-all shadow-sm"
+                        className="px-3 py-1.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 disabled:opacity-40"
                       >
                         إضافة
                       </button>
@@ -939,88 +891,76 @@ export default function OrdersPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                        {editItems.length === 0 ? (
-                          <tr>
-                            <td colSpan={7} className="p-6 text-center text-gray-400">
-                              لا توجد منتجات في الفاتورة
+                        {editItems.map((item, idx) => (
+                          <tr key={idx} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50">
+                            <td className="p-3 text-center font-bold text-gray-400">{idx + 1}</td>
+                            <td className="p-3 text-center">
+                              {item.image ? (
+                                <img src={item.image} alt="" className="w-9 h-9 rounded-lg object-cover mx-auto border border-gray-200 dark:border-gray-700" />
+                              ) : (
+                                <span className="text-lg">📦</span>
+                              )}
                             </td>
-                          </tr>
-                        ) : (
-                          editItems.map((item, idx) => (
-                            <tr key={idx} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50">
-                              <td className="p-3 text-center font-bold text-gray-400">{idx + 1}</td>
-                              <td className="p-3 text-center">
-                                {item.image ? (
-                                  <img src={item.image} alt="" className="w-8 h-8 rounded-lg object-cover mx-auto border border-gray-200 dark:border-gray-700" />
-                                ) : (
-                                  <span className="text-base">📦</span>
-                                )}
-                              </td>
-                              <td className="p-3 font-semibold text-gray-900 dark:text-white max-w-[200px] truncate">{item.name}</td>
-
-                              <td className="p-3 text-center">
-                                <input
-                                  type="number"
-                                  value={item.retailPrice}
-                                  onChange={(e) => {
-                                    const val = Number(e.target.value) || 0;
+                            <td className="p-3 font-semibold text-gray-900 dark:text-white max-w-[200px] truncate">{item.name}</td>
+                            <td className="p-3 text-center font-bold">
+                              <input
+                                type="number"
+                                value={item.retailPrice}
+                                onChange={(e) => {
+                                  const val = Number(e.target.value) || 0;
+                                  setEditItems((prev) =>
+                                    prev.map((it, i) => (i === idx ? { ...it, retailPrice: val } : it))
+                                  );
+                                }}
+                                className="w-20 px-2 py-1 text-center bg-gray-50 dark:bg-gray-800 border rounded text-xs font-bold"
+                              />
+                            </td>
+                            <td className="p-3 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  onClick={() => {
+                                    if (item.quantity > 1) {
+                                      setEditItems((prev) =>
+                                        prev.map((it, i) => (i === idx ? { ...it, quantity: it.quantity - 1 } : it))
+                                      );
+                                    }
+                                  }}
+                                  className="w-5 h-5 rounded bg-gray-200 dark:bg-gray-700 text-xs font-bold"
+                                >
+                                  -
+                                </button>
+                                <span className="w-6 text-center font-bold">{item.quantity}</span>
+                                <button
+                                  onClick={() => {
                                     setEditItems((prev) =>
-                                      prev.map((it, i) => (i === idx ? { ...it, retailPrice: val } : it))
+                                      prev.map((it, i) => (i === idx ? { ...it, quantity: it.quantity + 1 } : it))
                                     );
                                   }}
-                                  className="w-24 px-2 py-1 text-center bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-bold text-gray-900 dark:text-white"
-                                />
-                              </td>
-
-                              <td className="p-3 text-center">
-                                <div className="flex items-center justify-center gap-1">
-                                  <button
-                                    onClick={() => {
-                                      if (item.quantity > 1) {
-                                        setEditItems((prev) =>
-                                          prev.map((it, i) => (i === idx ? { ...it, quantity: it.quantity - 1 } : it))
-                                        );
-                                      }
-                                    }}
-                                    className="w-6 h-6 rounded bg-gray-200 dark:bg-gray-700 font-bold text-xs"
-                                  >
-                                    -
-                                  </button>
-                                  <span className="w-8 text-center font-extrabold text-gray-900 dark:text-white">{item.quantity}</span>
-                                  <button
-                                    onClick={() => {
-                                      setEditItems((prev) =>
-                                        prev.map((it, i) => (i === idx ? { ...it, quantity: it.quantity + 1 } : it))
-                                      );
-                                    }}
-                                    className="w-6 h-6 rounded bg-blue-600 text-white font-bold text-xs"
-                                  >
-                                    +
-                                  </button>
-                                </div>
-                              </td>
-
-                              <td className="p-3 text-left font-bold text-blue-600 dark:text-blue-400">
-                                {(item.retailPrice * item.quantity).toLocaleString()} د.ع
-                              </td>
-
-                              <td className="p-3 text-center">
-                                <button
-                                  onClick={() => setEditItems((prev) => prev.filter((_, i) => i !== idx))}
-                                  className="text-red-400 hover:text-red-600 text-xs p-1"
+                                  className="w-5 h-5 rounded bg-blue-600 text-white text-xs font-bold"
                                 >
-                                  ✕
+                                  +
                                 </button>
-                              </td>
-                            </tr>
-                          ))
-                        )}
+                              </div>
+                            </td>
+                            <td className="p-3 text-left font-bold text-blue-600 dark:text-blue-400">
+                              {(item.retailPrice * item.quantity).toLocaleString()} د.ع
+                            </td>
+                            <td className="p-3 text-center">
+                              <button
+                                onClick={() => setEditItems((prev) => prev.filter((_, i) => i !== idx))}
+                                className="text-red-400 hover:text-red-600 text-xs"
+                              >
+                                ✕
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
                 </div>
 
-                {/* Section 4: Breakdown Summary Total */}
+                {/* Breakdown Summary */}
                 <div className="bg-gray-50 dark:bg-gray-800/80 p-4 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-2 text-xs">
                   <div className="flex justify-between text-gray-600 dark:text-gray-400">
                     <span>مجموع المنتجات:</span>
@@ -1041,7 +981,7 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              {/* Modal Footer Controls */}
+              {/* Actions Footer */}
               <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-800/80 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <button
@@ -1057,7 +997,7 @@ export default function OrdersPage() {
                     className="px-3.5 py-2 bg-gray-700 text-white rounded-xl font-bold text-xs hover:bg-gray-800 transition-colors flex items-center gap-1.5 shadow-sm"
                   >
                     <span>📄</span>
-                    <span>تحميل PDF</span>
+                    <span>تصدير PDF</span>
                   </button>
 
                   <button
@@ -1072,7 +1012,7 @@ export default function OrdersPage() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={closeModal}
-                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl font-bold text-xs hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                    className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl font-bold text-xs hover:bg-gray-100"
                   >
                     إغلاق
                   </button>
@@ -1080,18 +1020,9 @@ export default function OrdersPage() {
                   <button
                     onClick={handleSaveInvoice}
                     disabled={savingOrder}
-                    className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-extrabold text-xs hover:bg-emerald-700 shadow-md transition-all disabled:opacity-50 flex items-center gap-1.5"
+                    className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-extrabold text-xs hover:bg-emerald-700 disabled:opacity-50 shadow-md flex items-center gap-1.5"
                   >
-                    {savingOrder ? (
-                      <>
-                        <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>جاري الحفظ...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>💾 حفظ التعديلات وقاعدة البيانات</span>
-                      </>
-                    )}
+                    {savingOrder ? "جاري الحفظ..." : "💾 حفظ الفاتورة وقاعدة البيانات"}
                   </button>
                 </div>
               </div>
