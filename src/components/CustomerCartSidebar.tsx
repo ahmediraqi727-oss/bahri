@@ -29,6 +29,10 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
   const [submitting, setSubmitting] = useState(false);
   const [copiedNotice, setCopiedNotice] = useState(false);
 
+  const deliveryFee = settings.defaultDeliveryFee ?? 5000;
+  const deliveryDuration = settings.defaultDeliveryDuration || "2 - 3 أيام عمل";
+  const grandTotal = total + deliveryFee;
+
   if (!isOpen) return null;
 
   // Auto-formatted Order Message for Customer Communication
@@ -51,7 +55,9 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
     });
 
     msg += `-------------------------------------------\n`;
-    msg += `💰 *الإجمالي الكلي للطلب:* ${total.toLocaleString()} د.ع\n`;
+    msg += `📦 *مجموع المنتجات:* ${total.toLocaleString()} د.ع\n`;
+    msg += `🚚 *تكلفة التوصيل (${deliveryDuration}):* ${deliveryFee.toLocaleString()} د.ع\n`;
+    msg += `💰 *الإجمالي النهائي الكلي:* ${grandTotal.toLocaleString()} د.ع\n`;
     msg += `-------------------------------------------\n`;
     msg += `شكراً لكم! أتطلع لتأكيد الطلب والشحن.`;
     return msg;
@@ -66,7 +72,9 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
         customerPhone: phone,
         customerAddress: address,
         items: [...items],
-        total,
+        total: grandTotal,
+        deliveryFee,
+        deliveryDuration,
         notes,
         platform: contactMethod,
       });
@@ -329,13 +337,23 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
                 {/* Order Details Summary Card */}
                 <div className="bg-gray-50 dark:bg-gray-800/80 p-4 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-2 text-xs">
                   <div className="flex justify-between items-center font-bold text-sm text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-2">
-                    <span>ملخص الطلب</span>
-                    <span className="text-blue-600 dark:text-blue-400">{total.toLocaleString()} د.ع</span>
+                    <span>ملخص الطلب والتوصيل</span>
+                    <span className="text-blue-600 dark:text-blue-400 font-extrabold text-base">{grandTotal.toLocaleString()} د.ع</span>
                   </div>
                   <p className="text-gray-700 dark:text-gray-300"><b>الاسم:</b> {name}</p>
                   <p className="text-gray-700 dark:text-gray-300"><b>الهاتف:</b> {phone}</p>
                   <p className="text-gray-700 dark:text-gray-300"><b>العنوان:</b> {address}</p>
                   <p className="text-gray-700 dark:text-gray-300"><b>عدد المنتجات:</b> {items.length} منتج</p>
+                  <div className="border-t border-gray-200 dark:border-gray-700 pt-2 space-y-1">
+                    <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                      <span>مجموع المنتجات:</span>
+                      <span className="font-bold">{total.toLocaleString()} د.ع</span>
+                    </div>
+                    <div className="flex justify-between text-blue-600 dark:text-blue-400 font-semibold">
+                      <span>التوصيل والشحن ({deliveryDuration}):</span>
+                      <span>{deliveryFee ? `${deliveryFee.toLocaleString()} د.ع` : "مجاني"}</span>
+                    </div>
+                  </div>
                 </div>
 
                 {copiedNotice && (

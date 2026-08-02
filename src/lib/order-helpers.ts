@@ -7,6 +7,8 @@ export async function createOrderAndNotify(data: {
   customerAddress: string;
   items: CartItem[];
   total: number;
+  deliveryFee?: number;
+  deliveryDuration?: string;
   notes?: string;
   platform: string;
 }): Promise<Order> {
@@ -22,6 +24,8 @@ export async function createOrderAndNotify(data: {
     customerAddress: data.customerAddress.trim(),
     items: data.items,
     total: data.total,
+    deliveryFee: data.deliveryFee ?? 0,
+    deliveryDuration: data.deliveryDuration || "",
     status: "pending",
     notes: fullNotes,
     platform: data.platform,
@@ -36,6 +40,8 @@ export async function createOrderAndNotify(data: {
     customer_address: orderData.customerAddress,
     items: orderData.items,
     total: orderData.total,
+    delivery_fee: orderData.deliveryFee,
+    delivery_duration: orderData.deliveryDuration,
     status: orderData.status,
     notes: orderData.notes,
     created_at: orderData.createdAt,
@@ -58,7 +64,7 @@ export async function createOrderAndNotify(data: {
     id: crypto.randomUUID(),
     type: "info",
     title: `${platformIcon} طلب جديد عبر (${data.platform})`,
-    message: `طلب بقيمة ${orderData.total.toLocaleString()} د.ع من الزبون ${orderData.customerName} (هاتف: ${orderData.customerPhone} | العنوان: ${orderData.customerAddress})`,
+    message: `طلب بقيمة ${orderData.total.toLocaleString()} د.ع من ${orderData.customerName} (هاتف: ${orderData.customerPhone} | العنوان: ${orderData.customerAddress})`,
     product_id: orderData.id,
     read: false,
     created_at: createdAt,

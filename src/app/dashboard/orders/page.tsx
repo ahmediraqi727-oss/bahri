@@ -49,7 +49,6 @@ export default function OrdersPage() {
   const { products } = useData();
   const { settings } = useSettings();
   const { logActivity } = useActivityLog();
-  const theme = settings.roleThemes.manager;
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,6 +64,8 @@ export default function OrdersPage() {
   const [editNotes, setEditNotes] = useState("");
   const [editStatus, setEditStatus] = useState<Order["status"]>("pending");
   const [editItems, setEditItems] = useState<CartItem[]>([]);
+  const [editDeliveryFee, setEditDeliveryFee] = useState<number>(5000);
+  const [editDeliveryDuration, setEditDeliveryDuration] = useState<string>("2 - 3 أيام عمل");
   const [addingProductId, setAddingProductId] = useState("");
   const [savingOrder, setSavingOrder] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -86,6 +87,8 @@ export default function OrdersPage() {
           customerAddress: r.customer_address || "",
           items: (r.items as CartItem[]) || [],
           total: Number(r.total) || 0,
+          deliveryFee: Number(r.delivery_fee) || 0,
+          deliveryDuration: r.delivery_duration || "",
           status: (r.status as Order["status"]) || "pending",
           notes: r.notes || "",
           createdAt: r.created_at || new Date().toISOString(),
@@ -114,10 +117,14 @@ export default function OrdersPage() {
     };
   }, [loadOrders]);
 
-  // Calculated Edit Total
-  const calculatedTotal = useMemo(() => {
+  // Subtotal & Grand Total Calculation
+  const productsSubtotal = useMemo(() => {
     return editItems.reduce((acc, item) => acc + item.retailPrice * item.quantity, 0);
   }, [editItems]);
+
+  const grandTotal = useMemo(() => {
+    return productsSubtotal + (Number(editDeliveryFee) || 0);
+  }, [productsSubtotal, editDeliveryFee]);
 
   // Open Invoice Modal
   const openInvoiceModal = (order: Order) => {
@@ -129,6 +136,8 @@ export default function OrdersPage() {
     setEditNotes(order.notes);
     setEditStatus(order.status);
     setEditItems(JSON.parse(JSON.stringify(order.items)));
+    setEditDeliveryFee(order.deliveryFee ?? settings.defaultDeliveryFee ?? 5000);
+    setEditDeliveryDuration(order.deliveryDuration || settings.defaultDeliveryDuration || "2 - 3 أيام عمل");
     setSaveSuccess(false);
   };
 
@@ -145,7 +154,8 @@ export default function OrdersPage() {
     setSaveSuccess(false);
 
     try {
-      const updatedTotal = editItems.reduce((acc, item) => acc + item.retailPrice * item.quantity, 0);
+      const finalFee = Number(editDeliveryFee) || 0;
+      const finalTotal = productsSubtotal + finalFee;
 
       const { error } = await supabase
         .from("orders")
@@ -154,7 +164,9 @@ export default function OrdersPage() {
           customer_phone: editCustomerPhone.trim(),
           customer_address: editCustomerAddress.trim(),
           items: editItems,
-          total: updatedTotal,
+          total: finalTotal,
+          delivery_fee: finalFee,
+          delivery_duration: editDeliveryDuration.trim(),
           status: editStatus,
           notes: editNotes.trim(),
           updated_at: new Date().toISOString(),
@@ -169,7 +181,7 @@ export default function OrdersPage() {
         action: "update",
         entity: "فاتورة طلب",
         entityId: editingOrder.id,
-        details: `تحديث الفاتورة للزبون ${editCustomerName} - الحالة: ${STATUS_LABELS[editStatus]} - الإجمالي: ${updatedTotal.toLocaleString()} د.ع`,
+        details: `تحديث الفاتورة للزبون ${editCustomerName} - التوصيل: ${finalFee.toLocaleString()} د.ع - الإجمالي: ${finalTotal.toLocaleString()} د.ع`,
       });
 
       await loadOrders();
@@ -268,7 +280,9 @@ export default function OrdersPage() {
     table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
     th, td { border: 1px solid #cbd5e1; padding: 10px; text-align: right; font-size: 13px; }
     th { background: #f1f5f9; }
-    .total { text-align: left; font-size: 16px; font-weight: bold; color: #2563eb; }
+    .summary-box { background: #f8fafc; border-radius: 8px; padding: 12px; margin-top: 15px; text-align: left; }
+    .summary-line { font-size: 13px; margin: 4px 0; color: #475569; }
+    .total-line { font-size: 18px; font-weight: bold; color: #2563eb; border-top: 2px solid #2563eb; padding-top: 8px; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -278,13 +292,17 @@ export default function OrdersPage() {
   </div>
   <div class="info">
     <div><strong>الزبون:</strong> ${editCustomerName}<br/><strong>الهاتف:</strong> ${editCustomerPhone}</div>
-    <div><strong>العنوان:</strong> ${editCustomerAddress}<br/><strong>الحالة:</strong> ${STATUS_LABELS[editStatus]}</div>
+    <div><strong>العنوان:</strong> ${editCustomerAddress}<br/><strong>مدة التوصيل:</strong> ${editDeliveryDuration || "افتراضية"}</div>
   </div>
   <table>
     <thead><tr><th>#</th><th>المنتج</th><th>السعر</th><th>الكمية</th><th>المجموع</th></tr></thead>
     <tbody>${rowsHtml}</tbody>
   </table>
-  <div class="total">الإجمالي الكلي: ${calculatedTotal.toLocaleString()} د.ع</div>
+  <div class="summary-box">
+    <div class="summary-line">مجموع المنتجات: ${productsSubtotal.toLocaleString()} د.ع</div>
+    <div class="summary-line">تكلفة التوصيل والشحن: ${editDeliveryFee.toLocaleString()} د.ع</div>
+    <div class="total-line">الإجمالي النهائي الكلي: ${grandTotal.toLocaleString()} د.ع</div>
+  </div>
   <script>window.onload = function() { window.print(); };</script>
 </body>
 </html>`);
@@ -305,16 +323,20 @@ export default function OrdersPage() {
     doc.text(`Customer: ${editCustomerName}`, 15, 35);
     doc.text(`Phone: ${editCustomerPhone}`, 15, 42);
     doc.text(`Address: ${editCustomerAddress}`, 15, 49);
+    doc.text(`Delivery Time: ${editDeliveryDuration || "Default"}`, 15, 56);
 
-    let y = 60;
+    let y = 68;
     doc.setFontSize(10);
     editItems.forEach((item, i) => {
       doc.text(`${i + 1}. ${item.name} x${item.quantity} = ${(item.retailPrice * item.quantity).toLocaleString()} IQD`, 15, y);
       y += 8;
     });
 
+    y += 5;
+    doc.text(`Products Subtotal: ${productsSubtotal.toLocaleString()} IQD`, 15, y);
+    doc.text(`Shipping & Delivery: ${editDeliveryFee.toLocaleString()} IQD`, 15, y + 7);
     doc.setFontSize(13);
-    doc.text(`Total Amount: ${calculatedTotal.toLocaleString()} IQD`, 15, y + 10);
+    doc.text(`Grand Total: ${grandTotal.toLocaleString()} IQD`, 15, y + 16);
     doc.save(`invoice-${editCustomerName}.pdf`);
   };
 
@@ -325,13 +347,17 @@ export default function OrdersPage() {
     msg += `-------------------------------\n`;
     msg += `👤 *الزبون:* ${editCustomerName}\n`;
     msg += `📍 *العنوان:* ${editCustomerAddress}\n`;
+    msg += `🚚 *مدة التوصيل المتوقعة:* ${editDeliveryDuration || "خلال أيام عمل"}\n`;
     msg += `📊 *حالة الطلب:* ${STATUS_LABELS[editStatus]}\n\n`;
     msg += `🛍️ *المنتجات:*\n`;
     editItems.forEach((it, idx) => {
       msg += `${idx + 1}. ${it.name} × ${it.quantity} = ${(it.retailPrice * it.quantity).toLocaleString()} د.ع\n`;
     });
     msg += `-------------------------------\n`;
-    msg += `💰 *الإجمالي النهائي:* ${calculatedTotal.toLocaleString()} د.ع\n`;
+    msg += `📦 *مجموع المنتجات:* ${productsSubtotal.toLocaleString()} د.ع\n`;
+    msg += `🚚 *تكلفة التوصيل:* ${editDeliveryFee.toLocaleString()} د.ع\n`;
+    msg += `💰 *الإجمالي النهائي الكلي:* ${grandTotal.toLocaleString()} د.ع\n`;
+    msg += `-------------------------------\n`;
     msg += `شكراً لتسوقكم معنا! 🌹`;
 
     const cleanNum = editCustomerPhone.replace(/\D/g, "");
@@ -373,7 +399,7 @@ export default function OrdersPage() {
               <span>إدارة الطلبات والجريدة اليومية</span>
             </h1>
             <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm">
-              متابعة جميع طلبات الزبائن الواردة وتعديل الفواتير وإرسالها مباشرة
+              متابعة جميع طلبات الزبائن الواردة وتعديل الفواتير والتوصيل وإرسالها مباشرة
             </p>
           </div>
 
@@ -523,6 +549,12 @@ export default function OrdersPage() {
                         <span>📍</span>
                         <span className="truncate">{order.customerAddress}</span>
                       </p>
+                      {order.deliveryDuration && (
+                        <p className="text-[11px] text-blue-600 dark:text-blue-400 font-bold flex items-center gap-1">
+                          <span>🚚</span>
+                          <span>التوصيل: {order.deliveryDuration} ({order.deliveryFee ? `${order.deliveryFee.toLocaleString()} د.ع` : "مجاني"})</span>
+                        </p>
+                      )}
                     </div>
 
                     {/* Products Summary */}
@@ -568,7 +600,7 @@ export default function OrdersPage() {
           </div>
         )}
 
-        {/* ================= Editable Invoice Modal (نافذة تفاصيل وتعديل الفاتورة) ================= */}
+        {/* ================= Editable Invoice Modal (نافذة تفاصيل وتعديل الفاتورة والتوصيل) ================= */}
         {editingOrder && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn" dir="rtl">
             <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-200 dark:border-gray-800 shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col overflow-hidden text-right">
@@ -600,7 +632,7 @@ export default function OrdersPage() {
                 {saveSuccess && (
                   <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-bold flex items-center gap-2 animate-fadeIn">
                     <span>✅</span>
-                    <span>تم حفظ كافة تعديلات الفاتورة وتحديث قاعدة البيانات بنجاح!</span>
+                    <span>تم حفظ كافة تعديلات الفاتورة والتوصيل وتحديث قاعدة البيانات بنجاح!</span>
                   </div>
                 )}
 
@@ -659,7 +691,69 @@ export default function OrdersPage() {
                   </div>
                 </div>
 
-                {/* Section 2: Products Table & Item Controls */}
+                {/* Section 2: Delivery & Shipping Settings for this Order */}
+                <div className="bg-blue-50/50 dark:bg-blue-950/30 p-4 rounded-2xl border border-blue-200 dark:border-blue-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-blue-900 dark:text-blue-200 text-sm flex items-center gap-2">
+                      <span>🚚</span>
+                      <span>إضافة / تعديل التوصيل والشحن لهذه الفاتورة:</span>
+                    </h3>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setEditDeliveryFee(0)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${
+                          editDeliveryFee === 0
+                            ? "bg-emerald-600 text-white border-emerald-600"
+                            : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700 hover:bg-gray-100"
+                        }`}
+                      >
+                        توصيل مجاني (0 د.ع)
+                      </button>
+
+                      <button
+                        onClick={() => setEditDeliveryFee(settings.defaultDeliveryFee ?? 5000)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${
+                          editDeliveryFee === (settings.defaultDeliveryFee ?? 5000)
+                            ? "bg-blue-600 text-white border-blue-600"
+                            : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700 hover:bg-gray-100"
+                        }`}
+                      >
+                        افتراضي ({settings.defaultDeliveryFee?.toLocaleString() ?? "5,000"} د.ع)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block mb-1">
+                        تكلفة التوصيل (د.ع)
+                      </label>
+                      <input
+                        type="number"
+                        value={editDeliveryFee}
+                        onChange={(e) => setEditDeliveryFee(Number(e.target.value) || 0)}
+                        className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl text-xs font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        placeholder="5000"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block mb-1">
+                        مدة التوصيل المتوقعة
+                      </label>
+                      <input
+                        type="text"
+                        value={editDeliveryDuration}
+                        onChange={(e) => setEditDeliveryDuration(e.target.value)}
+                        className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl text-xs font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                        placeholder="مثال: توصيل سريع / خلال 24 ساعة"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 3: Products Table & Item Controls */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="font-bold text-gray-900 dark:text-white text-sm flex items-center gap-2">
@@ -788,12 +882,24 @@ export default function OrdersPage() {
                   </div>
                 </div>
 
-                {/* Section 3: Summary Total */}
-                <div className="bg-blue-50 dark:bg-blue-950/40 p-4 rounded-2xl border border-blue-200 dark:border-blue-800 flex items-center justify-between">
-                  <span className="font-extrabold text-gray-900 dark:text-white text-sm">الإجمالي النهائـي للفاتورة:</span>
-                  <span className="text-2xl font-black text-blue-600 dark:text-blue-400">
-                    {calculatedTotal.toLocaleString()} د.ع
-                  </span>
+                {/* Section 4: Breakdown Summary Total */}
+                <div className="bg-gray-50 dark:bg-gray-800/80 p-4 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-2 text-xs">
+                  <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                    <span>مجموع المنتجات:</span>
+                    <span className="font-bold text-gray-900 dark:text-white">{productsSubtotal.toLocaleString()} د.ع</span>
+                  </div>
+
+                  <div className="flex justify-between text-blue-600 dark:text-blue-400 font-semibold">
+                    <span>تكلفة التوصيل للشحن ({editDeliveryDuration || "بدون مدة"}):</span>
+                    <span>{editDeliveryFee ? `${editDeliveryFee.toLocaleString()} د.ع` : "مجاني (0 د.ع)"}</span>
+                  </div>
+
+                  <div className="border-t border-gray-200 dark:border-gray-700 pt-2 flex items-center justify-between text-sm font-extrabold text-gray-900 dark:text-white">
+                    <span>الإجمالي النهائـي الكلي للفاتورة:</span>
+                    <span className="text-2xl font-black text-blue-600 dark:text-blue-400">
+                      {grandTotal.toLocaleString()} د.ع
+                    </span>
+                  </div>
                 </div>
               </div>
 

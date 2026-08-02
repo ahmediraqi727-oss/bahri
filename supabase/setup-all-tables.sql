@@ -83,6 +83,8 @@ CREATE TABLE IF NOT EXISTS orders (
     customer_address TEXT NOT NULL,
     items JSONB NOT NULL DEFAULT '[]',
     total NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    delivery_fee NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    delivery_duration TEXT DEFAULT '',
     status order_status NOT NULL DEFAULT 'pending',
     notes TEXT DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT NOW(),

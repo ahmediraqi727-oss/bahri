@@ -36,6 +36,9 @@ export interface SiteSettings {
   footerLeftText?: string;
   // Categories Carousel Toggle
   showCategoriesCarousel?: boolean;
+  // Delivery Default Settings
+  defaultDeliveryFee?: number;
+  defaultDeliveryDuration?: string;
   roleThemes: {
     manager: RoleTheme;
     admin: RoleTheme;
@@ -70,6 +73,8 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   footerCenterText: "أفضل المنتجات والخدمات لعملائنا الكرام",
   footerLeftText: "للطلب والتواصل: 07800000000",
   showCategoriesCarousel: true,
+  defaultDeliveryFee: 5000,
+  defaultDeliveryDuration: "2 - 3 أيام عمل",
   roleThemes: {
     manager: { primary: "#1e40af", secondary: "#7c3aed", accent: "#f59e0b" },
     admin: { primary: "#059669", secondary: "#0891b2", accent: "#f97316" },

@@ -510,6 +510,45 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      {/* === Section: Delivery Settings (إعدادات التوصيل والشحن) === */}
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-4 shadow-sm">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xl">🚚</span>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">إعدادات التوصيل والشحن الافتراضية</h2>
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          تحديد القيم الافتراضية لتكلفة التوصيل ومدة التعديل المتوقعة لكافة الطلبات الجديدة.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+          <div>
+            <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block mb-1">
+              تكلفة التوصيل الافتراضية (د.ع)
+            </label>
+            <input
+              type="number"
+              value={formData.defaultDeliveryFee ?? 5000}
+              onChange={(e) => handleChange({ defaultDeliveryFee: Number(e.target.value) || 0 })}
+              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="5000"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 block mb-1">
+              مدة التوصيل المتوقعة
+            </label>
+            <input
+              type="text"
+              value={formData.defaultDeliveryDuration ?? "2 - 3 أيام عمل"}
+              onChange={(e) => handleChange({ defaultDeliveryDuration: e.target.value })}
+              className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="مثال: 2 - 3 أيام عمل / توصيل سريع"
+            />
+          </div>
+        </div>
+      </section>
+
       {/* === Section 4: Role Themes === */}
       <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
         <div className="flex items-center gap-2 mb-2">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useCart } from "@/lib/cart-context";
 import { useSettings } from "@/lib/settings-context";
 import { useNotifications } from "@/lib/notifications";
@@ -34,8 +34,21 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [notes, setNotes] = useState("");
+  const [cartDeliveryFee, setCartDeliveryFee] = useState<number>(settings.defaultDeliveryFee ?? 5000);
+  const [cartDeliveryDuration, setCartDeliveryDuration] = useState<string>(settings.defaultDeliveryDuration || "2 - 3 أيام عمل");
 
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (settings.defaultDeliveryFee !== undefined) {
+      setCartDeliveryFee(settings.defaultDeliveryFee);
+    }
+    if (settings.defaultDeliveryDuration) {
+      setCartDeliveryDuration(settings.defaultDeliveryDuration);
+    }
+  }, [settings.defaultDeliveryFee, settings.defaultDeliveryDuration]);
+
+  const grandTotal = total + (Number(cartDeliveryFee) || 0);
 
   const handleOrder = async () => {
     if (!name.trim() || !phone.trim() || !address.trim()) return;
@@ -47,7 +60,9 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
         customerPhone: phone,
         customerAddress: address,
         items: [...items],
-        total,
+        total: grandTotal,
+        deliveryFee: cartDeliveryFee,
+        deliveryDuration: cartDeliveryDuration,
         notes,
         platform: "تأكيد مباشر",
       });
@@ -652,6 +667,46 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">العنوان / المحافظة *</label>
                 <input type="text" required value={address} onChange={(e) => setAddress(e.target.value)} className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none text-sm" placeholder="المحافظة / المدينة / المنطقة" />
               </div>
+
+              {/* Delivery Settings Card */}
+              <div className="bg-blue-50/60 dark:bg-blue-950/40 p-3.5 rounded-xl border border-blue-200 dark:border-blue-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
+                    <span>🚚</span>
+                    <span>التوصيل والشحن</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCartDeliveryFee(0)}
+                    className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-white dark:bg-gray-800 px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-700"
+                  >
+                    توصيل مجاني
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] font-semibold text-gray-700 dark:text-gray-300 block mb-0.5">تكلفة التوصيل (د.ع)</label>
+                    <input
+                      type="number"
+                      value={cartDeliveryFee}
+                      onChange={(e) => setCartDeliveryFee(Number(e.target.value) || 0)}
+                      className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-gray-700 dark:text-gray-300 block mb-0.5">مدة التوصيل</label>
+                    <input
+                      type="text"
+                      value={cartDeliveryDuration}
+                      onChange={(e) => setCartDeliveryDuration(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">ملاحظات إضافية</label>
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none resize-none text-sm" placeholder="ملاحظات حول وقت التوصيل أو تفاصيل أخرى..." />
@@ -664,9 +719,13 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
                     <span className="font-medium text-gray-900 dark:text-white">{(item.retailPrice * item.quantity).toLocaleString()} د.ع</span>
                   </div>
                 ))}
+                <div className="flex justify-between text-xs text-blue-600 dark:text-blue-400 pt-1">
+                  <span>تكلفة التوصيل ({cartDeliveryDuration}):</span>
+                  <span>{cartDeliveryFee ? `${cartDeliveryFee.toLocaleString()} د.ع` : "مجاني"}</span>
+                </div>
                 <div className="border-t border-gray-200 dark:border-gray-700 pt-2 flex justify-between font-bold">
-                  <span className="text-gray-900 dark:text-white">الإجمالي الكلي</span>
-                  <span style={{ color: theme.primary }}>{total.toLocaleString()} د.ع</span>
+                  <span className="text-gray-900 dark:text-white">الإجمالي الكلي النهائي</span>
+                  <span style={{ color: theme.primary }}>{grandTotal.toLocaleString()} د.ع</span>
                 </div>
               </div>
             </div>

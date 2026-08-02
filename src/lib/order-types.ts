@@ -16,5 +16,7 @@ export interface Order {
   status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
   notes: string;
   platform?: string;
+  deliveryFee?: number;
+  deliveryDuration?: string;
   createdAt: string;
 }
