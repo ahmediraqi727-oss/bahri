@@ -34,6 +34,7 @@ function updateNotesWithCategory(notes: string | undefined, categoryName: string
 export default function ProductModal({ isOpen, onClose, product }: ProductModalProps) {
   const { suppliers, categories, products, addProduct, updateProduct, addSupplier, addCategory } = useData();
   const imageRef = useRef<HTMLInputElement>(null);
+  const comboRef = useRef<HTMLDivElement>(null);
 
   const [name, setName] = useState("");
   const [image, setImage] = useState("");
@@ -45,9 +46,10 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
   const [supplierId, setSupplierId] = useState("");
   const [notes, setNotes] = useState("");
 
+  // Creatable Autocomplete Category Combobox State
   const [selectedCategoryName, setSelectedCategoryName] = useState("");
-  const [showNewCategory, setShowNewCategory] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
+  const [categoryQuery, setCategoryQuery] = useState("");
+  const [isComboOpen, setIsComboOpen] = useState(false);
 
   const [newSupplierName, setNewSupplierName] = useState("");
   const [showNewSupplier, setShowNewSupplier] = useState(false);
@@ -67,18 +69,28 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
       setStock(product.stock.toString());
       setSupplierId(product.supplierId);
       setNotes(product.notes);
-      setSelectedCategoryName(extractCategoryFromNotes(product.notes));
+      const cat = extractCategoryFromNotes(product.notes);
+      setSelectedCategoryName(cat);
+      setCategoryQuery(cat);
       setShowNewSupplier(false);
       setNewSupplierName("");
-      setShowNewCategory(false);
-      setNewCategoryName("");
     } else {
       setName(""); setImage(""); setCostPrice(""); setWholesalePrice("");
       setProfitMargin(""); setRetailPrice(""); setStock(""); setSupplierId("");
-      setNotes(""); setSelectedCategoryName(""); setShowNewSupplier(false); setNewSupplierName("");
-      setShowNewCategory(false); setNewCategoryName("");
+      setNotes(""); setSelectedCategoryName(""); setCategoryQuery(""); setShowNewSupplier(false); setNewSupplierName("");
     }
   }, [product, isOpen]);
+
+  // Handle outside click for Category Combobox dropdown
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (comboRef.current && !comboRef.current.contains(event.target as Node)) {
+        setIsComboOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const cost = parseFloat(costPrice) || 0;
@@ -93,7 +105,6 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
     if (!name || name.trim().length < 2) return null;
     const q = name.trim().toLowerCase();
 
-    // 1. Direct match with Category name or keywords
     for (const cat of categories) {
       if (q.includes(cat.name.toLowerCase()) || cat.name.toLowerCase().includes(q)) {
         return cat.name;
@@ -108,7 +119,6 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
       }
     }
 
-    // 2. Similar product name match
     for (const p of products) {
       if (p.notes && p.notes.includes("الفئة:")) {
         const pName = p.name.toLowerCase();
@@ -125,33 +135,50 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
     return null;
   }, [name, categories, products]);
 
-  const handleApplySuggestedCategory = (catName: string) => {
+  // Filtered categories for combobox
+  const filteredCategories = useMemo(() => {
+    if (!categoryQuery.trim()) return categories;
+    const q = categoryQuery.trim().toLowerCase();
+    return categories.filter(
+      (c) => c.name.toLowerCase().includes(q) || (c.keywords && c.keywords.toLowerCase().includes(q))
+    );
+  }, [categories, categoryQuery]);
+
+  // Check if typed query matches an existing category name exactly
+  const exactCategoryMatch = useMemo(() => {
+    if (!categoryQuery.trim()) return null;
+    return categories.find((c) => c.name.toLowerCase() === categoryQuery.trim().toLowerCase());
+  }, [categories, categoryQuery]);
+
+  const handleSelectCategory = (catName: string) => {
     setSelectedCategoryName(catName);
+    setCategoryQuery(catName);
     setNotes((prev) => updateNotesWithCategory(prev, catName));
+    setIsComboOpen(false);
   };
 
-  const handleCategorySelectChange = (catName: string) => {
-    setSelectedCategoryName(catName);
-    setNotes((prev) => updateNotesWithCategory(prev, catName));
-  };
-
-  const handleCreateInlineCategory = async () => {
-    if (!newCategoryName.trim()) return;
+  const handleCreateNewCategory = async (catNameToCreate: string) => {
+    const trimmed = catNameToCreate.trim();
+    if (!trimmed) return;
     try {
       const created = await addCategory({
-        name: newCategoryName.trim(),
+        name: trimmed,
         image: "",
         priority: categories.length + 1,
         isActive: true,
       });
       setSelectedCategoryName(created.name);
+      setCategoryQuery(created.name);
       setNotes((prev) => updateNotesWithCategory(prev, created.name));
-      setShowNewCategory(false);
-      setNewCategoryName("");
+      setIsComboOpen(false);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "تعذر إضافة القسم التلقائي";
+      const msg = err instanceof Error ? err.message : "تعذر إضافة القسم الجديد";
       alert(msg);
     }
+  };
+
+  const handleApplySuggestedCategory = (catName: string) => {
+    handleSelectCategory(catName);
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -181,7 +208,21 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
         finalSupplierId = newSup.id;
       }
 
-      const finalNotes = updateNotesWithCategory(notes, selectedCategoryName);
+      // If user typed a new category name in input without clicking create button, create it automatically!
+      let finalCategoryName = selectedCategoryName;
+      if (categoryQuery.trim() && !exactCategoryMatch && categoryQuery.trim() !== selectedCategoryName) {
+        const created = await addCategory({
+          name: categoryQuery.trim(),
+          image: "",
+          priority: categories.length + 1,
+          isActive: true,
+        });
+        finalCategoryName = created.name;
+      } else if (categoryQuery.trim() && exactCategoryMatch) {
+        finalCategoryName = exactCategoryMatch.name;
+      }
+
+      const finalNotes = updateNotesWithCategory(notes, finalCategoryName);
 
       const data = {
         name: name.trim(),
@@ -259,7 +300,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">اسم المنتج *</label>
             <input
               type="text" required value={name} onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none"
+              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none font-medium"
               placeholder="مثال: دلاية، محمل كرات، بطارية، فلتر زيت..."
             />
 
@@ -281,54 +322,80 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
             )}
           </div>
 
-          {/* Category Dropdown & Inline Add Category */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">القسم / التصنيف</label>
-            {!showNewCategory ? (
-              <div className="flex gap-2">
-                <select
-                  value={selectedCategoryName}
-                  onChange={(e) => handleCategorySelectChange(e.target.value)}
-                  className="flex-1 px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none font-bold"
-                >
-                  <option value="">-- بدون قسم / اختر قسم مسبق --</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.name}>📁 {c.name}</option>
-                  ))}
-                </select>
+          {/* Creatable Autocomplete Category Select Combobox */}
+          <div ref={comboRef} className="relative">
+            <label className="text-sm font-bold text-gray-700 dark:text-gray-300 block mb-1 flex items-center justify-between">
+              <span>📁 القسم / التصنيف (اختر أو اكتب اسم قسم جديد)</span>
+              {selectedCategoryName && (
+                <span className="text-xs text-blue-600 dark:text-blue-400 font-extrabold">
+                  المحدد حالياً: {selectedCategoryName}
+                </span>
+              )}
+            </label>
 
+            <div className="relative">
+              <input
+                type="text"
+                value={categoryQuery}
+                onChange={(e) => {
+                  setCategoryQuery(e.target.value);
+                  setIsComboOpen(true);
+                }}
+                onFocus={() => setIsComboOpen(true)}
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-bold text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="ابحث عن قسم أو اكتب اسم قسم جديد..."
+              />
+
+              {categoryQuery && (
                 <button
                   type="button"
-                  onClick={() => setShowNewCategory(true)}
-                  className="px-4 py-2.5 text-sm font-bold text-blue-600 dark:text-blue-400 border border-blue-300 dark:border-blue-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors whitespace-nowrap"
+                  onClick={() => {
+                    setCategoryQuery("");
+                    setSelectedCategoryName("");
+                    setNotes((prev) => updateNotesWithCategory(prev, ""));
+                  }}
+                  className="absolute left-3 top-2.5 text-gray-400 hover:text-gray-600 text-xs font-bold"
                 >
-                  + قسم جديد
+                  ✕ مسح
                 </button>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  className="flex-1 px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none font-bold text-sm"
-                  placeholder="اسم القسم الجديد..."
-                />
-                <button
-                  type="button"
-                  onClick={handleCreateInlineCategory}
-                  disabled={!newCategoryName.trim()}
-                  className="px-4 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 transition-colors"
-                >
-                  إضافة
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setShowNewCategory(false); setNewCategoryName(""); }}
-                  className="px-4 py-2.5 text-xs font-bold text-gray-500 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                >
-                  إلغاء
-                </button>
+              )}
+            </div>
+
+            {/* Interactive Dropdown Menu */}
+            {isComboOpen && (
+              <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700 animate-fadeIn">
+                {filteredCategories.length > 0 ? (
+                  filteredCategories.map((c) => (
+                    <div
+                      key={c.id}
+                      onClick={() => handleSelectCategory(c.name)}
+                      className={`p-3 text-xs font-bold cursor-pointer transition-colors flex items-center justify-between hover:bg-blue-50 dark:hover:bg-blue-900/30 ${
+                        selectedCategoryName === c.name ? "bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400" : "text-gray-800 dark:text-gray-200"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span>📁</span>
+                        <span>{c.name}</span>
+                      </div>
+                      {selectedCategoryName === c.name && <span className="text-blue-600 dark:text-blue-400 font-bold">✓ محدد</span>}
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-3 text-xs text-gray-400 text-center">
+                    لا يوجد قسم مطابق لـ "{categoryQuery}"
+                  </div>
+                )}
+
+                {/* Creatable Option if query does not match an existing category */}
+                {categoryQuery.trim() && !exactCategoryMatch && (
+                  <div
+                    onClick={() => handleCreateNewCategory(categoryQuery)}
+                    className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/40 dark:to-indigo-900/40 hover:from-blue-100 hover:to-indigo-100 text-blue-700 dark:text-blue-300 font-bold text-xs cursor-pointer flex items-center gap-2 transition-colors border-t border-blue-200 dark:border-blue-800"
+                  >
+                    <span className="text-base">✨</span>
+                    <span>+ إنشاء قسم جديد باسم <strong>"{categoryQuery.trim()}"</strong></span>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -428,7 +495,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
 
           {/* Notes */}
           <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">ملاحظات وإشارة القسم</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">ملاحظات إضافية</label>
             <textarea
               value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
               className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none resize-none"

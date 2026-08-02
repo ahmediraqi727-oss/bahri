@@ -483,6 +483,7 @@ export default function ProductsPage() {
                     </th>
                   )}
                   <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">المنتج والوصف</th>
+                  <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">القسم</th>
                   {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">التكاليف</th>}
                   {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">الجملة</th>}
                   {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">فائدة %</th>}
@@ -524,6 +525,22 @@ export default function ProductsPage() {
                             {product.notes && <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[220px]">{product.notes}</p>}
                           </div>
                         </div>
+                      </td>
+
+                      <td className="px-4 py-3">
+                        {(() => {
+                          const match = product.notes ? product.notes.match(/الفئة:\s*([^|,\n]+)/) : null;
+                          const catName = match && match[1] ? match[1].trim() : null;
+                          return catName ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-xs whitespace-nowrap">
+                              📁 {catName}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 dark:text-gray-500 text-xs italic">
+                              غير مصنف
+                            </span>
+                          );
+                        })()}
                       </td>
 
                       {isAdminOrManager && (
