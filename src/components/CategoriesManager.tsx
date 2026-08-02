@@ -1,54 +1,186 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useData } from "@/lib/data-context";
 import { useSettings } from "@/lib/settings-context";
 import ImageUploader from "@/components/ImageUploader";
 import { CategoryItem } from "@/lib/types";
 
+function helperUpdateNotes(notes: string | undefined, categoryName: string, assign: boolean): string {
+  const current = (notes || "").trim();
+  const catTag = `الفئة: ${categoryName}`;
+  const hasTag = current.toLowerCase().includes(catTag.toLowerCase());
+
+  if (assign) {
+    if (hasTag) return current;
+    if (!current) return catTag;
+    if (current.includes("الفئة:")) {
+      return current.replace(/الفئة:\s*[^|,\n]+/g, catTag);
+    }
+    return `${current} | ${catTag}`;
+  } else {
+    if (!hasTag) return current;
+    let updated = current.replace(new RegExp(`\\|?\\s*${catTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "gi"), "").trim();
+    if (updated.startsWith("|")) updated = updated.slice(1).trim();
+    return updated;
+  }
+}
+
 export default function CategoriesManager() {
-  const { categories, addCategory, updateCategory, deleteCategory } = useData();
+  const { categories, products, addCategory, updateCategory, deleteCategory, updateProduct } = useData();
   const { settings, updateSettings } = useSettings();
 
-  const [newCatName, setNewCatName] = useState("");
-  const [newCatImage, setNewCatImage] = useState("");
-  const [newCatPriority, setNewCatPriority] = useState(1);
-  const [adding, setAdding] = useState(false);
+  // Mode: "new" or category id
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("new");
 
-  const handleAdd = async () => {
-    if (!newCatName.trim()) {
+  // Form State
+  const [catName, setCatName] = useState("");
+  const [catImage, setCatImage] = useState("");
+  const [catPriority, setCatPriority] = useState(1);
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+  const [productSearch, setProductSearch] = useState("");
+
+  const [saving, setSaving] = useState(false);
+  const [successMsg, setSuccessMsg] = useState(false);
+
+  // Active Category object if editing
+  const activeCategory = useMemo(() => {
+    return categories.find((c) => c.id === selectedCategoryId);
+  }, [categories, selectedCategoryId]);
+
+  // Load category values when selectedCategoryId changes
+  useEffect(() => {
+    if (selectedCategoryId === "new") {
+      setCatName("");
+      setCatImage("");
+      setCatPriority(categories.length + 1);
+      setSelectedProductIds(new Set());
+    } else if (activeCategory) {
+      setCatName(activeCategory.name);
+      setCatImage(activeCategory.image || "");
+      setCatPriority(activeCategory.priority || 1);
+
+      // Find products belonging to this category
+      const assigned = new Set<string>();
+      products.forEach((p) => {
+        if (p.notes && p.notes.toLowerCase().includes(activeCategory.name.toLowerCase())) {
+          assigned.add(p.id);
+        }
+      });
+      setSelectedProductIds(assigned);
+    }
+    setSuccessMsg(false);
+  }, [selectedCategoryId, activeCategory, categories.length, products]);
+
+  // Filter products by search term
+  const filteredProducts = useMemo(() => {
+    if (!productSearch.trim()) return products;
+    const q = productSearch.toLowerCase();
+    return products.filter((p) => p.name.toLowerCase().includes(q) || (p.notes && p.notes.toLowerCase().includes(q)));
+  }, [products, productSearch]);
+
+  const handleSelectAll = () => {
+    const allIds = new Set(products.map((p) => p.id));
+    setSelectedProductIds(allIds);
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedProductIds(new Set());
+  };
+
+  const toggleProductSelection = (productId: string) => {
+    setSelectedProductIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    if (!catName.trim()) {
       alert("يرجى إدخال اسم القسم!");
       return;
     }
-    setAdding(true);
+
+    setSaving(true);
     try {
-      await addCategory({
-        name: newCatName.trim(),
-        image: newCatImage,
-        priority: newCatPriority,
-        isActive: true,
+      let catObj: CategoryItem;
+
+      if (selectedCategoryId === "new") {
+        catObj = await addCategory({
+          name: catName.trim(),
+          image: catImage,
+          priority: catPriority,
+          isActive: true,
+        });
+        setSelectedCategoryId(catObj.id);
+      } else if (activeCategory) {
+        await updateCategory(activeCategory.id, {
+          name: catName.trim(),
+          image: catImage,
+          priority: catPriority,
+        });
+        catObj = { ...activeCategory, name: catName.trim(), image: catImage, priority: catPriority };
+      } else {
+        return;
+      }
+
+      // Update product tags in notes for associated products
+      const nameTag = catObj.name;
+      const updatesPromises = products.map(async (p) => {
+        const isAssigned = selectedProductIds.has(p.id);
+        const newNotes = helperUpdateNotes(p.notes, nameTag, isAssigned);
+        if (newNotes !== (p.notes || "")) {
+          await updateProduct(p.id, { notes: newNotes });
+        }
       });
-      setNewCatName("");
-      setNewCatImage("");
-      setNewCatPriority(categories.length + 2);
+
+      await Promise.all(updatesPromises);
+
+      setSuccessMsg(true);
+      setTimeout(() => setSuccessMsg(false), 4000);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "حدث خطأ أثناء إضافة القسم";
+      const msg = err instanceof Error ? err.message : "حدث خطأ أثناء حفظ القسم والمنتجات";
       alert(msg);
     } finally {
-      setAdding(false);
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    if (selectedCategoryId === "new") {
+      setCatName("");
+      setCatImage("");
+      setCatPriority(categories.length + 1);
+      setSelectedProductIds(new Set());
+    } else if (activeCategory) {
+      setCatName(activeCategory.name);
+      setCatImage(activeCategory.image || "");
+      setCatPriority(activeCategory.priority || 1);
+      const assigned = new Set<string>();
+      products.forEach((p) => {
+        if (p.notes && p.notes.toLowerCase().includes(activeCategory.name.toLowerCase())) {
+          assigned.add(p.id);
+        }
+      });
+      setSelectedProductIds(assigned);
     }
   };
 
   return (
     <div className="space-y-6" dir="rtl">
       {/* 1. Toggle Switch for Carousel */}
-      <div className="flex items-center justify-between p-5 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl">
+      <div className="flex items-center justify-between p-5 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl shadow-sm">
         <div className="space-y-1">
           <h3 className="font-bold text-base text-gray-900 dark:text-white flex items-center gap-2">
             <span>🎞️</span> إظهار شريط الأقسام المتحرك في الصفحة الرئيسية
           </h3>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            عند التفعيل، يتم عرض شريط أفقي متحرك (Carousel) للأقسام بالصور والأسماء في واجهة المتجر للزبائن
+            عند التفعيل، يتم عرض شريط أفقي متحرك للأقسام بالصور والأسماء للزبائن
           </p>
         </div>
 
@@ -68,136 +200,233 @@ export default function CategoriesManager() {
         </button>
       </div>
 
-      {/* 2. Add New Category Form */}
-      <div className="bg-gray-50 dark:bg-gray-800/70 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-4">
-        <h4 className="font-bold text-sm text-gray-900 dark:text-white flex items-center gap-2">
-          <span>➕</span> إضافة قسم جديد للمتجر
+      {/* Success Notification Banner */}
+      {successMsg && (
+        <div className="p-4 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700 rounded-2xl flex items-center justify-between text-emerald-800 dark:text-emerald-300 text-sm font-bold animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🎉</span>
+            <span>تم حفظ بيانات القسم وتحديث ربط المنتجات بنجاح!</span>
+          </div>
+          <button onClick={() => setSuccessMsg(false)} className="text-emerald-600 hover:text-emerald-800 text-xs">✕</button>
+        </div>
+      )}
+
+      {/* 2. Category Selector & New Category Switcher Bar */}
+      <div className="bg-white dark:bg-gray-800/80 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+          <div className="flex-1">
+            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 flex items-center gap-1.5">
+              <span>📂</span> اختر قسماً حالياً لتعديله أو استحضار بياناته:
+            </label>
+            <select
+              value={selectedCategoryId}
+              onChange={(e) => setSelectedCategoryId(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="new">✨ [+ إنشاء وإضافة قسم جديد]</option>
+              {categories.map((c) => {
+                const count = products.filter((p) => p.notes && p.notes.toLowerCase().includes(c.name.toLowerCase())).length;
+                return (
+                  <option key={c.id} value={c.id}>
+                    📁 {c.name} (أولوية: {c.priority}) - [{count} منتج]
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          <div className="flex items-end">
+            <button
+              onClick={() => setSelectedCategoryId("new")}
+              className={`w-full sm:w-auto px-5 py-2.5 rounded-xl font-bold text-xs transition-all shadow-sm flex items-center justify-center gap-2 ${
+                selectedCategoryId === "new"
+                  ? "bg-blue-600 text-white ring-2 ring-blue-300"
+                  : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200"
+              }`}
+            >
+              <span>✨</span>
+              <span>+ إضافة قسم جديد</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Delete Category Button if editing an existing one */}
+        {selectedCategoryId !== "new" && activeCategory && (
+          <div className="pt-2 border-t border-gray-100 dark:border-gray-700 flex justify-end">
+            <button
+              onClick={() => {
+                if (confirm(`هل أنت تأكد من حذف قسم "${activeCategory.name}" بالكامل؟`)) {
+                  deleteCategory(activeCategory.id);
+                  setSelectedCategoryId("new");
+                }
+              }}
+              className="text-xs text-red-600 dark:text-red-400 font-bold hover:underline flex items-center gap-1"
+            >
+              <span>🗑️</span>
+              <span>حذف هذا القسم بالكامل</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 3. Category Metadata Inputs */}
+      <div className="bg-white dark:bg-gray-800/80 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
+        <h4 className="font-bold text-sm text-gray-900 dark:text-white flex items-center gap-2 border-b border-gray-100 dark:border-gray-700 pb-3">
+          <span>✏️</span> {selectedCategoryId === "new" ? "بيانات القسم الجديد" : `تعديل بيانات قسم: ${catName}`}
         </h4>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-              اسم القسم
+            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
+              اسم القسم *
             </label>
             <input
               type="text"
-              placeholder="مثال: فلاتر وزيوت"
-              value={newCatName}
-              onChange={(e) => setNewCatName(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm outline-none font-medium"
+              placeholder="مثال: محركات وفلاتر"
+              value={catName}
+              onChange={(e) => setCatName(e.target.value)}
+              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-              ترتيب / أولوية الظهور (Order Number)
+            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
+              رقم الأولوية / الترتيب (Order Number)
             </label>
             <input
               type="number"
               min="1"
-              value={newCatPriority}
-              onChange={(e) => setNewCatPriority(Number(e.target.value))}
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm outline-none font-medium"
+              value={catPriority}
+              onChange={(e) => setCatPriority(Number(e.target.value))}
+              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500"
             />
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={handleAdd}
-              disabled={adding || !newCatName.trim()}
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
-            >
-              {adding ? "جاري الإضافة..." : "حفظ إضافة القسم ➕"}
-            </button>
           </div>
         </div>
 
         <div className="pt-2">
           <ImageUploader
-            label="صورة / أيقونة القسم المميزة (اختياري)"
-            image={newCatImage}
-            onUpload={(img) => setNewCatImage(img)}
+            label="صورة أو أيقونة القسم المميزة"
+            image={catImage}
+            onUpload={(img) => setCatImage(img)}
             aspect="aspect-square"
           />
         </div>
       </div>
 
-      {/* 3. Existing Categories List */}
-      <div className="space-y-3">
-        <h4 className="font-bold text-sm text-gray-900 dark:text-white flex items-center justify-between">
-          <span>📁 قائمة الأقسام الحالية ({categories.length})</span>
-          <span className="text-xs text-gray-400 font-normal">مرتبة بحسب رقم الأولوية</span>
-        </h4>
+      {/* 4. Category Products Picker & Bulk Select (منتجات القسم والتحديد الجماعي) */}
+      <div className="bg-white dark:bg-gray-800/80 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-700 pb-3">
+          <div>
+            <h4 className="font-bold text-sm text-gray-900 dark:text-white flex items-center gap-2">
+              <span>📦</span> منتجات هذا القسم (التحديد والربط الجماعي)
+            </h4>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              تم تحديد <span className="font-bold text-blue-600 dark:text-blue-400">{selectedProductIds.size}</span> من أصل <span className="font-bold">{products.length}</span> منتج لهذا القسم
+            </p>
+          </div>
 
-        {categories.length === 0 ? (
-          <div className="p-8 text-center bg-gray-50 dark:bg-gray-800/40 rounded-2xl border border-gray-200 dark:border-gray-700 text-gray-400 text-sm">
-            لا توجد أقسام معرفة بعد. يمكنك إضافة قسم جديد من النموذج أعلاه!
+          {/* Quick Action Controls */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleSelectAll}
+              className="px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 rounded-xl text-xs font-bold transition-colors flex items-center gap-1 border border-blue-200 dark:border-blue-800"
+            >
+              <span>☑️</span>
+              <span>تحديد الكل ({products.length})</span>
+            </button>
+
+            <button
+              onClick={handleDeselectAll}
+              className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
+            >
+              <span>🔳</span>
+              <span>إلغاء تحديد الكل</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Product Search Input inside Category Picker */}
+        <div>
+          <input
+            type="text"
+            placeholder="بحث وتصفية القائمة بالاسم لحصر المنتجات..."
+            value={productSearch}
+            onChange={(e) => setProductSearch(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white text-xs font-medium outline-none"
+          />
+        </div>
+
+        {/* Products Grid Checklist */}
+        {filteredProducts.length === 0 ? (
+          <div className="p-8 text-center text-gray-400 text-xs bg-gray-50 dark:bg-gray-900/50 rounded-xl">
+            لا توجد منتجات مطابقة لعملية البحث.
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {categories.map((cat) => (
-              <div
-                key={cat.id}
-                className="p-4 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-3 flex flex-col justify-between"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 flex-1">
-                    {cat.image ? (
-                      <img src={cat.image} alt={cat.name} className="w-12 h-12 rounded-xl object-cover border border-gray-200 dark:border-gray-700 shadow-sm" />
-                    ) : (
-                      <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xl font-bold border border-blue-200 dark:border-blue-800">
-                        📁
-                      </div>
-                    )}
-                    <div className="flex-1">
-                      <input
-                        type="text"
-                        value={cat.name}
-                        onChange={(e) => updateCategory(cat.id, { name: e.target.value })}
-                        className="w-full font-bold text-gray-900 dark:text-white bg-transparent border-b border-gray-200 dark:border-gray-700 focus:border-blue-500 outline-none text-sm py-1"
-                      />
-                    </div>
-                  </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-96 overflow-y-auto p-1 custom-scrollbar">
+            {filteredProducts.map((product) => {
+              const isChecked = selectedProductIds.has(product.id);
+              return (
+                <div
+                  key={product.id}
+                  onClick={() => toggleProductSelection(product.id)}
+                  className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center gap-3 select-none ${
+                    isChecked
+                      ? "border-blue-500 bg-blue-50/70 dark:bg-blue-900/30 ring-1 ring-blue-500"
+                      : "border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/40 hover:border-gray-300"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => {}} // handled by parent div onClick
+                    className="w-4 h-4 text-blue-600 rounded accent-blue-600 cursor-pointer"
+                  />
 
-                  <button
-                    onClick={() => {
-                      if (confirm(`هل أنت تأكد من حذف قسم "${cat.name}"؟`)) {
-                        deleteCategory(cat.id);
-                      }
-                    }}
-                    className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl text-xs transition-colors"
-                    title="حذف القسم"
-                  >
-                    🗑️
-                  </button>
-                </div>
+                  {product.image ? (
+                    <img src={product.image} alt="" className="w-10 h-10 rounded-lg object-cover border border-gray-200 dark:border-gray-700" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-sm">📦</div>
+                  )}
 
-                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100 dark:border-gray-700/60 items-center">
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-400 mb-1">
-                      رقم الأولوية:
-                    </label>
-                    <input
-                      type="number"
-                      value={cat.priority}
-                      onChange={(e) => updateCategory(cat.id, { priority: Number(e.target.value) })}
-                      className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900 text-xs font-bold text-gray-900 dark:text-white outline-none"
-                    />
-                  </div>
-
-                  <div className="text-left pt-3">
-                    <ImageUploader
-                      label="تغيير الصورة"
-                      image={cat.image}
-                      onUpload={(img) => updateCategory(cat.id, { image: img })}
-                      aspect="aspect-square"
-                    />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{product.name}</p>
+                    <p className="text-[11px] text-blue-600 dark:text-blue-400 font-extrabold mt-0.5">
+                      {product.retailPrice.toLocaleString()} د.ع
+                    </p>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
+      </div>
+
+      {/* 5. Save & Cancel Action Bar (أزرار الحفظ والإلغاء) */}
+      <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <button
+          onClick={handleCancel}
+          disabled={saving}
+          className="px-6 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-bold text-sm hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 transition-colors"
+        >
+          إلغاء التعديلات ❌
+        </button>
+
+        <button
+          onClick={handleSave}
+          disabled={saving || !catName.trim()}
+          className="px-8 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-lg disabled:opacity-40 transition-all flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98]"
+        >
+          {saving ? (
+            <>
+              <span className="animate-spin text-base">🔄</span>
+              <span>جاري حفظ وتحديث الربط...</span>
+            </>
+          ) : (
+            <>
+              <span>حفظ التغيرات 💾</span>
+            </>
+          )}
+        </button>
       </div>
     </div>
   );
