@@ -181,6 +181,20 @@ CREATE TABLE IF NOT EXISTS chat_cards (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS categories (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL UNIQUE,
+    image TEXT DEFAULT '',
+    priority INTEGER DEFAULT 1,
+    display_order INTEGER DEFAULT 1,
+    sort_order INTEGER DEFAULT 1,
+    keywords TEXT DEFAULT '',
+    views INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS hero_gallery (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     position INTEGER NOT NULL CHECK (position >= 0 AND position < 10),
@@ -454,6 +468,11 @@ CREATE POLICY "Authenticated insert hero gallery" ON hero_gallery FOR INSERT WIT
 CREATE POLICY "Authenticated update hero gallery" ON hero_gallery FOR UPDATE USING (auth.role() = 'authenticated');
 CREATE POLICY "Authenticated delete hero gallery" ON hero_gallery FOR DELETE USING (auth.role() = 'authenticated');
 
+DROP POLICY IF EXISTS "Anyone can view categories" ON categories;
+DROP POLICY IF EXISTS "Anyone can manage categories" ON categories;
+CREATE POLICY "Anyone can view categories" ON categories FOR SELECT USING (TRUE);
+CREATE POLICY "Anyone can manage categories" ON categories FOR ALL USING (TRUE);
+
 -- =====================
 -- 11. Storage Buckets
 -- =====================
@@ -472,6 +491,7 @@ DO $$ BEGIN CREATE POLICY "Authenticated can delete site assets" ON storage.obje
 GRANT ALL ON users TO authenticated;
 GRANT ALL ON products TO authenticated;
 GRANT ALL ON suppliers TO authenticated;
+GRANT ALL ON categories TO authenticated;
 GRANT ALL ON orders TO authenticated;
 GRANT ALL ON sales TO authenticated;
 GRANT ALL ON activity_log TO authenticated;
@@ -482,4 +502,5 @@ GRANT ALL ON chat_cards TO authenticated;
 GRANT ALL ON hero_gallery TO authenticated;
 GRANT SELECT ON products TO anon;
 GRANT SELECT ON suppliers TO anon;
+GRANT SELECT ON categories TO anon;
 GRANT SELECT ON hero_gallery TO anon;
