@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useData } from "@/lib/data-context";
 import { useSettings } from "@/lib/settings-context";
 import ImageUploader from "@/components/ImageUploader";
@@ -29,9 +29,12 @@ function helperUpdateNotes(notes: string | undefined, categoryName: string, assi
 export default function CategoriesManager() {
   const { categories, products, addCategory, updateCategory, deleteCategory, updateProduct } = useData();
   const { settings, updateSettings } = useSettings();
+  const comboboxRef = useRef<HTMLDivElement>(null);
 
-  // Mode: "new" or category id
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("new");
+  // Mode: "" (none chosen), "new" or category id
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
+  const [catSearchQuery, setCatSearchQuery] = useState<string>("");
+  const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
 
   // Form State
   const [catName, setCatName] = useState("");
@@ -49,6 +52,17 @@ export default function CategoriesManager() {
     return categories.find((c) => c.id === selectedCategoryId);
   }, [categories, selectedCategoryId]);
 
+  // Handle click outside for combobox dropdown
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (comboboxRef.current && !comboboxRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   // Load category values when selectedCategoryId changes
   useEffect(() => {
     if (selectedCategoryId === "new") {
@@ -56,12 +70,21 @@ export default function CategoriesManager() {
       setCatImage("");
       setCatPriority(categories.length + 1);
       setCatKeywords("");
+      setCatSearchQuery("");
+      setSelectedProductIds(new Set());
+    } else if (selectedCategoryId === "") {
+      setCatName("");
+      setCatImage("");
+      setCatPriority(categories.length + 1);
+      setCatKeywords("");
+      setCatSearchQuery("");
       setSelectedProductIds(new Set());
     } else if (activeCategory) {
       setCatName(activeCategory.name);
       setCatImage(activeCategory.image || "");
       setCatPriority(activeCategory.priority || 1);
       setCatKeywords(activeCategory.keywords || "");
+      setCatSearchQuery(activeCategory.name);
 
       // Find products belonging to this category
       const assigned = new Set<string>();
@@ -74,6 +97,15 @@ export default function CategoriesManager() {
     }
     setSuccessMsg(false);
   }, [selectedCategoryId, activeCategory, categories.length, products]);
+
+  // Filtered Categories List for Combobox
+  const filteredCategoriesList = useMemo(() => {
+    if (!catSearchQuery.trim()) return categories;
+    const q = catSearchQuery.trim().toLowerCase();
+    return categories.filter(
+      (c) => c.name.toLowerCase().includes(q) || (c.keywords && c.keywords.toLowerCase().includes(q))
+    );
+  }, [categories, catSearchQuery]);
 
   // Filter products by search term
   const filteredProducts = useMemo(() => {
@@ -113,7 +145,7 @@ export default function CategoriesManager() {
     try {
       let catObj: CategoryItem;
 
-      if (selectedCategoryId === "new") {
+      if (selectedCategoryId === "new" || selectedCategoryId === "") {
         catObj = await addCategory({
           name: catName.trim(),
           image: catImage,
@@ -157,17 +189,19 @@ export default function CategoriesManager() {
   };
 
   const handleCancel = () => {
-    if (selectedCategoryId === "new") {
+    if (selectedCategoryId === "new" || selectedCategoryId === "") {
       setCatName("");
       setCatImage("");
       setCatPriority(categories.length + 1);
       setCatKeywords("");
+      setCatSearchQuery("");
       setSelectedProductIds(new Set());
     } else if (activeCategory) {
       setCatName(activeCategory.name);
       setCatImage(activeCategory.image || "");
       setCatPriority(activeCategory.priority || 1);
       setCatKeywords(activeCategory.keywords || "");
+      setCatSearchQuery(activeCategory.name);
       const assigned = new Set<string>();
       products.forEach((p) => {
         if (p.notes && p.notes.toLowerCase().includes(activeCategory.name.toLowerCase())) {
@@ -218,33 +252,115 @@ export default function CategoriesManager() {
         </div>
       )}
 
-      {/* 2. Category Selector & New Category Switcher Bar */}
+      {/* 2. Searchable Combobox Category Selector & New Category Switcher Bar */}
       <div className="bg-white dark:bg-gray-800/80 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-          <div className="flex-1">
-            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 flex items-center gap-1.5">
-              <span>📂</span> اختر قسماً حالياً لتعديله أو استحضار بياناته:
+          <div ref={comboboxRef} className="relative flex-1">
+            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 flex items-center justify-between">
+              <span>📂 اختر قسماً حالياً لتعديله أو استحضار بياناته:</span>
+              {selectedCategoryId && selectedCategoryId !== "new" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategoryId("");
+                    setCatSearchQuery("");
+                  }}
+                  className="text-[11px] text-gray-400 hover:text-gray-600 underline font-normal"
+                >
+                  إلغاء التحديد
+                </button>
+              )}
             </label>
-            <select
-              value={selectedCategoryId}
-              onChange={(e) => setSelectedCategoryId(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="new">✨ [+ إنشاء وإضافة قسم جديد]</option>
-              {categories.map((c) => {
-                const count = products.filter((p) => p.notes && p.notes.toLowerCase().includes(c.name.toLowerCase())).length;
-                return (
-                  <option key={c.id} value={c.id}>
-                    📁 {c.name} (أولوية: {c.priority}) - [{count} منتج]
-                  </option>
-                );
-              })}
-            </select>
+
+            <div className="relative">
+              <input
+                type="text"
+                value={catSearchQuery}
+                onChange={(e) => {
+                  setCatSearchQuery(e.target.value);
+                  setIsDropdownOpen(true);
+                }}
+                onFocus={() => setIsDropdownOpen(true)}
+                placeholder="اختر قسماً من القائمة أو ابحث باسم القسم..."
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
+              />
+
+              {catSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCatSearchQuery("");
+                    setSelectedCategoryId("");
+                  }}
+                  className="absolute left-3 top-2.5 text-gray-400 hover:text-gray-600 text-xs font-bold"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Dropdown Options List */}
+            {isDropdownOpen && (
+              <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700 animate-fadeIn">
+                {/* Independent First Option: Create New Category */}
+                <div
+                  onClick={() => {
+                    setSelectedCategoryId("new");
+                    setIsDropdownOpen(false);
+                  }}
+                  className="p-3 text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50/70 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 cursor-pointer flex items-center gap-2"
+                >
+                  <span>✨</span>
+                  <span>[+ إنشاء وإضافة قسم جديد]</span>
+                </div>
+
+                {/* Filtered Existing Categories */}
+                {filteredCategoriesList.length > 0 ? (
+                  filteredCategoriesList.map((c) => {
+                    const count = products.filter(
+                      (p) => p.notes && p.notes.toLowerCase().includes(c.name.toLowerCase())
+                    ).length;
+                    const isSelected = selectedCategoryId === c.id;
+                    return (
+                      <div
+                        key={c.id}
+                        onClick={() => {
+                          setSelectedCategoryId(c.id);
+                          setCatSearchQuery(c.name);
+                          setIsDropdownOpen(false);
+                        }}
+                        className={`p-3 text-xs font-bold cursor-pointer flex items-center justify-between transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 ${
+                          isSelected
+                            ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                            : "text-gray-800 dark:text-gray-200"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span>📁</span>
+                          <span>{c.name}</span>
+                          <span className="text-[10px] text-gray-400 font-normal">(أولوية: {c.priority})</span>
+                        </div>
+                        <span className="text-[11px] font-semibold text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">
+                          {count} منتج
+                        </span>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="p-3 text-xs text-gray-400 text-center">
+                    لا يطابق أي قسم حالي
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex items-end">
             <button
-              onClick={() => setSelectedCategoryId("new")}
+              onClick={() => {
+                setSelectedCategoryId("new");
+                setIsDropdownOpen(false);
+              }}
               className={`w-full sm:w-auto px-5 py-2.5 rounded-xl font-bold text-xs transition-all shadow-sm flex items-center justify-center gap-2 ${
                 selectedCategoryId === "new"
                   ? "bg-blue-600 text-white ring-2 ring-blue-300"
@@ -258,7 +374,7 @@ export default function CategoriesManager() {
         </div>
 
         {/* Delete Category Button if editing an existing one */}
-        {selectedCategoryId !== "new" && activeCategory && (
+        {selectedCategoryId && selectedCategoryId !== "new" && activeCategory && (
           <div className="pt-2 border-t border-gray-100 dark:border-gray-700 flex justify-end">
             <button
               onClick={() => {
@@ -279,7 +395,7 @@ export default function CategoriesManager() {
       {/* 3. Category Metadata Inputs */}
       <div className="bg-white dark:bg-gray-800/80 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
         <h4 className="font-bold text-sm text-gray-900 dark:text-white flex items-center gap-2 border-b border-gray-100 dark:border-gray-700 pb-3">
-          <span>✏️</span> {selectedCategoryId === "new" ? "بيانات القسم الجديد" : `تعديل بيانات قسم: ${catName}`}
+          <span>✏️</span> {selectedCategoryId === "new" || !selectedCategoryId ? "بيانات القسم الجديد" : `تعديل بيانات قسم: ${catName}`}
         </h4>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
