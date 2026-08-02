@@ -5,6 +5,8 @@ export type Permission =
   | "products.create"
   | "products.edit"
   | "products.delete"
+  | "categories.view"
+  | "categories.manage"
   | "suppliers.view"
   | "suppliers.create"
   | "suppliers.edit"
@@ -34,6 +36,7 @@ export interface AdminPermissionsConfig {
 
 const MANAGER_PERMISSIONS: Permission[] = [
   "products.view", "products.create", "products.edit", "products.delete",
+  "categories.view", "categories.manage",
   "suppliers.view", "suppliers.create", "suppliers.edit", "suppliers.delete",
   "inventory.view", "inventory.edit",
   "orders.view", "orders.create", "orders.edit", "orders.delete",
@@ -47,6 +50,7 @@ const MANAGER_PERMISSIONS: Permission[] = [
 
 const DEFAULT_ADMIN_PERMISSIONS: Permission[] = [
   "products.view", "products.create", "products.edit",
+  "categories.view", "categories.manage",
   "suppliers.view",
   "inventory.view",
   "orders.view", "orders.create",
@@ -63,6 +67,8 @@ export const PERMISSION_LABELS: Record<Permission, { label: string; category: st
   "products.create": { label: "إضافة منتجات", category: "المنتجات" },
   "products.edit": { label: "تعديل المنتجات", category: "المنتجات" },
   "products.delete": { label: "حذف المنتجات", category: "المنتجات" },
+  "categories.view": { label: "عرض الأقسام والإحصائيات", category: "الأقسام" },
+  "categories.manage": { label: "إدارة وتعديل الأقسام والمنتجات", category: "الأقسام" },
   "suppliers.view": { label: "عرض الموردين", category: "الموردين" },
   "suppliers.create": { label: "إضافة موردين", category: "الموردين" },
   "suppliers.edit": { label: "تعديل الموردين", category: "الموردين" },

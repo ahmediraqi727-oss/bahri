@@ -12,6 +12,7 @@ import { UserRole } from "@/lib/types";
 const NAV_ITEMS = [
   { label: "القائمة الرئيسية", href: "/dashboard", icon: "🏠", roles: ["manager", "admin"] as UserRole[] },
   { label: "المنتجات", href: "/dashboard/products", icon: "📦", roles: ["manager", "admin"] as UserRole[] },
+  { label: "الأقسام", href: "/dashboard/settings", icon: "📂", roles: ["manager", "admin"] as UserRole[] },
   { label: "الموردين", href: "/dashboard/suppliers", icon: "🚚", roles: ["manager", "admin"] as UserRole[] },
   { label: "المخزون", href: "/dashboard/inventory", icon: "📊", roles: ["manager", "admin"] as UserRole[] },
   { label: "الطلبات", href: "/dashboard/orders", icon: "🛒", roles: ["manager", "admin"] as UserRole[] },
