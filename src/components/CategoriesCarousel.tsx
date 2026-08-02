@@ -79,23 +79,31 @@ export default function CategoriesCarousel({ selectedCategory, onSelectCategory 
 
   return (
     <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-2" dir="rtl">
+      {/* Header with Folder Icon & Title "الأقسام" */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-xl">🎞️</span>
-          <h2 className="text-base sm:text-lg font-extrabold text-gray-900 dark:text-white">
-            تصفحه حسب القسم
+          <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M19.5 21a3 3 0 0 0 3-3v-8a3 3 0 0 0-3-3h-7.854l-1.879-2.254A3 3 0 0 0 7.433 3.5H4.5a3 3 0 0 0-3 3v11.5a3 3 0 0 0 3 3h15Z" />
+            </svg>
+          </div>
+
+          <h2 className="text-lg sm:text-xl font-extrabold text-gray-900 dark:text-white">
+            الأقسام
           </h2>
+
           {selectedCategory && (
             <button
               onClick={() => onSelectCategory(null)}
-              className="text-xs text-blue-600 dark:text-blue-400 font-bold hover:underline mr-2"
+              className="text-xs text-blue-600 dark:text-blue-400 font-bold hover:underline mr-2 flex items-center gap-1 bg-blue-50 dark:bg-blue-900/30 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800"
             >
-              عرض الكل ↺
+              <span>عرض جميع المنتجات</span>
+              <span>↺</span>
             </button>
           )}
         </div>
 
-        {/* Scroll Buttons with Arrows */}
+        {/* Navigation Buttons */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => scroll("right")}
@@ -114,35 +122,19 @@ export default function CategoriesCarousel({ selectedCategory, onSelectCategory 
         </div>
       </div>
 
-      {/* Interactive Horizontal Carousel Track with Mouse & Touch Drag */}
+      {/* Interactive Horizontal Carousel Track */}
       <div
         ref={scrollRef}
         onMouseDown={handleMouseDown}
         onMouseLeave={handleMouseLeaveOrUp}
         onMouseUp={handleMouseLeaveOrUp}
         onMouseMove={handleMouseMove}
-        className={`flex items-center gap-3 overflow-x-auto py-2.5 no-scrollbar scroll-smooth cursor-grab active:cursor-grabbing select-none touch-pan-x ${
+        className={`flex items-center gap-3.5 overflow-x-auto py-2.5 no-scrollbar scroll-smooth cursor-grab active:cursor-grabbing select-none touch-pan-x ${
           isMouseDown ? "scroll-auto" : "scroll-smooth"
         }`}
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
-        {/* All Products Card */}
-        <button
-          onClick={() => {
-            if (!dragged) onSelectCategory(null);
-          }}
-          className={`flex-shrink-0 flex flex-col items-center justify-center w-24 sm:w-28 h-28 sm:h-32 p-3 rounded-2xl border-2 transition-all duration-300 ${
-            !selectedCategory
-              ? "border-blue-600 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 shadow-md scale-105"
-              : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:border-blue-300 hover:scale-102"
-          }`}
-        >
-          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-2xl mb-2">
-            🏷️
-          </div>
-          <span className="text-xs font-bold text-center line-clamp-1">جميع الأقسام</span>
-        </button>
-
+        {/* Render Actual Store Categories Directly without 'All Categories' Card */}
         {sortedCategories.map((cat) => {
           const isSelected = selectedCategory === cat.name;
           return (
