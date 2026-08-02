@@ -129,6 +129,24 @@ export default function DashboardPage() {
             </p>
           </div>
         </div>
+
+        {/* Per-Category Breakdown */}
+        {categories.length > 0 && (
+          <div className="pt-2 border-t border-blue-800/60 space-y-1.5">
+            <p className="text-[11px] font-bold text-blue-300">تفاصيل عدد المنتجات المندرجة تحت كل قسم:</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              {categories.map((c) => {
+                const count = products.filter((p) => p.notes && p.notes.toLowerCase().includes(c.name.toLowerCase())).length;
+                return (
+                  <span key={c.id} className="px-2.5 py-1 rounded-lg bg-white/10 text-white border border-white/10 text-xs font-bold flex items-center gap-1.5">
+                    <span>📁 {c.name}:</span>
+                    <span className="text-emerald-300 font-extrabold">{count} منتج</span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Quick Links Section */}
