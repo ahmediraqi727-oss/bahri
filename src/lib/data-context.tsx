@@ -86,11 +86,12 @@ function supplierToRow(supplier: Record<string, unknown>): Record<string, unknow
 }
 
 function rowToCategory(row: Record<string, unknown>): CategoryItem {
+  const prio = Number(row.priority) || Number(row.display_order) || Number(row.sort_order) || 1;
   return {
     id: row.id as string,
     name: (row.name as string) || "",
     image: (row.image as string) || "",
-    priority: Number(row.priority) || 0,
+    priority: prio,
     isActive: row.is_active !== undefined ? Boolean(row.is_active) : true,
     keywords: (row.keywords as string) || "",
     createdAt: row.created_at as string,
@@ -101,7 +102,12 @@ function categoryToRow(cat: Record<string, unknown>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if ("name" in cat) row.name = cat.name;
   if ("image" in cat) row.image = cat.image || "";
-  if ("priority" in cat) row.priority = Number(cat.priority) || 0;
+  if ("priority" in cat) {
+    const pVal = Number(cat.priority) || 1;
+    row.priority = pVal;
+    row.display_order = pVal;
+    row.sort_order = pVal;
+  }
   if ("isActive" in cat) row.is_active = Boolean(cat.isActive);
   if ("keywords" in cat) row.keywords = cat.keywords || "";
   return row;

@@ -272,7 +272,10 @@ export default function CategoriesManager() {
               )}
             </label>
 
-            <div className="relative">
+            <div
+              className="relative cursor-pointer"
+              onClick={() => setIsDropdownOpen(true)}
+            >
               <input
                 type="text"
                 value={catSearchQuery}
@@ -281,22 +284,41 @@ export default function CategoriesManager() {
                   setIsDropdownOpen(true);
                 }}
                 onFocus={() => setIsDropdownOpen(true)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsDropdownOpen(true);
+                }}
                 placeholder="اختر قسماً من القائمة أو ابحث باسم القسم..."
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
+                className="w-full px-4 py-2.5 pl-12 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400 cursor-text"
               />
 
-              {catSearchQuery && (
+              <div className="absolute left-3 top-2.5 flex items-center gap-1.5 text-gray-400">
+                {catSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCatSearchQuery("");
+                      setSelectedCategoryId("");
+                    }}
+                    className="hover:text-gray-600 text-xs font-bold px-1"
+                    title="مسح الإدخال"
+                  >
+                    ✕
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => {
-                    setCatSearchQuery("");
-                    setSelectedCategoryId("");
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsDropdownOpen((prev) => !prev);
                   }}
-                  className="absolute left-3 top-2.5 text-gray-400 hover:text-gray-600 text-xs font-bold"
+                  className="hover:text-gray-600 text-xs font-bold px-1 transition-transform"
+                  title="فتح/إغلاق القائمة"
                 >
-                  ✕
+                  {isDropdownOpen ? "▲" : "▼"}
                 </button>
-              )}
+              </div>
             </div>
 
             {/* Dropdown Options List */}
