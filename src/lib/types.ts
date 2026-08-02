@@ -164,3 +164,24 @@ export function getCategoryDisplayImage(cat: CategoryItem, products: Product[]):
   return "";
 }
 
+export interface CustomerRecord {
+  id: string;
+  visitorId: string;
+  name: string;
+  phone: string;
+  city: string;
+  governorate: string;
+  address: string;
+  email: string;
+  userId?: string;
+  deviceType: string;
+  visitCount: number;
+  lastActiveAt: string;
+  visitedPages: string[];
+  isBlocked: boolean;
+  isRegistered: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+

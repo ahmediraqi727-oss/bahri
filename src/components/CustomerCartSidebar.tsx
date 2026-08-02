@@ -5,6 +5,7 @@ import { useCart } from "@/lib/cart-context";
 import { useSettings } from "@/lib/settings-context";
 import { useNotifications } from "@/lib/notifications";
 import { useActivityLog } from "@/lib/activity-log";
+import { updateGuestIdentity } from "@/lib/visitor-tracker";
 import { Order } from "@/lib/order-types";
 import { createOrderAndNotify } from "@/lib/order-helpers";
 import { supabase } from "@/lib/supabase-client";
@@ -67,6 +68,14 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
   const recordOrderAndNotify = async (contactMethod: string) => {
     setSubmitting(true);
     try {
+      // Automatically upgrade Anonymous guest ("مجهول X") to identified customer in database
+      await updateGuestIdentity({
+        name: name.trim(),
+        phone: phone.trim(),
+        governorate: address.trim(),
+        address: address.trim(),
+      });
+
       const createdOrder = await createOrderAndNotify({
         customerName: name,
         customerPhone: phone,

@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth-context";
 import ImageSearch from "@/components/ImageSearch";
 import CustomerCartSidebar from "@/components/CustomerCartSidebar";
 import CategoriesCarousel from "@/components/CategoriesCarousel";
+import GuestWelcomeModal from "@/components/GuestWelcomeModal";
 import { supabase } from "@/lib/supabase-client";
 import { useLang, Lang } from "@/lib/lang-context";
 
@@ -589,6 +590,9 @@ export default function Home() {
 
       {/* Customer Cart Drawer */}
       <CustomerCartSidebar isOpen={cartOpen} onClose={() => setCartOpen(false)} />
+
+      {/* Guest Welcome Modal */}
+      <GuestWelcomeModal />
     </div>
   );
 }

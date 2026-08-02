@@ -215,6 +215,27 @@ CREATE TABLE IF NOT EXISTS hero_gallery (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS customers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    visitor_id TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    phone TEXT DEFAULT '',
+    city TEXT DEFAULT '',
+    governorate TEXT DEFAULT '',
+    address TEXT DEFAULT '',
+    email TEXT DEFAULT '',
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    device_type TEXT DEFAULT 'Desktop',
+    visit_count INTEGER DEFAULT 1,
+    last_active_at TIMESTAMPTZ DEFAULT NOW(),
+    visited_pages JSONB DEFAULT '[]',
+    is_blocked BOOLEAN DEFAULT FALSE,
+    is_registered BOOLEAN DEFAULT FALSE,
+    notes TEXT DEFAULT '',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- =====================
 -- 4. Indexes
 -- =====================
