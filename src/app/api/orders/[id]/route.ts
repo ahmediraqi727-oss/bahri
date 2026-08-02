@@ -1,10 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase-client";
 
-export async function PUT(request: Request, context: { params: Promise<{ id: string }> | { id: string } }) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const paramsResolved = await Promise.resolve(context.params);
-    const id = paramsResolved.id;
+    const { id } = await params;
     const body = await request.json();
 
     const {
@@ -59,10 +61,12 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   }
 }
 
-export async function GET(request: Request, context: { params: Promise<{ id: string }> | { id: string } }) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const paramsResolved = await Promise.resolve(context.params);
-    const id = paramsResolved.id;
+    const { id } = await params;
     const { data, error } = await supabase.from("orders").select("*").eq("id", id).maybeSingle();
     if (error) {
       console.error("[GET /api/orders/[id]] Supabase Error:", error);

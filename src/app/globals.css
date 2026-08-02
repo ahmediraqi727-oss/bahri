@@ -1,6 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=Tajawal:wght@300;400;500;700;800;900&family=Almarai:wght@300;400;700;800&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Noto+Sans+Arabic:wght@300;400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 
+/* Enable class-based dark mode in Tailwind CSS v4 */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --primary: #2563eb;
   --secondary: #7c3aed;
@@ -21,26 +24,39 @@ html {
   transition: filter 0.3s ease, background-color 0.3s ease, color 0.3s ease;
 }
 
-.dark {
+/* Global Dark Mode Base & Color Scheme */
+html.dark, .dark {
   --background: #0f172a;
   --foreground: #f8fafc;
   color-scheme: dark;
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+}
+
+html.dark body, .dark body {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
 }
 
 html.eye-care {
   filter: sepia(0.35) contrast(0.95) brightness(0.95);
 }
 
+/* Scrollbar Dark Mode Styling */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--primary) transparent;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-family, 'Cairo', Arial, Helvetica, sans-serif);
-  font-size: var(--font-size-base, 16px);
+/* Form Controls Dark Mode Adjustments */
+.dark input[type="text"],
+.dark input[type="number"],
+.dark input[type="email"],
+.dark input[type="password"],
+.dark input[type="search"],
+.dark select,
+.dark textarea {
+  color-scheme: dark;
 }
 
 input[type="color"] {
