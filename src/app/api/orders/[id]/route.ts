@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase-client";
 
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
+export async function PUT(request: Request, context: { params: Promise<{ id: string }> | { id: string } }) {
   try {
-    const id = params.id;
+    const paramsResolved = await Promise.resolve(context.params);
+    const id = paramsResolved.id;
     const body = await request.json();
 
     const {
@@ -58,9 +59,10 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   }
 }
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, context: { params: Promise<{ id: string }> | { id: string } }) {
   try {
-    const id = params.id;
+    const paramsResolved = await Promise.resolve(context.params);
+    const id = paramsResolved.id;
     const { data, error } = await supabase.from("orders").select("*").eq("id", id).maybeSingle();
     if (error) {
       console.error("[GET /api/orders/[id]] Supabase Error:", error);
