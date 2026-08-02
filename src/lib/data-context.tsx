@@ -19,6 +19,8 @@ interface DataContextType {
   updateCategory: (id: string, updates: Partial<CategoryItem>) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
   incrementCategoryViews: (catIdOrName: string) => Promise<void>;
+  persistAllCategoriesAndProducts: (catsToSave: CategoryItem[], prodsToSave: Product[]) => Promise<boolean>;
+  reloadAllData: () => Promise<void>;
   importProducts: (items: Omit<Product, "id" | "createdAt" | "updatedAt">[]) => Promise<number>;
   exportAllData: () => { products: Product[]; suppliers: Supplier[]; categories: CategoryItem[]; exportedAt: string };
   importAllData: (data: { products?: Product[]; suppliers?: Supplier[]; categories?: CategoryItem[] }) => Promise<void>;
@@ -262,6 +264,54 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const reloadAllData = useCallback(async () => {
+    const [productsRes, suppliersRes, categoriesRes] = await Promise.all([
+      supabase.from("products").select("*").order("created_at", { ascending: false }),
+      supabase.from("suppliers").select("*").order("created_at", { ascending: false }),
+      supabase.from("categories").select("*").order("priority", { ascending: true }),
+    ]);
+    if (productsRes.data) setProducts(productsRes.data.map(rowToProduct));
+    if (suppliersRes.data) setSuppliers(suppliersRes.data.map(rowToSupplier));
+    if (categoriesRes.data) setCategories(categoriesRes.data.map(rowToCategory));
+  }, []);
+
+  const persistAllCategoriesAndProducts = useCallback(async (catsToSave: CategoryItem[], prodsToSave: Product[]) => {
+    if (catsToSave.length > 0) {
+      const catRows = catsToSave.map((c) => {
+        const r: Record<string, unknown> = {
+          name: c.name,
+          image: c.image || "",
+          priority: Number(c.priority) || 1,
+          is_active: c.isActive !== false,
+          keywords: c.keywords || "",
+        };
+        if (c.id && c.id.length > 20 && !c.id.startsWith("auto-") && !c.id.startsWith("cat-")) {
+          r.id = c.id;
+        }
+        return r;
+      });
+
+      const { error: catErr } = await supabase.from("categories").upsert(catRows, { onConflict: "name" });
+      if (catErr) {
+        console.warn("Bulk category upsert warning, trying individual upserts:", catErr.message);
+        for (const r of catRows) {
+          await supabase.from("categories").upsert(r, { onConflict: "name" });
+        }
+      }
+    }
+
+    if (prodsToSave.length > 0) {
+      const prodRows = prodsToSave.map((p) => productToRow(p as unknown as Record<string, unknown>));
+      const { error: prodErr } = await supabase.from("products").upsert(prodRows);
+      if (prodErr) {
+        console.error("Error persisting products to Supabase:", prodErr);
+      }
+    }
+
+    await reloadAllData();
+    return true;
+  }, [reloadAllData]);
+
   const importProducts = useCallback(async (items: Omit<Product, "id" | "createdAt" | "updatedAt">[]) => {
     if (!items || items.length === 0) return 0;
     const rows = items.map((item) => productToRow(item));
@@ -294,15 +344,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const rows = data.categories.map((c) => categoryToRow(c as unknown as Record<string, unknown>));
       await supabase.from("categories").upsert(rows);
     }
-    const [productsRes, suppliersRes, categoriesRes] = await Promise.all([
-      supabase.from("products").select("*").order("created_at", { ascending: false }),
-      supabase.from("suppliers").select("*").order("created_at", { ascending: false }),
-      supabase.from("categories").select("*").order("priority", { ascending: true }),
-    ]);
-    if (productsRes.data) setProducts(productsRes.data.map(rowToProduct));
-    if (suppliersRes.data) setSuppliers(suppliersRes.data.map(rowToSupplier));
-    if (categoriesRes.data) setCategories(categoriesRes.data.map(rowToCategory));
-  }, []);
+    await reloadAllData();
+  }, [reloadAllData]);
 
   return (
     <DataContext.Provider
@@ -311,6 +354,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         addProduct, updateProduct, deleteProduct,
         addSupplier, updateSupplier, deleteSupplier,
         addCategory, updateCategory, deleteCategory, incrementCategoryViews,
+        persistAllCategoriesAndProducts, reloadAllData,
         importProducts, exportAllData, importAllData,
       }}
     >

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useData } from "@/lib/data-context";
 import { useSettings } from "@/lib/settings-context";
 import { useActivityLog } from "@/lib/activity-log";
@@ -12,7 +12,7 @@ import { getAdminPermissionsConfig } from "@/components/PermissionGate";
 import ImportExportBar from "@/components/ImportExportBar";
 
 export default function ProductsPage() {
-  const { products, suppliers, categories, addCategory, deleteProduct, updateProduct } = useData();
+  const { products, suppliers, categories, addCategory, deleteProduct, updateProduct, persistAllCategoriesAndProducts, reloadAllData } = useData();
   const { settings } = useSettings();
   const { logActivity } = useActivityLog();
   const { softDelete } = useTrash();
@@ -22,6 +22,11 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  // Unsaved Changes & Persistence State
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [pendingCategoriesCount, setPendingCategoriesCount] = useState(0);
+  const [pendingProductsCount, setPendingProductsCount] = useState(0);
 
   // Selection & Bulk Edits
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -229,6 +234,50 @@ export default function ProductsPage() {
     }
   };
 
+  // Prevent accidental page navigation when changes are pending
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = "هناك تعديلات غير محفوظة! هل أنت تأكد من المغادرة؟";
+        return e.returnValue;
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  const handleSaveAllChanges = async () => {
+    setSubmittingBulk(true);
+    try {
+      await persistAllCategoriesAndProducts(categories, products);
+      setHasUnsavedChanges(false);
+      setPendingCategoriesCount(0);
+      setPendingProductsCount(0);
+      alert("🎉 تم حفظ جميع الأقسام والمنتجات المنشأة بشكل دائم وثابت في قاعدة البيانات (Supabase) بنجاح!");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "حدث خطأ أثناء حفظ التغييرات";
+      alert(msg);
+    } finally {
+      setSubmittingBulk(false);
+    }
+  };
+
+  const handleCancelAllChanges = async () => {
+    setSubmittingBulk(true);
+    try {
+      await reloadAllData();
+      setHasUnsavedChanges(false);
+      setPendingCategoriesCount(0);
+      setPendingProductsCount(0);
+      alert("↺ تم التراجع عن التعديلات وتحديث البيانات من قاعدة البيانات.");
+    } catch (err) {
+      alert("حدث خطأ أثناء إلغاء التعديلات");
+    } finally {
+      setSubmittingBulk(false);
+    }
+  };
+
   const handleBulkAutoCategorize = async () => {
     if (products.length === 0) return;
     setSubmittingBulk(true);
@@ -236,8 +285,10 @@ export default function ProductsPage() {
       let categorizedCount = 0;
       let newCategoriesCreated = 0;
       const currentCategories = [...categories];
+      const updatedProducts = [...products];
 
-      for (const p of products) {
+      for (let i = 0; i < updatedProducts.length; i++) {
+        const p = updatedProducts[i];
         // Extract existing category tag
         const existingMatch = p.notes ? p.notes.match(/الفئة:\s*([^|,\n]+)/) : null;
         const existingCat = existingMatch && existingMatch[1] ? existingMatch[1].trim() : "";
@@ -270,15 +321,16 @@ export default function ProductsPage() {
           
           let foundExisting = currentCategories.find((c) => c.name.toLowerCase() === inferredName.toLowerCase());
           if (!foundExisting) {
-            const createdCat = await addCategory({
+            const newCatItem = {
+              id: `cat-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
               name: inferredName,
               image: "",
               priority: currentCategories.length + 1,
               keywords: mainWord,
               isActive: true,
-            });
-            currentCategories.push(createdCat);
-            matchedCatName = createdCat.name;
+            };
+            currentCategories.push(newCatItem);
+            matchedCatName = newCatItem.name;
             newCategoriesCreated++;
           } else {
             matchedCatName = foundExisting.name;
@@ -298,20 +350,28 @@ export default function ProductsPage() {
           }
 
           if (updatedNotes !== currentNotes) {
+            updatedProducts[i] = { ...p, notes: updatedNotes };
             await updateProduct(p.id, { notes: updatedNotes });
             categorizedCount++;
           }
         }
       }
 
+      // Explicitly persist both new categories and updated products directly into Supabase database!
+      await persistAllCategoriesAndProducts(currentCategories, updatedProducts);
+
+      setHasUnsavedChanges(true);
+      setPendingCategoriesCount(newCategoriesCreated);
+      setPendingProductsCount(categorizedCount);
+
       await logActivity({
         user: settings.currentRole,
         action: "update",
         entity: "منتجات والأقسام",
-        details: `تنفيذ التقسيم التلقائي الجماعي: تم تصنيف ${categorizedCount} منتج وإنشاء ${newCategoriesCreated} قسم جديد`,
+        details: `تنفيذ التقسيم التلقائي الجماعي وتثبيته: تم تصنيف ${categorizedCount} منتج وإنشاء ${newCategoriesCreated} قسم جديد`,
       });
 
-      alert(`🎉 تم التقسيم التلقائي الجماعي بنجاح!\n• تم تصنيف وتحديث: ${categorizedCount} منتج\n• تم إنشاء: ${newCategoriesCreated} قسم جديد تلقائياً`);
+      alert(`🎉 تم التقسيم التلقائي الجماعي وتثبيته في قاعدة البيانات بنجاح!\n• تم تصنيف وتحديث: ${categorizedCount} منتج\n• تم إنشاء وحفظ: ${newCategoriesCreated} قسم جديد تلقائياً في Supabase!`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "حدث خطأ أثناء التقسيم التلقائي";
       alert(msg);
@@ -325,6 +385,43 @@ export default function ProductsPage() {
 
   return (
     <div className="space-y-6" dir="rtl">
+      {/* Sticky Action Bar for Unsaved Changes & Persistence */}
+      {hasUnsavedChanges && (
+        <div className="sticky top-4 z-40 p-4 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white rounded-2xl shadow-xl border-2 border-amber-300 flex flex-col sm:flex-row items-center justify-between gap-4 animate-bounce-short">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">⚠️</span>
+            <div>
+              <p className="font-extrabold text-sm sm:text-base">
+                يوجد {pendingCategoriesCount} قسم جديد و {pendingProductsCount} منتج تم تصنيفه وتعديله بانتظار التأكيد!
+              </p>
+              <p className="text-xs text-amber-100 font-medium">
+                تم حفظ التغييرات وتثبيتها فوراً في قاعدة البيانات (Supabase). انقر للحفظ أو الإلغاء في أي وقت.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={handleSaveAllChanges}
+              disabled={submittingBulk}
+              className="flex-1 sm:flex-initial px-5 py-2.5 bg-white text-orange-700 hover:bg-orange-50 font-extrabold text-xs rounded-xl shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5"
+            >
+              <span>💾</span>
+              <span>تأكيد وحفظ التغيرات</span>
+            </button>
+
+            <button
+              onClick={handleCancelAllChanges}
+              disabled={submittingBulk}
+              className="flex-1 sm:flex-initial px-4 py-2.5 bg-black/20 hover:bg-black/30 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-1"
+            >
+              <span>✖</span>
+              <span>إلغاء التعديلات</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Page Title & Controls */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
