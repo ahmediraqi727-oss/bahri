@@ -9,7 +9,7 @@ import { useActivityLog } from "@/lib/activity-log";
 import { CustomerRecord } from "@/lib/types";
 import { rowToCustomer } from "@/lib/visitor-tracker";
 
-type FilterTab = "all" | "known" | "anonymous" | "registered" | "blocked";
+type FilterTab = "all" | "known" | "anonymous" | "registered" | "blocked" | "suspicious";
 
 export default function CustomersPage() {
   const { settings } = useSettings();
@@ -92,6 +92,8 @@ export default function CustomersPage() {
       list = list.filter((c) => c.isRegistered || c.email);
     } else if (activeTab === "blocked") {
       list = list.filter((c) => c.isBlocked);
+    } else if (activeTab === "suspicious") {
+      list = list.filter((c) => c.isSuspicious);
     }
 
     // Filter by Search Query
@@ -110,10 +112,14 @@ export default function CustomersPage() {
     }
 
     // Priority Sorting:
-    // 1. Identified / Known Names at TOP
-    // 2. Registered Users next
-    // 3. Anonymous ("مجهول X") at BOTTOM
+    // 1. Suspicious & Blocked Users FIRST
+    // 2. Identified / Known Names
+    // 3. Registered Users
+    // 4. Anonymous ("مجهول X")
     return list.sort((a, b) => {
+      if (a.isSuspicious && !b.isSuspicious) return -1;
+      if (!a.isSuspicious && b.isSuspicious) return 1;
+
       const aIsAnon = a.name.startsWith("مجهول");
       const bIsAnon = b.name.startsWith("مجهول");
 
@@ -133,6 +139,7 @@ export default function CustomersPage() {
   const anonCount = customers.filter((c) => !c.name || c.name.startsWith("مجهول")).length;
   const registeredCount = customers.filter((c) => c.isRegistered || c.email).length;
   const blockedCount = customers.filter((c) => c.isBlocked).length;
+  const suspiciousCount = customers.filter((c) => c.isSuspicious).length;
 
   // Toggle Selection
   const toggleSelectAll = () => {
@@ -258,7 +265,7 @@ export default function CustomersPage() {
       </div>
 
       {/* Analytics Counter Cards Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
         <div className="bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm text-center">
           <span className="block text-xs font-bold text-gray-500 dark:text-gray-400">إجمالي الزوار</span>
           <span className="text-xl sm:text-2xl font-extrabold text-blue-600 dark:text-blue-400 mt-1 block">
@@ -287,10 +294,17 @@ export default function CustomersPage() {
           </span>
         </div>
 
-        <div className="bg-red-50/60 dark:bg-red-950/30 p-4 rounded-2xl border border-red-200 dark:border-red-800 shadow-sm text-center col-span-2 sm:col-span-1">
+        <div className="bg-red-50/60 dark:bg-red-950/30 p-4 rounded-2xl border border-red-200 dark:border-red-800 shadow-sm text-center">
           <span className="block text-xs font-bold text-red-700 dark:text-red-300">محظورون</span>
           <span className="text-xl sm:text-2xl font-extrabold text-red-600 dark:text-red-400 mt-1 block">
             {blockedCount}
+          </span>
+        </div>
+
+        <div className="bg-rose-500/10 dark:bg-rose-950/40 p-4 rounded-2xl border border-rose-300 dark:border-rose-800 shadow-sm text-center">
+          <span className="block text-xs font-bold text-rose-700 dark:text-rose-300">نشاط مشبوه ⚠️</span>
+          <span className="text-xl sm:text-2xl font-extrabold text-rose-600 dark:text-rose-400 mt-1 block">
+            {suspiciousCount}
           </span>
         </div>
       </div>
@@ -308,6 +322,7 @@ export default function CustomersPage() {
                 { id: "anonymous", label: `مجهول (${anonCount})` },
                 { id: "registered", label: `مسجل (${registeredCount})` },
                 { id: "blocked", label: `محظور (${blockedCount})` },
+                { id: "suspicious", label: `نشاط مشبوه ⚠️ (${suspiciousCount})` },
               ] as { id: FilterTab; label: string }[]
             ).map((tab) => (
               <button
@@ -382,7 +397,9 @@ export default function CustomersPage() {
                       key={c.id}
                       className={`hover:bg-gray-50/80 dark:hover:bg-gray-800/60 transition-colors ${
                         isSelected ? "bg-blue-50/50 dark:bg-blue-950/20" : ""
-                      } ${c.isBlocked ? "opacity-60 bg-red-50/30 dark:bg-red-950/20" : ""}`}
+                      } ${c.isBlocked ? "opacity-60 bg-red-50/30 dark:bg-red-950/20" : ""} ${
+                        c.isSuspicious ? "bg-amber-50/30 dark:bg-amber-950/20" : ""
+                      }`}
                     >
                       <td className="p-4 text-center">
                         <input
@@ -397,20 +414,39 @@ export default function CustomersPage() {
                         <div className="flex items-center gap-3">
                           <div
                             className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white text-sm font-bold shadow-sm ${
-                              isAnon
+                              c.isSuspicious
+                                ? "bg-red-600 animate-pulse"
+                                : isAnon
                                 ? "bg-gray-500 dark:bg-gray-700"
                                 : c.isRegistered
                                 ? "bg-gradient-to-br from-purple-600 to-indigo-600"
                                 : "bg-gradient-to-br from-emerald-600 to-blue-600"
                             }`}
                           >
-                            {isAnon ? "👤" : c.name.charAt(0)}
+                            {c.isSuspicious ? "⚠️" : isAnon ? "👤" : c.name.charAt(0)}
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-extrabold text-gray-900 dark:text-white text-sm">
+                              <span
+                                className={`font-extrabold text-sm ${
+                                  c.isSuspicious
+                                    ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/60 px-2 py-0.5 rounded-lg border border-red-200 dark:border-red-800"
+                                    : "text-gray-900 dark:text-white"
+                                }`}
+                              >
                                 {c.name}
                               </span>
+
+                              {c.isSuspicious && (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-500 text-white rounded-md text-[10px] font-bold shadow-sm cursor-help"
+                                  title="قام هذا الزائر بتغيير بياناته أكثر من 3 مرات"
+                                >
+                                  <span>⚠️</span>
+                                  <span>نشاط مشبوه</span>
+                                </span>
+                              )}
+
                               {c.isBlocked && (
                                 <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300 rounded-md text-[10px] font-bold">
                                   محظور 🚫
@@ -532,6 +568,46 @@ export default function CustomersPage() {
               </div>
               <button onClick={() => setShowDetailModal(false)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
             </div>
+
+            {/* Suspicious Warning Alert Banner */}
+            {selectedCustomer.isSuspicious && (
+              <div className="p-3 bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 rounded-2xl flex items-start gap-2.5">
+                <span className="text-xl">⚠️</span>
+                <div>
+                  <h4 className="text-xs font-extrabold text-red-700 dark:text-red-300">
+                    تنبيه أمني: تغيير البيانات المتكرر!
+                  </h4>
+                  <p className="text-[11px] text-red-600 dark:text-red-400 mt-0.5">
+                    قام هذا الزائر بتغيير اسمه أو هاتفه أو عنوانه {selectedCustomer.changeCount || selectedCustomer.nameHistory.length} مرات عبر الجلسات المتتابعة.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Historical Data Changes List */}
+            {(selectedCustomer.nameHistory.length > 0 || selectedCustomer.phoneHistory.length > 0 || selectedCustomer.addressHistory.length > 0) && (
+              <div className="p-3 bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl space-y-2 text-right">
+                <h4 className="text-xs font-extrabold text-amber-800 dark:text-amber-300 flex items-center gap-1">
+                  <span>📜</span>
+                  <span>سجل التغيرات والبيانات المستعملة:</span>
+                </h4>
+                {selectedCustomer.nameHistory.length > 0 && (
+                  <p className="text-xs text-gray-700 dark:text-gray-300">
+                    <span className="font-bold text-amber-700 dark:text-amber-400">الأسماء المستعملة:</span> {selectedCustomer.nameHistory.join(" ، ")}
+                  </p>
+                )}
+                {selectedCustomer.phoneHistory.length > 0 && (
+                  <p className="text-xs text-gray-700 dark:text-gray-300" dir="ltr">
+                    <span className="font-bold text-amber-700 dark:text-amber-400" dir="rtl">الهواتف:</span> {selectedCustomer.phoneHistory.join(" ، ")}
+                  </p>
+                )}
+                {selectedCustomer.addressHistory.length > 0 && (
+                  <p className="text-xs text-gray-700 dark:text-gray-300">
+                    <span className="font-bold text-amber-700 dark:text-amber-400">العناوين:</span> {selectedCustomer.addressHistory.join(" ، ")}
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">

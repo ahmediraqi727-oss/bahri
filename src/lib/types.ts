@@ -180,6 +180,11 @@ export interface CustomerRecord {
   visitedPages: string[];
   isBlocked: boolean;
   isRegistered: boolean;
+  isSuspicious: boolean;
+  changeCount: number;
+  nameHistory: string[];
+  phoneHistory: string[];
+  addressHistory: string[];
   notes?: string;
   createdAt: string;
   updatedAt: string;

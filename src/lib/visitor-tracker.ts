@@ -126,21 +126,65 @@ export async function updateGuestIdentity(identity: {
       .eq("visitor_id", visitorId)
       .maybeSingle();
 
+    let nameHistory: string[] = Array.isArray(existing?.name_history) ? existing.name_history : [];
+    let phoneHistory: string[] = Array.isArray(existing?.phone_history) ? existing.phone_history : [];
+    let addressHistory: string[] = Array.isArray(existing?.address_history) ? existing.address_history : [];
+    let currentChangeCount = Number(existing?.change_count) || 0;
+
+    let hasDataChanged = false;
+
     const updatePayload: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
 
     if (identity.name && identity.name.trim() && !identity.name.startsWith("مجهول")) {
-      updatePayload.name = identity.name.trim();
+      const cleanName = identity.name.trim();
+      updatePayload.name = cleanName;
+      if (!nameHistory.includes(cleanName)) {
+        nameHistory = [...nameHistory, cleanName];
+        hasDataChanged = true;
+      }
     }
-    if (identity.phone) updatePayload.phone = identity.phone.trim();
+
+    if (identity.phone && identity.phone.trim()) {
+      const cleanPhone = identity.phone.trim();
+      updatePayload.phone = cleanPhone;
+      if (!phoneHistory.includes(cleanPhone)) {
+        phoneHistory = [...phoneHistory, cleanPhone];
+        hasDataChanged = true;
+      }
+    }
+
     if (identity.city) updatePayload.city = identity.city.trim();
-    if (identity.governorate) updatePayload.governorate = identity.governorate.trim();
-    if (identity.address) updatePayload.address = identity.address.trim();
+
+    const newAddress = (identity.governorate || identity.address || "").trim();
+    if (newAddress) {
+      updatePayload.governorate = identity.governorate?.trim() || newAddress;
+      updatePayload.address = identity.address?.trim() || newAddress;
+      if (!addressHistory.includes(newAddress)) {
+        addressHistory = [...addressHistory, newAddress];
+        hasDataChanged = true;
+      }
+    }
+
     if (identity.email) {
       updatePayload.email = identity.email.trim();
       updatePayload.is_registered = true;
     }
+
+    if (hasDataChanged) {
+      currentChangeCount += 1;
+    }
+
+    // Flag visitor as suspicious if changed details >= 3 times or total distinct entries >= 3
+    const totalDistinctEntries = nameHistory.length + phoneHistory.length + addressHistory.length;
+    const isSuspicious = currentChangeCount >= 3 || totalDistinctEntries >= 3 || nameHistory.length >= 3 || phoneHistory.length >= 3;
+
+    updatePayload.name_history = nameHistory;
+    updatePayload.phone_history = phoneHistory;
+    updatePayload.address_history = addressHistory;
+    updatePayload.change_count = currentChangeCount;
+    updatePayload.is_suspicious = isSuspicious;
 
     if (existing) {
       await supabase.from("customers").update(updatePayload).eq("id", existing.id);
@@ -163,6 +207,11 @@ export async function updateGuestIdentity(identity: {
         visited_pages: ["/"],
         is_blocked: false,
         is_registered: Boolean(identity.email),
+        is_suspicious: isSuspicious,
+        change_count: currentChangeCount,
+        name_history: nameHistory,
+        phone_history: phoneHistory,
+        address_history: addressHistory,
       });
     }
 
@@ -190,6 +239,11 @@ export function rowToCustomer(row: Record<string, unknown>): CustomerRecord {
     visitedPages: Array.isArray(row.visited_pages) ? (row.visited_pages as string[]) : [],
     isBlocked: Boolean(row.is_blocked),
     isRegistered: Boolean(row.is_registered),
+    isSuspicious: Boolean(row.is_suspicious),
+    changeCount: Number(row.change_count) || 0,
+    nameHistory: Array.isArray(row.name_history) ? (row.name_history as string[]) : [],
+    phoneHistory: Array.isArray(row.phone_history) ? (row.phone_history as string[]) : [],
+    addressHistory: Array.isArray(row.address_history) ? (row.address_history as string[]) : [],
     notes: (row.notes as string) || "",
     createdAt: (row.created_at as string) || new Date().toISOString(),
     updatedAt: (row.updated_at as string) || new Date().toISOString(),

@@ -231,6 +231,11 @@ CREATE TABLE IF NOT EXISTS customers (
     visited_pages JSONB DEFAULT '[]',
     is_blocked BOOLEAN DEFAULT FALSE,
     is_registered BOOLEAN DEFAULT FALSE,
+    is_suspicious BOOLEAN DEFAULT FALSE,
+    change_count INTEGER DEFAULT 0,
+    name_history JSONB DEFAULT '[]',
+    phone_history JSONB DEFAULT '[]',
+    address_history JSONB DEFAULT '[]',
     notes TEXT DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
