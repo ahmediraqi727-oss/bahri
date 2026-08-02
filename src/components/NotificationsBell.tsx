@@ -127,6 +127,14 @@ export default function NotificationsBell() {
                 ))
               )}
             </div>
+
+            <Link
+              href="/dashboard/orders"
+              onClick={() => setOpen(false)}
+              className="block w-full py-2.5 bg-gray-50 dark:bg-gray-800 text-blue-600 dark:text-blue-400 font-bold text-center text-xs border-t border-gray-200 dark:border-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+            >
+              🛒 الانتقال إلى صفحة الطلبات والتنبيهات ➔
+            </Link>
           </div>
         )}
       </div>
@@ -183,7 +191,17 @@ export default function NotificationsBell() {
                 </div>
               </div>
 
-              {selectedNotification.productId && (
+              {selectedNotification.type === "info" || selectedNotification.title.includes("طلب") ? (
+                <div className="pt-2">
+                  <Link
+                    href="/dashboard/orders"
+                    onClick={() => setSelectedNotification(null)}
+                    className="w-full py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-center hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 shadow-sm text-sm"
+                  >
+                    🛒 الانتقال فوراً إلى صفحة الطلبات
+                  </Link>
+                </div>
+              ) : selectedNotification.productId ? (
                 <div className="pt-2">
                   <Link
                     href="/dashboard/inventory"
@@ -193,7 +211,7 @@ export default function NotificationsBell() {
                     📦 الانتقال إلى المخزون والمنتجات
                   </Link>
                 </div>
-              )}
+              ) : null}
             </div>
 
             {/* Footer */}

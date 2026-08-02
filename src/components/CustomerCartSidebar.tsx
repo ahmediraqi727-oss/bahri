@@ -6,6 +6,7 @@ import { useSettings } from "@/lib/settings-context";
 import { useNotifications } from "@/lib/notifications";
 import { useActivityLog } from "@/lib/activity-log";
 import { Order } from "@/lib/order-types";
+import { createOrderAndNotify } from "@/lib/order-helpers";
 import { supabase } from "@/lib/supabase-client";
 
 interface CustomerCartSidebarProps {
@@ -60,46 +61,21 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
   const recordOrderAndNotify = async (contactMethod: string) => {
     setSubmitting(true);
     try {
-      const orderId = crypto.randomUUID();
-      const orderData: Order = {
-        id: orderId,
+      const createdOrder = await createOrderAndNotify({
         customerName: name,
         customerPhone: phone,
         customerAddress: address,
         items: [...items],
         total,
-        status: "pending",
         notes,
-        createdAt: new Date().toISOString(),
-      };
-
-      // 1. Insert order into Supabase database
-      await supabase.from("orders").insert({
-        id: orderData.id,
-        customer_name: orderData.customerName,
-        customer_phone: orderData.customerPhone,
-        customer_address: orderData.customerAddress,
-        items: orderData.items,
-        total: orderData.total,
-        status: orderData.status,
-        notes: orderData.notes,
-        created_at: orderData.createdAt,
+        platform: contactMethod,
       });
 
-      // 2. Real-time notification for Admin / Manager
-      await addNotification({
-        type: "info",
-        title: `🛒 طلب جديد عبر (${contactMethod})`,
-        message: `طلب من ${name} | الهاتف: ${phone} | المحافظة والعنوان: ${address} | عدد المنتجات: ${items.length} | الإجمالي: ${total.toLocaleString()} د.ع`,
-        productId: orderId,
-      });
-
-      // 3. Log Activity
       await logActivity({
         user: "customer",
         action: "create",
         entity: "طلب زبون",
-        entityId: orderId,
+        entityId: createdOrder.id,
         details: `طلب من ${name} عبر ${contactMethod} - الهاتف: ${phone} - الإجمالي: ${total.toLocaleString()} د.ع`,
       });
     } catch (err) {

@@ -9,6 +9,7 @@ import { useData } from "@/lib/data-context";
 import { useSales } from "@/lib/sales-context";
 import { useAuth } from "@/lib/auth-context";
 import { Order } from "@/lib/order-types";
+import { createOrderAndNotify } from "@/lib/order-helpers";
 import jsPDF from "jspdf";
 
 interface CartSidebarProps {
@@ -41,17 +42,15 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
     setSubmitting(true);
 
     try {
-      const order: Order = {
-        id: crypto.randomUUID(),
+      const createdOrder = await createOrderAndNotify({
         customerName: name,
         customerPhone: phone,
         customerAddress: address,
         items: [...items],
         total,
-        status: "pending",
         notes,
-        createdAt: new Date().toISOString(),
-      };
+        platform: "تأكيد مباشر",
+      });
 
       const saleItems = items.map((item) => {
         const product = products.find((p) => p.id === item.productId);
@@ -79,22 +78,11 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
       }
 
       try {
-        await addNotification({
-          type: "info",
-          title: "طلب جديد! 🛒",
-          message: `طلب من ${name} - ${items.length} منتج - ${total.toLocaleString()} د.ع | هاتف: ${phone} | العنوان: ${address}`,
-          productId: order.id,
-        });
-      } catch (e) {
-        console.warn("addNotification error:", e);
-      }
-
-      try {
         await logActivity({
           user: "customer",
           action: "create",
           entity: "طلب",
-          entityId: order.id,
+          entityId: createdOrder.id,
           details: `طلب جديد من ${name} (${phone}) - العنوان: ${address} - الإجمالي: ${total.toLocaleString()} د.ع`,
         });
       } catch (e) {
@@ -439,7 +427,20 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
     printWindow.document.close();
   };
 
-  const sendViaWhatsApp = () => {
+  const sendViaWhatsApp = async () => {
+    try {
+      await createOrderAndNotify({
+        customerName: name,
+        customerPhone: phone,
+        customerAddress: address,
+        items: [...items],
+        total,
+        notes,
+        platform: "واتساب",
+      });
+    } catch (e) {
+      console.warn("createOrderAndNotify error:", e);
+    }
     const msg = generateWhatsAppMessage();
     const wa = settings.whatsappLink?.trim();
     if (wa) {
@@ -455,7 +456,20 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
     }
   };
 
-  const sendViaTelegram = () => {
+  const sendViaTelegram = async () => {
+    try {
+      await createOrderAndNotify({
+        customerName: name,
+        customerPhone: phone,
+        customerAddress: address,
+        items: [...items],
+        total,
+        notes,
+        platform: "تليجرام",
+      });
+    } catch (e) {
+      console.warn("createOrderAndNotify error:", e);
+    }
     const msg = generateWhatsAppMessage();
     const tg = settings.telegramLink?.trim();
     if (tg) {
@@ -472,7 +486,20 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
     }
   };
 
-  const sendViaMessenger = () => {
+  const sendViaMessenger = async () => {
+    try {
+      await createOrderAndNotify({
+        customerName: name,
+        customerPhone: phone,
+        customerAddress: address,
+        items: [...items],
+        total,
+        notes,
+        platform: "ماسنجر",
+      });
+    } catch (e) {
+      console.warn("createOrderAndNotify error:", e);
+    }
     const ms = settings.messengerLink?.trim();
     if (ms) {
       if (ms.startsWith("http")) {
