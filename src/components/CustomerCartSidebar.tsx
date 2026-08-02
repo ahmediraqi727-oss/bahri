@@ -473,13 +473,28 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
               </div>
 
               {step === "cart" && (
-                <button
-                  onClick={() => setStep("checkout")}
-                  className="w-full py-3 rounded-xl text-white font-bold text-sm shadow-lg hover:opacity-95 transition-opacity"
-                  style={{ backgroundColor: theme.primary }}
-                >
-                  إتمام الطلب (متابعة البيانات) ➔
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      if (confirm("هل أنت تأكد من رغبتك في تفريغ ومسح كافة المنتجات من السلة؟")) {
+                        clearCart();
+                      }
+                    }}
+                    className="px-3.5 py-3 rounded-xl border-2 border-red-200 dark:border-red-800/80 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-sm"
+                    title="تفريغ السلة بالكامل"
+                  >
+                    <span className="text-base">🗑️</span>
+                    <span>تفريغ السلة</span>
+                  </button>
+
+                  <button
+                    onClick={() => setStep("checkout")}
+                    className="flex-1 py-3 rounded-xl text-white font-bold text-sm shadow-lg hover:opacity-95 transition-opacity"
+                    style={{ backgroundColor: theme.primary }}
+                  >
+                    إتمام الطلب (متابعة البيانات) ➔
+                  </button>
+                </div>
               )}
 
               {step === "checkout" && (

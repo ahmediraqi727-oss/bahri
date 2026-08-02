@@ -741,12 +741,29 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
               <span className="text-gray-900 dark:text-white">الإجمالي</span>
               <span style={{ color: theme.primary }}>{total.toLocaleString()} د.ع</span>
             </div>
-            <button onClick={() => setStep("checkout")} className="w-full py-3 text-white rounded-xl font-medium hover:opacity-90 transition-opacity" style={{ backgroundColor: theme.primary }}>
-              متابعة للطلب
-            </button>
-            <button onClick={clearCart} className="w-full py-2 text-sm text-red-500 hover:text-red-600 transition-colors">
-              تفريغ السلة
-            </button>
+            
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  if (confirm("هل أنت تأكد من رغبتك في تفريغ ومسح كافة المنتجات من السلة؟")) {
+                    clearCart();
+                  }
+                }}
+                className="px-3.5 py-3 rounded-xl border-2 border-red-200 dark:border-red-800/80 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-sm"
+                title="تفريغ السلة بالكامل"
+              >
+                <span className="text-base">🗑️</span>
+                <span>تفريغ السلة</span>
+              </button>
+
+              <button
+                onClick={() => setStep("checkout")}
+                className="flex-1 py-3 text-white rounded-xl font-bold text-sm hover:opacity-90 transition-opacity shadow-md"
+                style={{ backgroundColor: theme.primary }}
+              >
+                متابعة للطلب ➔
+              </button>
+            </div>
           </div>
         )}
 
