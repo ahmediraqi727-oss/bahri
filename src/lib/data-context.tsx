@@ -4,6 +4,23 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { Product, Supplier, CategoryItem } from "./types";
 import { supabase } from "./supabase-client";
 
+export function extractCategoryFromNotes(notes: string): string {
+  if (!notes) return "عام";
+  const str = notes.trim();
+  if (str.includes("الفئة:")) {
+    const after = str.split("الفئة:")[1];
+    if (after) {
+      const cat = after.split("|")[0]?.split("\n")[0]?.trim();
+      if (cat) return cat;
+    }
+  }
+  const firstPart = str.split("|")[0]?.split("\n")[0]?.trim();
+  if (firstPart && firstPart.length <= 40 && !firstPart.includes(":")) {
+    return firstPart;
+  }
+  return "عام";
+}
+
 interface DataContextType {
   products: Product[];
   suppliers: Supplier[];
@@ -19,6 +36,7 @@ interface DataContextType {
   updateCategory: (id: string, updates: Partial<CategoryItem>) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
   incrementCategoryViews: (catIdOrName: string) => Promise<void>;
+  autoSyncCategoriesFromProducts: () => Promise<CategoryItem[]>;
   persistAllCategoriesAndProducts: (catsToSave: CategoryItem[], prodsToSave: Product[]) => Promise<boolean>;
   reloadAllData: () => Promise<void>;
   importProducts: (items: Omit<Product, "id" | "createdAt" | "updatedAt">[]) => Promise<number>;
@@ -124,6 +142,60 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const autoSyncCategoriesFromProducts = useCallback(async () => {
+    try {
+      const { data: prodsData } = await supabase.from("products").select("notes, image");
+      if (!prodsData || prodsData.length === 0) return [];
+
+      const categoryMap = new Map<string, { name: string; image: string }>();
+
+      for (const p of prodsData) {
+        const notes = (p.notes as string) || "";
+        const catName = extractCategoryFromNotes(notes);
+        if (catName && catName !== "عام" && catName !== "غير محدد") {
+          if (!categoryMap.has(catName)) {
+            categoryMap.set(catName, { name: catName, image: (p.image as string) || "" });
+          } else if (!categoryMap.get(catName)?.image && p.image) {
+            categoryMap.get(catName)!.image = (p.image as string) || "";
+          }
+        }
+      }
+
+      if (categoryMap.size === 0) return [];
+
+      const catRows = Array.from(categoryMap.values()).map((cat, idx) => ({
+        name: cat.name,
+        image: cat.image || "",
+        priority: idx + 1,
+        display_order: idx + 1,
+        sort_order: idx + 1,
+        is_active: true,
+        keywords: cat.name,
+      }));
+
+      const { error } = await supabase
+        .from("categories")
+        .upsert(catRows, { onConflict: "name" });
+
+      if (error) {
+        console.warn("Bulk category upsert warning, trying individual upserts:", error.message);
+        for (const row of catRows) {
+          await supabase.from("categories").upsert(row, { onConflict: "name" });
+        }
+      }
+
+      const { data: freshCats } = await supabase.from("categories").select("*").order("priority", { ascending: true });
+      if (freshCats && freshCats.length > 0) {
+        const parsed = freshCats.map(rowToCategory);
+        setCategories(parsed);
+        return parsed;
+      }
+    } catch (err) {
+      console.error("Auto sync categories exception:", err);
+    }
+    return [];
+  }, []);
+
   useEffect(() => {
     async function loadData() {
       try {
@@ -133,10 +205,40 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           supabase.from("categories").select("*").order("priority", { ascending: true }),
         ]);
 
-        if (productsRes.data) setProducts(productsRes.data.map(rowToProduct));
-        if (suppliersRes.data) setSuppliers(suppliersRes.data.map(rowToSupplier));
-        if (categoriesRes.data) {
-          setCategories(categoriesRes.data.map(rowToCategory));
+        const loadedProducts = productsRes.data ? productsRes.data.map(rowToProduct) : [];
+        const loadedCategories = categoriesRes.data ? categoriesRes.data.map(rowToCategory) : [];
+
+        if (productsRes.data) setProducts(loadedProducts);
+        if (suppliersRes.data) setSuppliers(loadedSuppliersFromRow(suppliersRes.data));
+        if (loadedCategories.length > 0) setCategories(loadedCategories);
+
+        // Auto Populate categories if missing
+        if (loadedProducts.length > 0) {
+          const distinctFromProducts = new Set<string>();
+          loadedProducts.forEach((p) => {
+            const cat = extractCategoryFromNotes(p.notes || "");
+            if (cat && cat !== "عام" && cat !== "غير محدد") distinctFromProducts.add(cat);
+          });
+
+          if (loadedCategories.length === 0 || loadedCategories.length < distinctFromProducts.size) {
+            const catRows = Array.from(distinctFromProducts).map((catName, idx) => {
+              const sampleProduct = loadedProducts.find((p) => (p.notes || "").includes(catName));
+              return {
+                name: catName,
+                image: sampleProduct?.image || "",
+                priority: idx + 1,
+                display_order: idx + 1,
+                sort_order: idx + 1,
+                is_active: true,
+                keywords: catName,
+              };
+            });
+
+            supabase.from("categories").upsert(catRows, { onConflict: "name" }).then(async () => {
+              const { data: fresh } = await supabase.from("categories").select("*").order("priority", { ascending: true });
+              if (fresh && fresh.length > 0) setCategories(fresh.map(rowToCategory));
+            });
+          }
         }
       } catch (err) {
         console.error("DataProvider loadData error:", err);
@@ -160,7 +262,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "suppliers" }, async () => {
         const { data } = await supabase.from("suppliers").select("*").order("created_at", { ascending: false });
-        if (data) setSuppliers(data.map(rowToSupplier));
+        if (data) setSuppliers(loadedSuppliersFromRow(data));
       })
       .subscribe();
 
@@ -168,6 +270,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  function loadedSuppliersFromRow(data: Record<string, unknown>[]): Supplier[] {
+    return data.map(rowToSupplier);
+  }
 
   const addProduct = useCallback(async (product: Omit<Product, "id" | "createdAt" | "updatedAt">) => {
     const row = productToRow(product);
@@ -245,7 +351,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (!updatedRow) {
-      // Upsert by category name if UUID mismatch or non-UUID id
       const catName = updates.name || "";
       const upsertRow: Record<string, unknown> = {
         name: catName,
@@ -312,7 +417,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       supabase.from("categories").select("*").order("priority", { ascending: true }),
     ]);
     if (productsRes.data) setProducts(productsRes.data.map(rowToProduct));
-    if (suppliersRes.data) setSuppliers(suppliersRes.data.map(rowToSupplier));
+    if (suppliersRes.data) setSuppliers(productsRes.data ? loadedSuppliersFromRow(suppliersRes.data) : []);
     if (categoriesRes.data) setCategories(categoriesRes.data.map(rowToCategory));
   }, []);
 
@@ -395,6 +500,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         addProduct, updateProduct, deleteProduct,
         addSupplier, updateSupplier, deleteSupplier,
         addCategory, updateCategory, deleteCategory, incrementCategoryViews,
+        autoSyncCategoriesFromProducts,
         persistAllCategoriesAndProducts, reloadAllData,
         importProducts, exportAllData, importAllData,
       }}

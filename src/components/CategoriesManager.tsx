@@ -27,7 +27,7 @@ function helperUpdateNotes(notes: string | undefined, categoryName: string, assi
 }
 
 export default function CategoriesManager() {
-  const { categories, products, addCategory, updateCategory, deleteCategory, updateProduct } = useData();
+  const { categories, products, addCategory, updateCategory, deleteCategory, updateProduct, autoSyncCategoriesFromProducts } = useData();
   const { settings, updateSettings } = useSettings();
   const comboboxRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
@@ -46,7 +46,28 @@ export default function CategoriesManager() {
   const [productSearch, setProductSearch] = useState("");
 
   const [saving, setSaving] = useState(false);
+  const [syncingCategories, setSyncingCategories] = useState(false);
   const [successMsg, setSuccessMsg] = useState(false);
+
+  // Auto Sync Categories on Mount if categories are empty
+  useEffect(() => {
+    if (categories.length === 0 && products.length > 0) {
+      autoSyncCategoriesFromProducts();
+    }
+  }, [categories.length, products.length, autoSyncCategoriesFromProducts]);
+
+  const handleManualAutoSync = async () => {
+    setSyncingCategories(true);
+    try {
+      const synced = await autoSyncCategoriesFromProducts();
+      alert(`تمت مزامنة وتجميع ${synced.length} قسم بنجاح في قاعدة البيانات!`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`حدث خطأ أثناء التزامن: ${msg}`);
+    } finally {
+      setSyncingCategories(false);
+    }
+  };
 
   // Sorted Categories by Priority Ascending
   const sortedCategories = useMemo(() => {
@@ -264,14 +285,26 @@ export default function CategoriesManager() {
 
       {/* 2. Top Interactive Categories Horizontal Carousel Bar */}
       <div className="bg-white dark:bg-gray-900 p-5 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="text-xl">📂</span>
             <h3 className="font-extrabold text-base text-gray-900 dark:text-white">
               الأقسام التفاعلية السريعة ({sortedCategories.length})
             </h3>
           </div>
-          <span className="text-xs text-gray-400 font-medium">اضغط على أي قسم لاستحضاره وتعديله فوراً</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleManualAutoSync}
+              disabled={syncingCategories}
+              className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50"
+              title="تجميع كافة الأقسام وحفظها بصفة دائمة في قاعدة البيانات"
+            >
+              <span>🔄</span>
+              <span>{syncingCategories ? "جاري التزامن..." : "تزامن الأقسام التلقائي وقاعدة البيانات"}</span>
+            </button>
+            <span className="text-xs text-gray-400 font-medium hidden md:inline">اضغط على أي قسم لاستحضاره وتعديله فوراً</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-3 overflow-x-auto py-2 no-scrollbar scroll-smooth" style={{ scrollbarWidth: "none" }}>
