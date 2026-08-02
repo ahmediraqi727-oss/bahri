@@ -86,11 +86,19 @@ CREATE TABLE IF NOT EXISTS orders (
     total NUMERIC(12, 2) NOT NULL DEFAULT 0,
     delivery_fee NUMERIC(12, 2) NOT NULL DEFAULT 0,
     delivery_duration TEXT DEFAULT '',
+    delivery_time TEXT DEFAULT '',
+    invoice_serial TEXT DEFAULT '',
     status order_status NOT NULL DEFAULT 'pending',
     notes TEXT DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migration Queries for existing tables
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC DEFAULT 0;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_duration TEXT DEFAULT '';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_time TEXT DEFAULT '';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS invoice_serial TEXT DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS sales (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

@@ -137,24 +137,42 @@ export default function InvoicesPage() {
     try {
       const finalFee = Number(editDeliveryFee) || 0;
       const finalTotal = productsSubtotal + finalFee;
+      const serialStr = formatInvoiceSerial(editingOrder);
+
+      const updateData: Record<string, unknown> = {
+        customer_name: editCustomerName.trim(),
+        customer_phone: editCustomerPhone.trim(),
+        customer_address: editCustomerAddress.trim(),
+        items: editItems,
+        total: finalTotal,
+        delivery_fee: finalFee,
+        delivery_duration: editDeliveryDuration.trim(),
+        delivery_time: editDeliveryDuration.trim(),
+        invoice_serial: serialStr,
+        status: editStatus,
+        notes: editNotes.trim(),
+        updated_at: new Date().toISOString(),
+      };
 
       const { error } = await supabase
         .from("orders")
-        .update({
-          customer_name: editCustomerName.trim(),
-          customer_phone: editCustomerPhone.trim(),
-          customer_address: editCustomerAddress.trim(),
-          items: editItems,
-          total: finalTotal,
-          delivery_fee: finalFee,
-          delivery_duration: editDeliveryDuration.trim(),
-          status: editStatus,
-          notes: editNotes.trim(),
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq("id", editingOrder.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase direct update invoice error:", error);
+        // Fallback to API route /api/orders/[id]
+        const apiRes = await fetch(`/api/orders/${editingOrder.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updateData),
+        });
+        if (!apiRes.ok) {
+          const errBody = await apiRes.json();
+          console.error("API route update invoice error:", errBody);
+          throw new Error(errBody.error || error.message || "خطأ أثناء تحديث الفاتورة");
+        }
+      }
 
       setSaveSuccess(true);
       await logActivity({
@@ -162,13 +180,14 @@ export default function InvoicesPage() {
         action: "update",
         entity: "فاتورة طلب",
         entityId: editingOrder.id,
-        details: `تحديث الفاتورة ${formatInvoiceSerial(editingOrder)} - الإجمالي: ${finalTotal.toLocaleString()} د.ع`,
+        details: `تحديث الفاتورة ${serialStr} - الإجمالي: ${finalTotal.toLocaleString()} د.ع`,
       });
 
       await loadInvoices();
-    } catch (err) {
-      console.error("Save invoice error:", err);
-      alert("حدث خطأ أثناء حفظ الفاتورة في قاعدة البيانات.");
+    } catch (err: unknown) {
+      console.error("Save invoice exception caught:", err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      alert(`حدث خطأ أثناء حفظ الفاتورة في قاعدة البيانات: ${errMsg}`);
     } finally {
       setSavingOrder(false);
     }
