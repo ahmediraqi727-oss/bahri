@@ -83,6 +83,7 @@ export interface CategoryItem {
   image: string;
   priority: number;
   isActive: boolean;
+  keywords?: string;
   createdAt?: string;
 }
 

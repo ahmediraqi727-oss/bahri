@@ -12,7 +12,7 @@ import { getAdminPermissionsConfig } from "@/components/PermissionGate";
 import ImportExportBar from "@/components/ImportExportBar";
 
 export default function ProductsPage() {
-  const { products, suppliers, deleteProduct, updateProduct } = useData();
+  const { products, suppliers, categories, addCategory, deleteProduct, updateProduct } = useData();
   const { settings } = useSettings();
   const { logActivity } = useActivityLog();
   const { softDelete } = useTrash();
@@ -229,11 +229,102 @@ export default function ProductsPage() {
     }
   };
 
+  const handleBulkAutoCategorize = async () => {
+    if (products.length === 0) return;
+    setSubmittingBulk(true);
+    try {
+      let categorizedCount = 0;
+      let newCategoriesCreated = 0;
+      const currentCategories = [...categories];
+
+      for (const p of products) {
+        // Extract existing category tag
+        const existingMatch = p.notes ? p.notes.match(/الفئة:\s*([^|,\n]+)/) : null;
+        const existingCat = existingMatch && existingMatch[1] ? existingMatch[1].trim() : "";
+
+        if (existingCat && currentCategories.some((c) => c.name.toLowerCase() === existingCat.toLowerCase())) {
+          continue;
+        }
+
+        let matchedCatName: string | null = null;
+        const q = p.name.trim().toLowerCase();
+
+        for (const cat of currentCategories) {
+          if (q.includes(cat.name.toLowerCase()) || cat.name.toLowerCase().includes(q)) {
+            matchedCatName = cat.name;
+            break;
+          }
+          if (cat.keywords) {
+            const words = cat.keywords.split(/[,،\s]+/).map((w) => w.trim().toLowerCase()).filter(Boolean);
+            if (words.some((w) => w.length >= 2 && (q.includes(w) || w.includes(q)))) {
+              matchedCatName = cat.name;
+              break;
+            }
+          }
+        }
+
+        if (!matchedCatName) {
+          const tokens = q.split(/\s+/).filter((w) => w.length >= 3);
+          const mainWord = tokens[0] || "منتجات عامة";
+          const inferredName = `قسم ${mainWord}`;
+          
+          let foundExisting = currentCategories.find((c) => c.name.toLowerCase() === inferredName.toLowerCase());
+          if (!foundExisting) {
+            const createdCat = await addCategory({
+              name: inferredName,
+              image: "",
+              priority: currentCategories.length + 1,
+              keywords: mainWord,
+              isActive: true,
+            });
+            currentCategories.push(createdCat);
+            matchedCatName = createdCat.name;
+            newCategoriesCreated++;
+          } else {
+            matchedCatName = foundExisting.name;
+          }
+        }
+
+        if (matchedCatName) {
+          const currentNotes = (p.notes || "").trim();
+          const tag = `الفئة: ${matchedCatName}`;
+          let updatedNotes = "";
+          if (currentNotes.includes("الفئة:")) {
+            updatedNotes = currentNotes.replace(/الفئة:\s*[^|,\n]+/g, tag);
+          } else if (!currentNotes) {
+            updatedNotes = tag;
+          } else {
+            updatedNotes = `${currentNotes} | ${tag}`;
+          }
+
+          if (updatedNotes !== currentNotes) {
+            await updateProduct(p.id, { notes: updatedNotes });
+            categorizedCount++;
+          }
+        }
+      }
+
+      await logActivity({
+        user: settings.currentRole,
+        action: "update",
+        entity: "منتجات والأقسام",
+        details: `تنفيذ التقسيم التلقائي الجماعي: تم تصنيف ${categorizedCount} منتج وإنشاء ${newCategoriesCreated} قسم جديد`,
+      });
+
+      alert(`🎉 تم التقسيم التلقائي الجماعي بنجاح!\n• تم تصنيف وتحديث: ${categorizedCount} منتج\n• تم إنشاء: ${newCategoriesCreated} قسم جديد تلقائياً`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "حدث خطأ أثناء التقسيم التلقائي";
+      alert(msg);
+    } finally {
+      setSubmittingBulk(false);
+    }
+  };
+
   const totalValue = filtered.reduce((sum, p) => sum + p.retailPrice * p.stock, 0);
   const isAdminOrManager = settings.currentRole === "manager" || settings.currentRole === "admin";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir="rtl">
       {/* Page Title & Controls */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -242,11 +333,23 @@ export default function ProductsPage() {
             {filtered.length} منتج {isAdminOrManager && `| إجمالي القيمة: ${totalValue.toLocaleString()} د.ع`}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {canEdit && (
+            <button
+              onClick={handleBulkAutoCategorize}
+              disabled={submittingBulk || products.length === 0}
+              className="px-4 py-2 text-sm font-bold text-white bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 rounded-lg shadow-sm transition-all disabled:opacity-50 flex items-center gap-1.5 active:scale-95"
+              title="فحص كافة المنتجات غير المصنفة ومطابقتها مع الأقسام والكلمات المفتاحية تلقائياً"
+            >
+              <span>⚡</span>
+              <span>{submittingBulk ? "جاري التقسيم..." : "التقسيم التلقائي للمنتجات"}</span>
+            </button>
+          )}
+
           {canCreate && (
             <button
               onClick={() => { setEditingProduct(null); setModalOpen(true); }}
-              className="px-4 py-2 text-sm font-medium text-white rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2 shadow-sm"
+              className="px-4 py-2 text-sm font-bold text-white rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2 shadow-sm"
               style={{ backgroundColor: "var(--primary)" }}
             >
               <span>+</span> إضافة منتج جديد

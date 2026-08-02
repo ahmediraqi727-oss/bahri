@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Product, Supplier, calculateRetailPrice } from "@/lib/types";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { Product, Supplier, calculateRetailPrice, CategoryItem } from "@/lib/types";
 import { useData } from "@/lib/data-context";
 
 interface ProductModalProps {
@@ -10,8 +10,29 @@ interface ProductModalProps {
   product?: Product | null;
 }
 
+function extractCategoryFromNotes(notes: string | undefined): string {
+  if (!notes) return "";
+  const match = notes.match(/الفئة:\s*([^|,\n]+)/);
+  return match && match[1] ? match[1].trim() : "";
+}
+
+function updateNotesWithCategory(notes: string | undefined, categoryName: string): string {
+  const current = (notes || "").trim();
+  if (!categoryName) {
+    let updated = current.replace(/\|?\s*الفئة:\s*[^|,\n]+/g, "").trim();
+    if (updated.startsWith("|")) updated = updated.slice(1).trim();
+    return updated;
+  }
+  const tag = `الفئة: ${categoryName}`;
+  if (current.includes("الفئة:")) {
+    return current.replace(/الفئة:\s*[^|,\n]+/g, tag);
+  }
+  if (!current) return tag;
+  return `${current} | ${tag}`;
+}
+
 export default function ProductModal({ isOpen, onClose, product }: ProductModalProps) {
-  const { suppliers, addProduct, updateProduct, addSupplier } = useData();
+  const { suppliers, categories, products, addProduct, updateProduct, addSupplier, addCategory } = useData();
   const imageRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState("");
@@ -23,6 +44,11 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
   const [stock, setStock] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [notes, setNotes] = useState("");
+
+  const [selectedCategoryName, setSelectedCategoryName] = useState("");
+  const [showNewCategory, setShowNewCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+
   const [newSupplierName, setNewSupplierName] = useState("");
   const [showNewSupplier, setShowNewSupplier] = useState(false);
   const [error, setError] = useState("");
@@ -41,12 +67,16 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
       setStock(product.stock.toString());
       setSupplierId(product.supplierId);
       setNotes(product.notes);
+      setSelectedCategoryName(extractCategoryFromNotes(product.notes));
       setShowNewSupplier(false);
       setNewSupplierName("");
+      setShowNewCategory(false);
+      setNewCategoryName("");
     } else {
       setName(""); setImage(""); setCostPrice(""); setWholesalePrice("");
       setProfitMargin(""); setRetailPrice(""); setStock(""); setSupplierId("");
-      setNotes(""); setShowNewSupplier(false); setNewSupplierName("");
+      setNotes(""); setSelectedCategoryName(""); setShowNewSupplier(false); setNewSupplierName("");
+      setShowNewCategory(false); setNewCategoryName("");
     }
   }, [product, isOpen]);
 
@@ -57,6 +87,72 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
       setRetailPrice(calculateRetailPrice(cost, margin).toString());
     }
   }, [costPrice, profitMargin]);
+
+  // Smart Auto-Suggest Category based on Product Name
+  const suggestedCategory = useMemo(() => {
+    if (!name || name.trim().length < 2) return null;
+    const q = name.trim().toLowerCase();
+
+    // 1. Direct match with Category name or keywords
+    for (const cat of categories) {
+      if (q.includes(cat.name.toLowerCase()) || cat.name.toLowerCase().includes(q)) {
+        return cat.name;
+      }
+      if (cat.keywords) {
+        const words = cat.keywords.split(/[,،\s]+/).map((w) => w.trim().toLowerCase()).filter(Boolean);
+        for (const w of words) {
+          if (w.length >= 2 && (q.includes(w) || w.includes(q))) {
+            return cat.name;
+          }
+        }
+      }
+    }
+
+    // 2. Similar product name match
+    for (const p of products) {
+      if (p.notes && p.notes.includes("الفئة:")) {
+        const pName = p.name.toLowerCase();
+        if (q.includes(pName) || pName.includes(q)) {
+          const match = p.notes.match(/الفئة:\s*([^|,\n]+)/);
+          if (match && match[1]) {
+            const foundCat = categories.find((c) => c.name.toLowerCase() === match[1].trim().toLowerCase());
+            if (foundCat) return foundCat.name;
+          }
+        }
+      }
+    }
+
+    return null;
+  }, [name, categories, products]);
+
+  const handleApplySuggestedCategory = (catName: string) => {
+    setSelectedCategoryName(catName);
+    setNotes((prev) => updateNotesWithCategory(prev, catName));
+  };
+
+  const handleCategorySelectChange = (catName: string) => {
+    setSelectedCategoryName(catName);
+    setNotes((prev) => updateNotesWithCategory(prev, catName));
+  };
+
+  const handleCreateInlineCategory = async () => {
+    if (!newCategoryName.trim()) return;
+    try {
+      const created = await addCategory({
+        name: newCategoryName.trim(),
+        image: "",
+        priority: categories.length + 1,
+        isActive: true,
+      });
+      setSelectedCategoryName(created.name);
+      setNotes((prev) => updateNotesWithCategory(prev, created.name));
+      setShowNewCategory(false);
+      setNewCategoryName("");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "تعذر إضافة القسم التلقائي";
+      alert(msg);
+    }
+  };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -85,6 +181,8 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
         finalSupplierId = newSup.id;
       }
 
+      const finalNotes = updateNotesWithCategory(notes, selectedCategoryName);
+
       const data = {
         name: name.trim(),
         image,
@@ -94,7 +192,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
         retailPrice: parseFloat(retailPrice) || 0,
         stock: parseInt(stock) || 0,
         supplierId: finalSupplierId,
-        notes,
+        notes: finalNotes,
       };
 
       if (product) {
@@ -103,9 +201,10 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
         await addProduct(data);
       }
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Error saving product:", err);
-      setError(err?.message || "حدث خطأ أثناء حفظ المنتج، يرجى المحاولة مرة أخرى.");
+      const msg = err instanceof Error ? err.message : "حدث خطأ أثناء حفظ المنتج، يرجى المحاولة مرة أخرى.";
+      setError(msg);
     } finally {
       setSubmitting(false);
     }
@@ -131,6 +230,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
               ⚠️ {error}
             </div>
           )}
+
           {/* Image */}
           <div className="flex justify-center">
             <div
@@ -154,14 +254,83 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
             <input ref={imageRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
           </div>
 
-          {/* Name */}
+          {/* Name & Auto-Suggest */}
           <div>
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">اسم المنتج *</label>
             <input
               type="text" required value={name} onChange={(e) => setName(e.target.value)}
               className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none"
-              placeholder="مثال: هاتف آيفون 15"
+              placeholder="مثال: دلاية، محمل كرات، بطارية، فلتر زيت..."
             />
+
+            {/* Smart Category Auto-Suggestion Badge */}
+            {suggestedCategory && suggestedCategory !== selectedCategoryName && (
+              <div className="mt-2 p-2.5 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl flex items-center justify-between animate-fadeIn">
+                <div className="flex items-center gap-2 text-xs font-bold text-blue-800 dark:text-blue-300">
+                  <span>💡</span>
+                  <span>يقترح النظام تصنيف هذا المنتج ضمن قسم: <strong>"{suggestedCategory}"</strong></span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleApplySuggestedCategory(suggestedCategory)}
+                  className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm"
+                >
+                  تطبيق القسم المقترح ⚡
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Category Dropdown & Inline Add Category */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">القسم / التصنيف</label>
+            {!showNewCategory ? (
+              <div className="flex gap-2">
+                <select
+                  value={selectedCategoryName}
+                  onChange={(e) => handleCategorySelectChange(e.target.value)}
+                  className="flex-1 px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none font-bold"
+                >
+                  <option value="">-- بدون قسم / اختر قسم مسبق --</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.name}>📁 {c.name}</option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() => setShowNewCategory(true)}
+                  className="px-4 py-2.5 text-sm font-bold text-blue-600 dark:text-blue-400 border border-blue-300 dark:border-blue-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors whitespace-nowrap"
+                >
+                  + قسم جديد
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  className="flex-1 px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none font-bold text-sm"
+                  placeholder="اسم القسم الجديد..."
+                />
+                <button
+                  type="button"
+                  onClick={handleCreateInlineCategory}
+                  disabled={!newCategoryName.trim()}
+                  className="px-4 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50 transition-colors"
+                >
+                  إضافة
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowNewCategory(false); setNewCategoryName(""); }}
+                  className="px-4 py-2.5 text-xs font-bold text-gray-500 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                >
+                  إلغاء
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Prices */}
@@ -259,7 +428,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
 
           {/* Notes */}
           <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">ملاحظات</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">ملاحظات وإشارة القسم</label>
             <textarea
               value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
               className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none resize-none"
@@ -269,10 +438,19 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
 
           {/* Actions */}
           <div className="flex gap-3 pt-2">
-            <button type="submit" className="flex-1 py-2.5 text-sm font-medium text-white rounded-lg hover:opacity-90 transition-opacity" style={{ backgroundColor: "var(--primary)" }}>
-              {product ? "حفظ التعديلات" : "حفظ المنتج"}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-1 py-2.5 text-sm font-bold text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+              style={{ backgroundColor: "var(--primary)" }}
+            >
+              {submitting ? "جاري الحفظ..." : product ? "حفظ التعديلات" : "حفظ المنتج"}
             </button>
-            <button type="button" onClick={onClose} className="px-6 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-6 py-2.5 text-sm font-bold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
               إلغاء
             </button>
           </div>

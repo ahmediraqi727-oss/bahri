@@ -37,6 +37,7 @@ export default function CategoriesManager() {
   const [catName, setCatName] = useState("");
   const [catImage, setCatImage] = useState("");
   const [catPriority, setCatPriority] = useState(1);
+  const [catKeywords, setCatKeywords] = useState("");
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [productSearch, setProductSearch] = useState("");
 
@@ -54,11 +55,13 @@ export default function CategoriesManager() {
       setCatName("");
       setCatImage("");
       setCatPriority(categories.length + 1);
+      setCatKeywords("");
       setSelectedProductIds(new Set());
     } else if (activeCategory) {
       setCatName(activeCategory.name);
       setCatImage(activeCategory.image || "");
       setCatPriority(activeCategory.priority || 1);
+      setCatKeywords(activeCategory.keywords || "");
 
       // Find products belonging to this category
       const assigned = new Set<string>();
@@ -115,6 +118,7 @@ export default function CategoriesManager() {
           name: catName.trim(),
           image: catImage,
           priority: catPriority,
+          keywords: catKeywords.trim(),
           isActive: true,
         });
         setSelectedCategoryId(catObj.id);
@@ -123,8 +127,9 @@ export default function CategoriesManager() {
           name: catName.trim(),
           image: catImage,
           priority: catPriority,
+          keywords: catKeywords.trim(),
         });
-        catObj = { ...activeCategory, name: catName.trim(), image: catImage, priority: catPriority };
+        catObj = { ...activeCategory, name: catName.trim(), image: catImage, priority: catPriority, keywords: catKeywords.trim() };
       } else {
         return;
       }
@@ -156,11 +161,13 @@ export default function CategoriesManager() {
       setCatName("");
       setCatImage("");
       setCatPriority(categories.length + 1);
+      setCatKeywords("");
       setSelectedProductIds(new Set());
     } else if (activeCategory) {
       setCatName(activeCategory.name);
       setCatImage(activeCategory.image || "");
       setCatPriority(activeCategory.priority || 1);
+      setCatKeywords(activeCategory.keywords || "");
       const assigned = new Set<string>();
       products.forEach((p) => {
         if (p.notes && p.notes.toLowerCase().includes(activeCategory.name.toLowerCase())) {
@@ -301,6 +308,24 @@ export default function CategoriesManager() {
               className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+        </div>
+
+        {/* Keywords Input Field */}
+        <div>
+          <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1 flex items-center justify-between">
+            <span>🏷️ الكلمات المفتاحية للاقتراح والتقسيم التلقائي (Keywords / Tags)</span>
+            <span className="text-[10px] text-gray-400 font-normal">افصل بين الكلمات بفاصلة ( , )</span>
+          </label>
+          <input
+            type="text"
+            placeholder="مثال لقسم العجلات: إطار, تائر, عجلات, تريب"
+            value={catKeywords}
+            onChange={(e) => setCatKeywords(e.target.value)}
+            className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+          />
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+            💡 يعتمد النظام على هذه الكلمات لاقتراح هذا القسم تلقائياً للمنتج ولعمل التقسيم التلقائي الجماعي للمتجر.
+          </p>
         </div>
 
         <div className="pt-2">

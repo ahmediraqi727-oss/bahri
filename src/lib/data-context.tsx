@@ -92,6 +92,7 @@ function rowToCategory(row: Record<string, unknown>): CategoryItem {
     image: (row.image as string) || "",
     priority: Number(row.priority) || 0,
     isActive: row.is_active !== undefined ? Boolean(row.is_active) : true,
+    keywords: (row.keywords as string) || "",
     createdAt: row.created_at as string,
   };
 }
@@ -102,6 +103,7 @@ function categoryToRow(cat: Record<string, unknown>): Record<string, unknown> {
   if ("image" in cat) row.image = cat.image || "";
   if ("priority" in cat) row.priority = Number(cat.priority) || 0;
   if ("isActive" in cat) row.is_active = Boolean(cat.isActive);
+  if ("keywords" in cat) row.keywords = cat.keywords || "";
   return row;
 }
 
