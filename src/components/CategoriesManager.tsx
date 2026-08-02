@@ -57,6 +57,7 @@ export default function CategoriesManager() {
     function handleClickOutside(event: MouseEvent) {
       if (comboboxRef.current && !comboboxRef.current.contains(event.target as Node)) {
         setIsDropdownOpen(false);
+        setCatSearchQuery("");
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -70,21 +71,18 @@ export default function CategoriesManager() {
       setCatImage("");
       setCatPriority(categories.length + 1);
       setCatKeywords("");
-      setCatSearchQuery("");
       setSelectedProductIds(new Set());
     } else if (selectedCategoryId === "") {
       setCatName("");
       setCatImage("");
       setCatPriority(categories.length + 1);
       setCatKeywords("");
-      setCatSearchQuery("");
       setSelectedProductIds(new Set());
     } else if (activeCategory) {
       setCatName(activeCategory.name);
       setCatImage(activeCategory.image || "");
       setCatPriority(activeCategory.priority || 1);
       setCatKeywords(activeCategory.keywords || "");
-      setCatSearchQuery(activeCategory.name);
 
       // Find products belonging to this category
       const assigned = new Set<string>();
@@ -98,7 +96,7 @@ export default function CategoriesManager() {
     setSuccessMsg(false);
   }, [selectedCategoryId, activeCategory, categories.length, products]);
 
-  // Filtered Categories List for Combobox
+  // Filtered Categories List for Combobox (returns ALL categories if catSearchQuery is empty)
   const filteredCategoriesList = useMemo(() => {
     if (!catSearchQuery.trim()) return categories;
     const q = catSearchQuery.trim().toLowerCase();
@@ -201,7 +199,7 @@ export default function CategoriesManager() {
       setCatImage(activeCategory.image || "");
       setCatPriority(activeCategory.priority || 1);
       setCatKeywords(activeCategory.keywords || "");
-      setCatSearchQuery(activeCategory.name);
+      setCatSearchQuery("");
       const assigned = new Set<string>();
       products.forEach((p) => {
         if (p.notes && p.notes.toLowerCase().includes(activeCategory.name.toLowerCase())) {
@@ -211,6 +209,14 @@ export default function CategoriesManager() {
       setSelectedProductIds(assigned);
     }
   };
+
+  const inputValue = isDropdownOpen
+    ? catSearchQuery
+    : activeCategory
+    ? activeCategory.name
+    : selectedCategoryId === "new"
+    ? "✨ قسم جديد"
+    : "";
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -252,7 +258,7 @@ export default function CategoriesManager() {
         </div>
       )}
 
-      {/* 2. Searchable Combobox Category Selector & New Category Switcher Bar */}
+      {/* 2. Searchable Combobox Category Selector */}
       <div className="bg-white dark:bg-gray-800/80 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
           <div ref={comboboxRef} className="relative flex-1">
@@ -274,18 +280,19 @@ export default function CategoriesManager() {
 
             <div
               className="relative cursor-pointer"
-              onClick={() => setIsDropdownOpen(true)}
+              onClick={() => {
+                setIsDropdownOpen(true);
+              }}
             >
               <input
                 type="text"
-                value={catSearchQuery}
+                value={inputValue}
                 onChange={(e) => {
                   setCatSearchQuery(e.target.value);
                   setIsDropdownOpen(true);
                 }}
-                onFocus={() => setIsDropdownOpen(true)}
-                onClick={(e) => {
-                  e.stopPropagation();
+                onFocus={() => {
+                  setCatSearchQuery("");
                   setIsDropdownOpen(true);
                 }}
                 placeholder="اختر قسماً من القائمة أو ابحث باسم القسم..."
@@ -293,7 +300,7 @@ export default function CategoriesManager() {
               />
 
               <div className="absolute left-3 top-2.5 flex items-center gap-1.5 text-gray-400">
-                {catSearchQuery && (
+                {selectedCategoryId && (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -311,6 +318,9 @@ export default function CategoriesManager() {
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (!isDropdownOpen) {
+                      setCatSearchQuery("");
+                    }
                     setIsDropdownOpen((prev) => !prev);
                   }}
                   className="hover:text-gray-600 text-xs font-bold px-1 transition-transform"
@@ -328,6 +338,7 @@ export default function CategoriesManager() {
                 <div
                   onClick={() => {
                     setSelectedCategoryId("new");
+                    setCatSearchQuery("");
                     setIsDropdownOpen(false);
                   }}
                   className="p-3 text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50/70 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 cursor-pointer flex items-center gap-2"
@@ -336,7 +347,7 @@ export default function CategoriesManager() {
                   <span>[+ إنشاء وإضافة قسم جديد]</span>
                 </div>
 
-                {/* Filtered Existing Categories */}
+                {/* Filtered Existing Categories List */}
                 {filteredCategoriesList.length > 0 ? (
                   filteredCategoriesList.map((c) => {
                     const count = products.filter(
@@ -348,7 +359,7 @@ export default function CategoriesManager() {
                         key={c.id}
                         onClick={() => {
                           setSelectedCategoryId(c.id);
-                          setCatSearchQuery(c.name);
+                          setCatSearchQuery("");
                           setIsDropdownOpen(false);
                         }}
                         className={`p-3 text-xs font-bold cursor-pointer flex items-center justify-between transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 ${
@@ -381,6 +392,7 @@ export default function CategoriesManager() {
             <button
               onClick={() => {
                 setSelectedCategoryId("new");
+                setCatSearchQuery("");
                 setIsDropdownOpen(false);
               }}
               className={`w-full sm:w-auto px-5 py-2.5 rounded-xl font-bold text-xs transition-all shadow-sm flex items-center justify-center gap-2 ${
