@@ -39,6 +39,8 @@ export interface SiteSettings {
   // Delivery Default Settings
   defaultDeliveryFee?: number;
   defaultDeliveryDuration?: string;
+  // Eye Protection Mode
+  eyeProtection?: boolean;
   roleThemes: {
     manager: RoleTheme;
     admin: RoleTheme;
@@ -57,6 +59,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   secondaryColor: "#7c3aed",
   accentColor: "#f59e0b",
   darkMode: false,
+  eyeProtection: false,
   currentRole: "manager",
   whatsappLink: "",
   telegramLink: "",

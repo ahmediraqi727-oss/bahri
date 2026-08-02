@@ -491,7 +491,7 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
           <div>
             <h3 className="font-bold text-sm text-gray-900 dark:text-white">الوضع المظلم (Dark Mode)</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">تبديل ثيم المظهر بين المضيء والمظلم</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">تبديل ثيم المظهر بين المضيء (النهاري) والمظلم (الليلي)</p>
           </div>
           <button
             onClick={() => handleChange({ darkMode: !formData.darkMode })}
@@ -505,6 +505,33 @@ export default function SettingsPage() {
               }`}
             >
               {formData.darkMode ? "🌙" : "☀️"}
+            </div>
+          </button>
+        </div>
+
+        {/* Eye Protection Toggle */}
+        <div className="flex items-center justify-between p-4 bg-amber-50/60 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-800">
+          <div>
+            <h3 className="font-bold text-sm text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+              <span>👁️</span>
+              <span>وضع حماية العين (Eye Protection / Warm Sepia Filter)</span>
+            </h3>
+            <p className="text-xs text-amber-700/80 dark:text-amber-400">
+              مرشح إضاءة دافئ مريح للعين يقلل الإشعاع الأزرق مع إمكانية الدمج مع الوضع الليلي أو النهاري
+            </p>
+          </div>
+          <button
+            onClick={() => handleChange({ eyeProtection: !formData.eyeProtection })}
+            className={`relative w-14 h-7 rounded-full transition-colors ${
+              formData.eyeProtection ? "bg-amber-600" : "bg-gray-300 dark:bg-gray-600"
+            }`}
+          >
+            <div
+              className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-transform flex items-center justify-center text-xs ${
+                formData.eyeProtection ? "right-0.5" : "right-7"
+              }`}
+            >
+              {formData.eyeProtection ? "👁️" : "⚪"}
             </div>
           </button>
         </div>

@@ -149,6 +149,7 @@ CREATE TABLE IF NOT EXISTS settings (
     secondary_color TEXT DEFAULT '#7c3aed',
     accent_color TEXT DEFAULT '#f59e0b',
     dark_mode BOOLEAN DEFAULT FALSE,
+    eye_protection BOOLEAN DEFAULT FALSE,
     whatsapp_link TEXT DEFAULT '',
     telegram_link TEXT DEFAULT '',
     messenger_link TEXT DEFAULT '',

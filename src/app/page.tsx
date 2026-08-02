@@ -13,7 +13,7 @@ import { supabase } from "@/lib/supabase-client";
 import { useLang, Lang } from "@/lib/lang-context";
 
 export default function Home() {
-  const { settings, toggleDarkMode } = useSettings();
+  const { settings, toggleDarkMode, toggleEyeProtection } = useSettings();
   const { products, suppliers } = useData();
   const { addItem, itemCount } = useCart();
   const { user, signOut } = useAuth();
@@ -340,8 +340,30 @@ export default function Home() {
               </Link>
             </div>
 
-            {/* Left: Search & Cart Action Icons */}
-            <div className="flex items-center gap-2 sm:gap-3">
+            {/* Left: Search & Cart & Mode Action Icons */}
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              {/* Light / Dark Mode Toggle */}
+              <button
+                onClick={toggleDarkMode}
+                className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-xl"
+                title={settings.darkMode ? "التحويل للوضع النهاري (الفاتح)" : "التحويل للوضع المظلم (الليلي)"}
+              >
+                {settings.darkMode ? "☀️" : "🌙"}
+              </button>
+
+              {/* Eye Protection Sepia Toggle */}
+              <button
+                onClick={toggleEyeProtection}
+                className={`p-2 rounded-xl transition-all text-xl flex items-center justify-center ${
+                  settings.eyeProtection
+                    ? "bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-2 ring-amber-400"
+                    : "hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400"
+                }`}
+                title={settings.eyeProtection ? "إيقاف وضع حماية العين" : "تفعيل وضع حماية العين (Warm Sepia)"}
+              >
+                👁️
+              </button>
+
               {/* Search Toggle Icon */}
               <button
                 onClick={() => setSearchOpen(!searchOpen)}

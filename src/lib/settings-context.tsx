@@ -11,6 +11,7 @@ interface SettingsContextType {
   updateRoleTheme: (role: UserRole, theme: Partial<RoleTheme>) => Promise<void>;
   setCurrentRole: (role: UserRole) => void;
   toggleDarkMode: () => Promise<void>;
+  toggleEyeProtection: () => Promise<void>;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
@@ -29,6 +30,7 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
     secondaryColor: (row.secondary_color as string) || "#7c3aed",
     accentColor: (row.accent_color as string) || "#f59e0b",
     darkMode: Boolean(row.dark_mode) || false,
+    eyeProtection: Boolean(row.eye_protection) || false,
     whatsappLink: (row.whatsapp_link as string) || (row.whatsapp_number as string) || "",
     telegramLink: (row.telegram_link as string) || (row.telegram_url as string) || "",
     messengerLink: (row.messenger_link as string) || (row.messenger_url as string) || "",
@@ -48,8 +50,10 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
     footerCenterText: (row.footer_center_text as string) || DEFAULT_SETTINGS.footerCenterText,
     footerLeftText: (row.footer_left_text as string) || DEFAULT_SETTINGS.footerLeftText,
 
-    // Carousel toggle
+    // Carousel & Delivery toggle
     showCategoriesCarousel: row.show_categories_carousel !== undefined ? Boolean(row.show_categories_carousel) : true,
+    defaultDeliveryFee: row.default_delivery_fee !== undefined ? Number(row.default_delivery_fee) : 5000,
+    defaultDeliveryDuration: (row.default_delivery_duration as string) || "2 - 3 أيام عمل",
 
     currentRole: "manager",
     roleThemes: {
@@ -86,6 +90,7 @@ function settingsToRow(settings: SiteSettings): Record<string, unknown> {
     secondary_color: settings.secondaryColor,
     accent_color: settings.accentColor,
     dark_mode: settings.darkMode,
+    eye_protection: settings.eyeProtection,
     whatsapp_link: settings.whatsappLink || "",
     whatsapp_number: settings.whatsappLink || "",
     telegram_link: settings.telegramLink || "",
@@ -105,6 +110,8 @@ function settingsToRow(settings: SiteSettings): Record<string, unknown> {
     footer_center_text: settings.footerCenterText || "",
     footer_left_text: settings.footerLeftText || "",
     show_categories_carousel: settings.showCategoriesCarousel !== undefined ? settings.showCategoriesCarousel : true,
+    default_delivery_fee: settings.defaultDeliveryFee !== undefined ? settings.defaultDeliveryFee : 5000,
+    default_delivery_duration: settings.defaultDeliveryDuration || "2 - 3 أيام عمل",
     role_themes: settings.roleThemes,
   };
 }
@@ -114,17 +121,28 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [settingsId, setSettingsId] = useState<string | null>(null);
 
-  // Synchronize Dark Mode & Font to DOM document element
+  // Synchronize Dark Mode, Eye Protection Sepia Filter, and Font to DOM document element
   useEffect(() => {
     if (typeof document !== "undefined") {
+      // 1. Dark mode class
       if (settings.darkMode) {
         document.documentElement.classList.add("dark");
       } else {
         document.documentElement.classList.remove("dark");
       }
+
+      // 2. Eye protection filter
+      if (settings.eyeProtection) {
+        document.documentElement.classList.add("eye-care");
+        document.documentElement.style.filter = "sepia(0.35) contrast(0.95) brightness(0.95)";
+      } else {
+        document.documentElement.classList.remove("eye-care");
+        document.documentElement.style.filter = "none";
+      }
+
       document.documentElement.style.fontFamily = settings.fontFamily || "Cairo";
     }
-  }, [settings.darkMode, settings.fontFamily]);
+  }, [settings.darkMode, settings.eyeProtection, settings.fontFamily]);
 
   // Read cached settings from localStorage on initial render for instant display
   useEffect(() => {
@@ -257,9 +275,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     await updateSettings({ darkMode: !settings.darkMode });
   }, [settings.darkMode, updateSettings]);
 
+  const toggleEyeProtection = useCallback(async () => {
+    await updateSettings({ eyeProtection: !settings.eyeProtection });
+  }, [settings.eyeProtection, updateSettings]);
+
   return (
     <SettingsContext.Provider
-      value={{ settings, loading, updateSettings, updateRoleTheme, setCurrentRole, toggleDarkMode }}
+      value={{ settings, loading, updateSettings, updateRoleTheme, setCurrentRole, toggleDarkMode, toggleEyeProtection }}
     >
       {children}
     </SettingsContext.Provider>

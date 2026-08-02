@@ -17,9 +17,18 @@
   --color-accent: var(--accent);
 }
 
+html {
+  transition: filter 0.3s ease, background-color 0.3s ease, color 0.3s ease;
+}
+
 .dark {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  --background: #0f172a;
+  --foreground: #f8fafc;
+  color-scheme: dark;
+}
+
+html.eye-care {
+  filter: sepia(0.35) contrast(0.95) brightness(0.95);
 }
 
 * {
