@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useData } from "@/lib/data-context";
-import { CategoryItem } from "@/lib/types";
+import { CategoryItem, getCategoryDisplayImage } from "@/lib/types";
 
 interface CategoriesCarouselProps {
   selectedCategory: string | null;
@@ -137,6 +137,7 @@ export default function CategoriesCarousel({ selectedCategory, onSelectCategory 
         {/* Render Actual Store Categories Directly without 'All Categories' Card */}
         {sortedCategories.map((cat) => {
           const isSelected = selectedCategory === cat.name;
+          const displayImg = getCategoryDisplayImage(cat, products);
           return (
             <button
               key={cat.id}
@@ -153,8 +154,8 @@ export default function CategoriesCarousel({ selectedCategory, onSelectCategory 
               }`}
             >
               <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0 shadow-inner">
-                {cat.image ? (
-                  <img src={cat.image} alt={cat.name} className="w-full h-full object-cover pointer-events-none" />
+                {displayImg ? (
+                  <img src={displayImg} alt={cat.name} className="w-full h-full object-cover pointer-events-none" />
                 ) : (
                   <span className="text-2xl">📁</span>
                 )}

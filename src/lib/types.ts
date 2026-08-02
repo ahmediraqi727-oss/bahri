@@ -123,3 +123,36 @@ export interface Product {
 export function calculateRetailPrice(costPrice: number, profitMargin: number): number {
   return Math.round((costPrice + (costPrice * profitMargin) / 100) * 100) / 100;
 }
+
+export function getCategoryDisplayImage(cat: CategoryItem, products: Product[]): string {
+  // 1. Manager Custom Uploaded Image (Highest Priority)
+  if (cat.image && cat.image.trim()) {
+    return cat.image.trim();
+  }
+
+  // 2. Dynamic Fallback: Image of First Product tagged under this Category
+  const catNameLower = cat.name.toLowerCase();
+  const categoryProducts = products.filter((p) => {
+    if (!p.notes) return false;
+    const notesLower = p.notes.toLowerCase();
+    return (
+      notesLower.includes(`الفئة: ${catNameLower}`) ||
+      notesLower.includes(catNameLower) ||
+      notesLower.includes(`فئة: ${catNameLower}`)
+    );
+  });
+
+  const productWithImage = categoryProducts.find((p) => p.image && p.image.trim());
+  if (productWithImage && productWithImage.image.trim()) {
+    return productWithImage.image.trim();
+  }
+
+  // 3. Fallback to any product in store with image
+  const globalProductWithImage = products.find((p) => p.image && p.image.trim());
+  if (globalProductWithImage && globalProductWithImage.image.trim()) {
+    return globalProductWithImage.image.trim();
+  }
+
+  return "";
+}
+

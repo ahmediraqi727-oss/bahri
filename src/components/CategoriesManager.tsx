@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useData } from "@/lib/data-context";
 import { useSettings } from "@/lib/settings-context";
 import ImageUploader from "@/components/ImageUploader";
-import { CategoryItem } from "@/lib/types";
+import { CategoryItem, getCategoryDisplayImage } from "@/lib/types";
 
 function helperUpdateNotes(notes: string | undefined, categoryName: string, assign: boolean): string {
   const current = (notes || "").trim();
@@ -278,6 +278,7 @@ export default function CategoriesManager() {
           {sortedCategories.map((c) => {
             const isSelected = selectedCategoryId === c.id;
             const catProds = products.filter((p) => p.notes && p.notes.toLowerCase().includes(c.name.toLowerCase()));
+            const displayImg = getCategoryDisplayImage(c, products);
             return (
               <button
                 key={c.id}
@@ -289,8 +290,8 @@ export default function CategoriesManager() {
                 }`}
               >
                 <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-200 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
-                  {c.image ? (
-                    <img src={c.image} alt={c.name} className="w-full h-full object-cover" />
+                  {displayImg ? (
+                    <img src={displayImg} alt={c.name} className="w-full h-full object-cover" />
                   ) : (
                     <span className="text-lg">📁</span>
                   )}
@@ -323,6 +324,7 @@ export default function CategoriesManager() {
             const lowStockCount = catProds.filter((p) => p.stock > 0 && p.stock <= 5).length;
             const outOfStockCount = catProds.filter((p) => p.stock === 0).length;
             const viewsCount = c.views || 0;
+            const displayImg = getCategoryDisplayImage(c, products);
 
             // Border Alert Logic: Red if out of stock, Yellow if low stock, Normal if healthy
             let borderStyle = "border-emerald-300 dark:border-emerald-800 bg-white dark:bg-gray-800/90";
@@ -345,8 +347,8 @@ export default function CategoriesManager() {
                   <div className="flex items-start justify-between gap-3 border-b border-gray-100 dark:border-gray-700 pb-3">
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center shadow-inner flex-shrink-0">
-                        {c.image ? (
-                          <img src={c.image} alt={c.name} className="w-full h-full object-cover" />
+                        {displayImg ? (
+                          <img src={displayImg} alt={c.name} className="w-full h-full object-cover" />
                         ) : (
                           <span className="text-xl">📁</span>
                         )}

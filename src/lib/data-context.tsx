@@ -217,29 +217,70 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const addCategory = useCallback(async (cat: Omit<CategoryItem, "id">) => {
     const row = categoryToRow(cat);
-    const { data: created, error } = await supabase.from("categories").insert(row).select().single();
-    if (error) {
-      // Fallback local creation if table does not exist
+    const { data: created, error } = await supabase
+      .from("categories")
+      .upsert({ ...row, name: cat.name }, { onConflict: "name" })
+      .select()
+      .maybeSingle();
+
+    if (error || !created) {
       const localCat: CategoryItem = { id: Date.now().toString(), ...cat };
-      setCategories((prev) => [...prev, localCat].sort((a, b) => a.priority - b.priority));
+      setCategories((prev) => [...prev, localCat].sort((a, b) => (a.priority || 0) - (b.priority || 0)));
       return localCat;
     }
     const newCat = rowToCategory(created);
-    setCategories((prev) => [...prev, newCat].sort((a, b) => a.priority - b.priority));
+    setCategories((prev) => [...prev, newCat].sort((a, b) => (a.priority || 0) - (b.priority || 0)));
     return newCat;
   }, []);
 
   const updateCategory = useCallback(async (id: string, updates: Partial<CategoryItem>) => {
     const row = categoryToRow(updates);
-    const { data: updated, error } = await supabase.from("categories").update(row).eq("id", id).select().single();
-    if (error) {
-      setCategories((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, ...updates } : c)).sort((a, b) => a.priority - b.priority)
-      );
-      return;
+    let updatedRow: Record<string, unknown> | null = null;
+
+    if (isUUID(id)) {
+      const { data, error } = await supabase.from("categories").update(row).eq("id", id).select().maybeSingle();
+      if (!error && data) {
+        updatedRow = data;
+      }
     }
-    const cat = rowToCategory(updated);
-    setCategories((prev) => prev.map((c) => (c.id === id ? cat : c)).sort((a, b) => a.priority - b.priority));
+
+    if (!updatedRow) {
+      // Upsert by category name if UUID mismatch or non-UUID id
+      const catName = updates.name || "";
+      const upsertRow: Record<string, unknown> = {
+        name: catName,
+        image: updates.image !== undefined ? updates.image : "",
+        priority: Number(updates.priority) || 1,
+        display_order: Number(updates.priority) || 1,
+        sort_order: Number(updates.priority) || 1,
+        is_active: updates.isActive !== false,
+        keywords: updates.keywords || "",
+      };
+      const { data: upsertData } = await supabase
+        .from("categories")
+        .upsert(upsertRow, { onConflict: "name" })
+        .select()
+        .maybeSingle();
+
+      if (upsertData) {
+        updatedRow = upsertData;
+      }
+    }
+
+    if (updatedRow) {
+      const cat = rowToCategory(updatedRow);
+      setCategories((prev) =>
+        prev
+          .map((c) => (c.id === id || c.name.toLowerCase() === cat.name.toLowerCase() ? cat : c))
+          .sort((a, b) => (a.priority || 0) - (b.priority || 0))
+      );
+    } else {
+      setCategories((prev) =>
+        prev
+          .map((c) => (c.id === id ? { ...c, ...updates } : c))
+          .sort((a, b) => (a.priority || 0) - (b.priority || 0))
+      );
+    }
   }, []);
 
   const deleteCategory = useCallback(async (id: string) => {
