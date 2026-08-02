@@ -18,6 +18,7 @@ interface DataContextType {
   addCategory: (cat: Omit<CategoryItem, "id">) => Promise<CategoryItem>;
   updateCategory: (id: string, updates: Partial<CategoryItem>) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
+  incrementCategoryViews: (catIdOrName: string) => Promise<void>;
   importProducts: (items: Omit<Product, "id" | "createdAt" | "updatedAt">[]) => Promise<number>;
   exportAllData: () => { products: Product[]; suppliers: Supplier[]; categories: CategoryItem[]; exportedAt: string };
   importAllData: (data: { products?: Product[]; suppliers?: Supplier[]; categories?: CategoryItem[] }) => Promise<void>;
@@ -94,6 +95,7 @@ function rowToCategory(row: Record<string, unknown>): CategoryItem {
     priority: prio,
     isActive: row.is_active !== undefined ? Boolean(row.is_active) : true,
     keywords: (row.keywords as string) || "",
+    views: Number(row.views) || 0,
     createdAt: row.created_at as string,
   };
 }
@@ -110,6 +112,7 @@ function categoryToRow(cat: Record<string, unknown>): Record<string, unknown> {
   }
   if ("isActive" in cat) row.is_active = Boolean(cat.isActive);
   if ("keywords" in cat) row.keywords = cat.keywords || "";
+  if ("views" in cat) row.views = Number(cat.views) || 0;
   return row;
 }
 
@@ -246,6 +249,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setCategories((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
+  const incrementCategoryViews = useCallback(async (catIdOrName: string) => {
+    if (!catIdOrName) return;
+    setCategories((prev) => {
+      const target = prev.find(
+        (c) => c.id === catIdOrName || c.name.toLowerCase() === catIdOrName.toLowerCase()
+      );
+      if (!target) return prev;
+      const newViews = (target.views || 0) + 1;
+      supabase.from("categories").update({ views: newViews }).eq("id", target.id).then(() => {});
+      return prev.map((c) => (c.id === target.id ? { ...c, views: newViews } : c));
+    });
+  }, []);
+
   const importProducts = useCallback(async (items: Omit<Product, "id" | "createdAt" | "updatedAt">[]) => {
     if (!items || items.length === 0) return 0;
     const rows = items.map((item) => productToRow(item));
@@ -294,7 +310,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         products, suppliers, categories, loading,
         addProduct, updateProduct, deleteProduct,
         addSupplier, updateSupplier, deleteSupplier,
-        addCategory, updateCategory, deleteCategory,
+        addCategory, updateCategory, deleteCategory, incrementCategoryViews,
         importProducts, exportAllData, importAllData,
       }}
     >

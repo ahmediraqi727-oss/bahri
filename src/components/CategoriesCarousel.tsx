@@ -10,7 +10,7 @@ interface CategoriesCarouselProps {
 }
 
 export default function CategoriesCarousel({ selectedCategory, onSelectCategory }: CategoriesCarouselProps) {
-  const { categories, products } = useData();
+  const { categories, products, incrementCategoryViews } = useData();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Touch & Mouse Drag state
@@ -141,7 +141,10 @@ export default function CategoriesCarousel({ selectedCategory, onSelectCategory 
             <button
               key={cat.id}
               onClick={() => {
-                if (!dragged) onSelectCategory(isSelected ? null : cat.name);
+                if (!dragged) {
+                  incrementCategoryViews(cat.id);
+                  onSelectCategory(isSelected ? null : cat.name);
+                }
               }}
               className={`flex-shrink-0 flex flex-col items-center justify-between w-28 sm:w-32 h-32 sm:h-36 p-3 rounded-2xl border-2 transition-all duration-300 ${
                 isSelected

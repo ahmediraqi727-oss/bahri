@@ -30,6 +30,7 @@ export default function CategoriesManager() {
   const { categories, products, addCategory, updateCategory, deleteCategory, updateProduct } = useData();
   const { settings, updateSettings } = useSettings();
   const comboboxRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
 
   // Mode: "" (none chosen), "new" or category id
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
@@ -46,6 +47,11 @@ export default function CategoriesManager() {
 
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState(false);
+
+  // Sorted Categories by Priority Ascending
+  const sortedCategories = useMemo(() => {
+    return [...categories].sort((a, b) => (a.priority || 0) - (b.priority || 0));
+  }, [categories]);
 
   // Active Category object if editing
   const activeCategory = useMemo(() => {
@@ -96,14 +102,23 @@ export default function CategoriesManager() {
     setSuccessMsg(false);
   }, [selectedCategoryId, activeCategory, categories.length, products]);
 
-  // Filtered Categories List for Combobox (returns ALL categories if catSearchQuery is empty)
+  const handleSelectCategoryToEdit = (catId: string) => {
+    setSelectedCategoryId(catId);
+    setCatSearchQuery("");
+    setIsDropdownOpen(false);
+    if (editorRef.current) {
+      editorRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
+  // Filtered Categories List for Combobox
   const filteredCategoriesList = useMemo(() => {
-    if (!catSearchQuery.trim()) return categories;
+    if (!catSearchQuery.trim()) return sortedCategories;
     const q = catSearchQuery.trim().toLowerCase();
-    return categories.filter(
+    return sortedCategories.filter(
       (c) => c.name.toLowerCase().includes(q) || (c.keywords && c.keywords.toLowerCase().includes(q))
     );
-  }, [categories, catSearchQuery]);
+  }, [sortedCategories, catSearchQuery]);
 
   // Filter products by search term
   const filteredProducts = useMemo(() => {
@@ -219,8 +234,8 @@ export default function CategoriesManager() {
     : "";
 
   return (
-    <div className="space-y-6" dir="rtl">
-      {/* 1. Toggle Switch for Carousel */}
+    <div className="space-y-8" dir="rtl">
+      {/* 1. Toggle Switch for Homepage Carousel */}
       <div className="flex items-center justify-between p-5 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl shadow-sm">
         <div className="space-y-1">
           <h3 className="font-bold text-base text-gray-900 dark:text-white flex items-center gap-2">
@@ -247,6 +262,140 @@ export default function CategoriesManager() {
         </button>
       </div>
 
+      {/* 2. Top Interactive Categories Horizontal Carousel Bar */}
+      <div className="bg-white dark:bg-gray-900 p-5 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">📂</span>
+            <h3 className="font-extrabold text-base text-gray-900 dark:text-white">
+              الأقسام التفاعلية السريعة ({sortedCategories.length})
+            </h3>
+          </div>
+          <span className="text-xs text-gray-400 font-medium">اضغط على أي قسم لاستحضاره وتعديله فوراً</span>
+        </div>
+
+        <div className="flex items-center gap-3 overflow-x-auto py-2 no-scrollbar scroll-smooth" style={{ scrollbarWidth: "none" }}>
+          {sortedCategories.map((c) => {
+            const isSelected = selectedCategoryId === c.id;
+            const catProds = products.filter((p) => p.notes && p.notes.toLowerCase().includes(c.name.toLowerCase()));
+            return (
+              <button
+                key={c.id}
+                onClick={() => handleSelectCategoryToEdit(c.id)}
+                className={`flex-shrink-0 flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${
+                  isSelected
+                    ? "border-blue-600 bg-blue-50/80 dark:bg-blue-900/40 text-blue-700 dark:text-blue-200 shadow-md scale-105"
+                    : "border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 hover:border-blue-300 text-gray-800 dark:text-gray-200"
+                }`}
+              >
+                <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-200 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
+                  {c.image ? (
+                    <img src={c.image} alt={c.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-lg">📁</span>
+                  )}
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-extrabold line-clamp-1">{c.name}</p>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold mt-0.5">
+                    أولوية: {c.priority} • [{catProds.length} منتج]
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 3. Category Analytics & Dynamic Alert Cards Grid */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-extrabold text-base text-gray-900 dark:text-white flex items-center gap-2">
+            <span>📊</span> إحصائيات الأقسام والتنبيهات الذكية للمخزون والزيارات
+          </h3>
+          <span className="text-xs text-gray-400">تحديث تلقائي لحالة مخزون المنتجات وعدد الزيارات</span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {sortedCategories.map((c) => {
+            const catProds = products.filter((p) => p.notes && p.notes.toLowerCase().includes(c.name.toLowerCase()));
+            const totalCount = catProds.length;
+            const lowStockCount = catProds.filter((p) => p.stock > 0 && p.stock <= 5).length;
+            const outOfStockCount = catProds.filter((p) => p.stock === 0).length;
+            const viewsCount = c.views || 0;
+
+            // Border Alert Logic: Red if out of stock, Yellow if low stock, Normal if healthy
+            let borderStyle = "border-emerald-300 dark:border-emerald-800 bg-white dark:bg-gray-800/90";
+            let alertBadge = <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/40 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">✅ المخزون متوفر</span>;
+
+            if (outOfStockCount > 0) {
+              borderStyle = "border-red-500 dark:border-red-600 bg-red-50/40 dark:bg-red-950/20 text-red-900 dark:text-red-200 ring-2 ring-red-500/20";
+              alertBadge = <span className="text-[11px] font-bold text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-900/50 px-2.5 py-0.5 rounded-full border border-red-300 dark:border-red-800 animate-pulse">🚨 منتجات منفذة بالكامل</span>;
+            } else if (lowStockCount > 0) {
+              borderStyle = "border-amber-400 dark:border-amber-500 bg-amber-50/40 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200 ring-2 ring-amber-400/20";
+              alertBadge = <span className="text-[11px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/50 px-2.5 py-0.5 rounded-full border border-amber-300 dark:border-amber-800">⚠️ وشيكة على النفاد</span>;
+            }
+
+            return (
+              <div
+                key={c.id}
+                className={`p-5 rounded-2xl border transition-all duration-300 shadow-sm space-y-4 flex flex-col justify-between ${borderStyle}`}
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-3 border-b border-gray-100 dark:border-gray-700 pb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center shadow-inner flex-shrink-0">
+                        {c.image ? (
+                          <img src={c.image} alt={c.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-xl">📁</span>
+                        )}
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-sm text-gray-900 dark:text-white">{c.name}</h4>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">رقم الأولوية: {c.priority}</p>
+                      </div>
+                    </div>
+                    {alertBadge}
+                  </div>
+
+                  {/* Analytics Stats Grid */}
+                  <div className="grid grid-cols-2 gap-2 pt-3">
+                    <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-100 dark:border-gray-700 text-center">
+                      <span className="block text-xs font-bold text-gray-500 dark:text-gray-400">إجمالي المنتجات</span>
+                      <span className="text-base font-extrabold text-blue-600 dark:text-blue-400 mt-0.5 block">{totalCount} منتج</span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-100 dark:border-gray-700 text-center">
+                      <span className="block text-xs font-bold text-gray-500 dark:text-gray-400">عدد الزوار</span>
+                      <span className="text-base font-extrabold text-indigo-600 dark:text-indigo-400 mt-0.5 block">👁️ {viewsCount} زيارة</span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-amber-50/50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-center">
+                      <span className="block text-[11px] font-bold text-amber-700 dark:text-amber-300">وشيكة النفاد</span>
+                      <span className="text-sm font-extrabold text-amber-600 dark:text-amber-400 mt-0.5 block">{lowStockCount} منتج</span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-red-50/50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-center">
+                      <span className="block text-[11px] font-bold text-red-700 dark:text-red-300">نفذت بالكامل</span>
+                      <span className="text-sm font-extrabold text-red-600 dark:text-red-400 mt-0.5 block">{outOfStockCount} منتج</span>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => handleSelectCategoryToEdit(c.id)}
+                  className="w-full py-2 bg-gray-100 dark:bg-gray-700 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-gray-700 dark:text-gray-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm mt-2"
+                >
+                  <span>✏️</span>
+                  <span>استحضار وتعديل بيانات هذا القسم</span>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Success Notification Banner */}
       {successMsg && (
         <div className="p-4 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700 rounded-2xl flex items-center justify-between text-emerald-800 dark:text-emerald-300 text-sm font-bold animate-fadeIn">
@@ -258,8 +407,8 @@ export default function CategoriesManager() {
         </div>
       )}
 
-      {/* 2. Searchable Combobox Category Selector */}
-      <div className="bg-white dark:bg-gray-800/80 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
+      {/* 4. Searchable Combobox Category Selector & Editor Section */}
+      <div ref={editorRef} className="bg-white dark:bg-gray-800/80 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
           <div ref={comboboxRef} className="relative flex-1">
             <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5 flex items-center justify-between">
@@ -426,7 +575,7 @@ export default function CategoriesManager() {
         )}
       </div>
 
-      {/* 3. Category Metadata Inputs */}
+      {/* 5. Category Metadata Inputs */}
       <div className="bg-white dark:bg-gray-800/80 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
         <h4 className="font-bold text-sm text-gray-900 dark:text-white flex items-center gap-2 border-b border-gray-100 dark:border-gray-700 pb-3">
           <span>✏️</span> {selectedCategoryId === "new" || !selectedCategoryId ? "بيانات القسم الجديد" : `تعديل بيانات قسم: ${catName}`}
@@ -488,7 +637,7 @@ export default function CategoriesManager() {
         </div>
       </div>
 
-      {/* 4. Category Products Picker & Bulk Select (منتجات القسم والتحديد الجماعي) */}
+      {/* 6. Category Products Picker & Bulk Select (منتجات القسم والتحديد الجماعي) */}
       <div className="bg-white dark:bg-gray-800/80 p-5 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-700 pb-3">
           <div>
@@ -576,7 +725,7 @@ export default function CategoriesManager() {
         )}
       </div>
 
-      {/* 5. Save & Cancel Action Bar (أزرار الحفظ والإلغاء) */}
+      {/* 7. Save & Cancel Action Bar (أزرار الحفظ والإلغاء) */}
       <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
         <button
           onClick={handleCancel}

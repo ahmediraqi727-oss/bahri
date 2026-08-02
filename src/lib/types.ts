@@ -84,6 +84,7 @@ export interface CategoryItem {
   priority: number;
   isActive: boolean;
   keywords?: string;
+  views?: number;
   createdAt?: string;
 }
 
