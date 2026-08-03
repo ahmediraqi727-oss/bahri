@@ -3,6 +3,9 @@
 import { useState, useEffect } from "react";
 import { useSettings } from "@/lib/settings-context";
 import { useActivityLog } from "@/lib/activity-log";
+import { useAuth } from "@/lib/auth-context";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import ColorPicker from "@/components/ColorPicker";
 import ImageUploader from "@/components/ImageUploader";
 import CategoriesManager from "@/components/CategoriesManager";
@@ -33,6 +36,8 @@ const ROLE_COLORS: Record<UserRole, { bg: string; border: string }> = {
 export default function SettingsPage() {
   const { settings, updateSettings, loading } = useSettings();
   const { logActivity } = useActivityLog();
+  const { user, loading: authLoading } = useAuth();
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
 
   // Local draft state for explicit Save / Cancel controls
   const [formData, setFormData] = useState<SiteSettings>(settings);
@@ -45,6 +50,46 @@ export default function SettingsPage() {
       setFormData(settings);
     }
   }, [settings]);
+
+  // 🔒 Route Protection: If user is a Customer or Guest, block access to System Settings (403 Unauthorized)
+  if (!authLoading && user && (user.role === "customer" || user.isGuest || user.id.startsWith("guest-"))) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center p-4" dir="rtl">
+        <div className="max-w-md w-full bg-white dark:bg-gray-900 rounded-3xl p-6 sm:p-8 border border-red-200 dark:border-red-900/60 shadow-2xl text-center space-y-4">
+          <div className="w-16 h-16 bg-red-100 dark:bg-red-950/80 rounded-2xl border border-red-300 dark:border-red-800 flex items-center justify-center text-3xl mx-auto shadow-sm">
+            ⛔
+          </div>
+          
+          <h2 className="text-lg sm:text-xl font-extrabold text-gray-900 dark:text-white">
+            غير مصرح لك بدخول هذه الصفحة (403 Access Denied)
+          </h2>
+          
+          <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+            صفحة إعدادات الهوية والبنية التحتية للمتجر مخصصة حصراً لمدراء النظام والإداريين. بصفتك زبون، يمكنك تعديل معلومات ملفك الشخصي بكل سهولة.
+          </p>
+
+          <div className="pt-3 space-y-2">
+            <button
+              onClick={() => setProfileModalOpen(true)}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2"
+            >
+              <span>👤</span>
+              <span>تعديل الملف الشخصي والمعلومات</span>
+            </button>
+
+            <Link
+              href="/"
+              className="w-full py-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold text-sm transition-colors block text-center"
+            >
+              العودة للمتجر الرئيسي 🏠
+            </Link>
+          </div>
+
+          <ProfileEditModal isOpen={profileModalOpen} onClose={() => setProfileModalOpen(false)} />
+        </div>
+      </div>
+    );
+  }
 
   const handleChange = (fields: Partial<SiteSettings>) => {
     setFormData((prev) => ({ ...prev, ...fields }));
@@ -108,8 +153,6 @@ export default function SettingsPage() {
       </div>
     );
   }
-
-  const [profileModalOpen, setProfileModalOpen] = useState(false);
 
   return (
     <div className="space-y-6 max-w-4xl pb-28" dir="rtl">
