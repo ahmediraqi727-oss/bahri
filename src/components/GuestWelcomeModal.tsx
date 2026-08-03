@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useAuth } from "@/lib/auth-context";
 import { isWelcomeModalDismissed, markWelcomeModalDismissed, updateGuestIdentity, trackVisitorSession } from "@/lib/visitor-tracker";
 
 export default function GuestWelcomeModal() {
+  const { user, session, loading } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [name, setName] = useState("");
   const [governorate, setGovernorate] = useState("");
@@ -11,17 +13,29 @@ export default function GuestWelcomeModal() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    // Check if dismissed
+    if (loading) return;
+
+    // 1. If user is logged in with an official account (User / Manager / Admin with email or valid session), NEVER show modal!
+    const isAuthenticatedUser = Boolean(session?.user || (user && user.email && !user.id.startsWith("guest-")));
+    
+    if (isAuthenticatedUser) {
+      markWelcomeModalDismissed();
+      trackVisitorSession("/");
+      setIsOpen(false);
+      return;
+    }
+
+    // 2. Only show for anonymous guest visitors who have not dismissed it
     if (!isWelcomeModalDismissed()) {
       const timer = setTimeout(() => {
         setIsOpen(true);
       }, 1000);
       return () => clearTimeout(timer);
     } else {
-      // Always track session quietly in background
+      // Quietly track session in background
       trackVisitorSession("/");
     }
-  }, []);
+  }, [user, session, loading]);
 
   const handleDismiss = async () => {
     setSubmitting(true);
