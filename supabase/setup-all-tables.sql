@@ -417,16 +417,16 @@ GRANT EXECUTE ON FUNCTION public.is_manager() TO authenticated, anon;
 -- =====================
 
 DROP POLICY IF EXISTS "Users can view own profile" ON users;
-DROP POLICY IF EXISTS "Managers can view all users" ON users;
-DROP POLICY IF EXISTS "Managers can update all users" ON users;
-DROP POLICY IF EXISTS "Admins can view all users" ON users;
-DROP POLICY IF EXISTS "Admins can update all users" ON users;
+DROP POLICY IF EXISTS "Users can view own profile" ON users;
 DROP POLICY IF EXISTS "Managers and Admins can update users" ON users;
 DROP POLICY IF EXISTS "Managers and Admins can insert users" ON users;
+DROP POLICY IF EXISTS "Anyone can select users" ON users;
+DROP POLICY IF EXISTS "Anyone can insert users" ON users;
+DROP POLICY IF EXISTS "Anyone can update users" ON users;
 
-CREATE POLICY "Users can view own profile" ON users FOR SELECT USING (auth.uid() = id OR public.is_manager_or_admin());
-CREATE POLICY "Managers and Admins can update users" ON users FOR UPDATE USING (public.is_manager_or_admin());
-CREATE POLICY "Managers and Admins can insert users" ON users FOR INSERT WITH CHECK (public.is_manager_or_admin() OR auth.uid() = id);
+CREATE POLICY "Anyone can select users" ON users FOR SELECT USING (TRUE);
+CREATE POLICY "Anyone can insert users" ON users FOR INSERT WITH CHECK (TRUE);
+CREATE POLICY "Anyone can update users" ON users FOR UPDATE USING (TRUE);
 
 DROP POLICY IF EXISTS "Anyone can view products" ON products;
 DROP POLICY IF EXISTS "Managers can manage products" ON products;

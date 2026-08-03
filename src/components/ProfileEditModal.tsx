@@ -268,11 +268,14 @@ export default function ProfileEditModal({ isOpen, onClose }: ProfileEditModalPr
         .eq("id", user.id);
 
       if (dbErr) {
-        console.warn("Database user update warning:", dbErr);
+        console.error("[Supabase Users Table Update Error]:", dbErr);
+        setConfirmError(`فشل الحفظ في قاعدة البيانات: ${dbErr.message}`);
+        setSaving(false);
+        return;
       }
 
       // 3. Update Supabase Auth User Metadata
-      await supabase.auth.updateUser({
+      const { error: authErr2 } = await supabase.auth.updateUser({
         data: {
           full_name: fullName.trim(),
           avatar_url: avatarUrl,
@@ -280,6 +283,13 @@ export default function ProfileEditModal({ isOpen, onClose }: ProfileEditModalPr
           phone: phone.trim(),
         },
       });
+
+      if (authErr2) {
+        console.error("[Supabase Auth Metadata Update Error]:", authErr2);
+        setConfirmError(`فشل تحديث بيانات الحساب: ${authErr2.message}`);
+        setSaving(false);
+        return;
+      }
 
       setShowCurrentPasswordModal(false);
       setSummaryChanges(changesList);
