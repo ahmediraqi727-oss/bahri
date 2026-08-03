@@ -64,6 +64,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   };
 
+function getSavedGuestUser(): AuthUser | null {
+  if (typeof window === "undefined") return null;
+  const saved1 = localStorage.getItem("guest-user");
+  const saved2 = localStorage.getItem("guestUser");
+  const savedCookie = getCookie("app_guest_user");
+
+  if (saved1) {
+    try {
+      const parsed = JSON.parse(saved1);
+      if (parsed && parsed.fullName) return parsed;
+    } catch {}
+  }
+  if (saved2) {
+    try {
+      const parsed = JSON.parse(saved2);
+      if (parsed && parsed.name) {
+        return {
+          id: `guest-${Date.now()}`,
+          email: "",
+          fullName: parsed.name,
+          governorate: parsed.governorate || "",
+          role: "customer" as UserRole,
+          avatarUrl: "",
+          isGuest: true,
+        };
+      }
+    } catch {}
+  }
+  if (savedCookie) {
+    try {
+      const parsed = JSON.parse(savedCookie);
+      if (parsed && parsed.name) {
+        return {
+          id: `guest-${Date.now()}`,
+          email: "",
+          fullName: parsed.name,
+          governorate: parsed.governorate || "",
+          role: "customer" as UserRole,
+          avatarUrl: "",
+          isGuest: true,
+        };
+      }
+    } catch {}
+  }
+  return null;
+}
+
   useEffect(() => {
     let mounted = true;
     try {
@@ -77,13 +124,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setLoading(false);
             }
           }).catch(() => {
-            if (mounted) setLoading(false);
+            if (mounted) {
+              setUser(getSavedGuestUser());
+              setLoading(false);
+            }
           });
         } else {
+          setUser(getSavedGuestUser());
           setLoading(false);
         }
       }).catch(() => {
-        if (mounted) setLoading(false);
+        if (mounted) {
+          setUser(getSavedGuestUser());
+          setLoading(false);
+        }
       });
 
       const { data } = supabase.auth.onAuthStateChange(
@@ -94,7 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const profile = await fetchUserProfile(s.user);
             if (mounted) setUser(profile);
           } else {
-            if (mounted) setUser(null);
+            if (mounted) setUser(getSavedGuestUser());
           }
         }
       );
@@ -104,7 +158,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         data?.subscription?.unsubscribe();
       };
     } catch {
-      if (mounted) setLoading(false);
+      if (mounted) {
+        setUser(getSavedGuestUser());
+        setLoading(false);
+      }
     }
   }, []);
 
