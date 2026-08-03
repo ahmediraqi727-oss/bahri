@@ -3,17 +3,16 @@ import type { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
   appId: 'com.ahmedbahristore.app',
   appName: 'متجر أحمد بحري',
-  // webDir is still needed as a fallback even when server.url is set
-  webDir: 'public',
+  webDir: 'out',
   server: {
-    // Live Vercel URL — the app loads the website directly from here
+    // Live Vercel URL — app loads directly from Vercel (no local build needed)
     url: 'https://ahmed-bahri.vercel.app',
     cleartext: true,
     androidScheme: 'https',
   },
   plugins: {
     SplashScreen: {
-      launchShowDuration: 2000,
+      launchShowDuration: 1000,
       launchAutoHide: true,
       backgroundColor: '#ffffff',
       androidSplashResourceName: 'splash',
