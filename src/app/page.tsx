@@ -189,23 +189,38 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 sm:h-20" dir="rtl">
             
-            {/* Right: Logo & Navigation Controls */}
+            {/* Right: Logo & Main Menu Trigger */}
             <div className="flex items-center gap-2 sm:gap-4">
               
-              {/* Main Menu Dropdown */}
+              {/* Main Menu Dropdown (Triggered by Store Logo) */}
               <div className="relative" ref={menuRef}>
                 <button
                   onClick={() => setMenuOpen(!menuOpen)}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm sm:text-base font-bold text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800"
+                  className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-2xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-all cursor-pointer group border border-transparent hover:border-gray-200 dark:hover:border-gray-700"
                   title="القائمة الرئيسية"
                 >
-                  {settings.homeIcon ? (
-                    <img src={settings.homeIcon} alt="القائمة" style={{ width: settings.homeIconSize || 28, height: settings.homeIconSize || 28 }} className="object-contain" />
+                  {settings.logo ? (
+                    <img
+                      src={settings.logo}
+                      alt={settings.siteName}
+                      className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl object-cover shadow-sm group-hover:scale-105 transition-transform"
+                    />
                   ) : (
-                    <span style={{ fontSize: (settings.homeIconSize || 28) * 0.8 }}>🏠</span>
+                    <img
+                      src="/logo.jpg"
+                      alt="Logo"
+                      className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl object-cover shadow-sm group-hover:scale-105 transition-transform"
+                    />
                   )}
-                  <span className="hidden md:inline">الرئيسية</span>
-                  <svg className={`w-4 h-4 transition-transform ${menuOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <span className="font-extrabold text-base sm:text-lg text-gray-900 dark:text-white hidden lg:inline group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                    {settings.siteName}
+                  </span>
+                  <svg
+                    className={`w-4 h-4 text-gray-500 transition-transform ${menuOpen ? "rotate-180 text-blue-600" : ""}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
@@ -470,18 +485,6 @@ export default function Home() {
                   </div>
                 )}
               </div>
-
-              {/* Logo / Brand Name */}
-              <Link href="/" className="flex items-center gap-2 mr-2">
-                {settings.logo ? (
-                  <img src={settings.logo} alt={settings.siteName} className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl object-cover shadow-sm" />
-                ) : (
-                  <img src="/logo.jpg" alt="Logo" className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl object-cover shadow-sm" />
-                )}
-                <span className="font-extrabold text-base sm:text-lg text-gray-900 dark:text-white hidden lg:inline">
-                  {settings.siteName}
-                </span>
-              </Link>
             </div>
 
             {/* Left: Search & Cart Icons */}
