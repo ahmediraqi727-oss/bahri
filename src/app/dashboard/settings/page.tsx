@@ -6,6 +6,7 @@ import { useActivityLog } from "@/lib/activity-log";
 import ColorPicker from "@/components/ColorPicker";
 import ImageUploader from "@/components/ImageUploader";
 import CategoriesManager from "@/components/CategoriesManager";
+import ProfileEditModal from "@/components/ProfileEditModal";
 import { SiteSettings, UserRole } from "@/lib/types";
 
 const FONT_OPTIONS = [
@@ -108,6 +109,8 @@ export default function SettingsPage() {
     );
   }
 
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+
   return (
     <div className="space-y-6 max-w-4xl pb-28" dir="rtl">
       {/* Header */}
@@ -117,12 +120,22 @@ export default function SettingsPage() {
           <p className="text-gray-500 dark:text-gray-400 mt-1">تخصيص الهوية، الأيقونات والأحجام، تذييل الصفحة، وروابط التواصل</p>
         </div>
 
-        {isDirty && (
-          <span className="px-3 py-1.5 bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-xs font-bold rounded-full animate-pulse flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-amber-500" />
-            توجد تغييرات غير محفوظة!
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setProfileModalOpen(true)}
+            className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md transition-all flex items-center gap-2"
+          >
+            <span>👤</span>
+            <span>تعديل الملف الشخصي والمعلومات الأمنيّة</span>
+          </button>
+
+          {isDirty && (
+            <span className="px-3 py-1.5 bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-xs font-bold rounded-full animate-pulse flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+              توجد تغييرات غير محفوظة!
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Success Notification Banner */}
@@ -666,6 +679,9 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Profile Edit Modal */}
+      <ProfileEditModal isOpen={profileModalOpen} onClose={() => setProfileModalOpen(false)} />
     </div>
   );
 }

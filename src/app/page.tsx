@@ -10,6 +10,7 @@ import ImageSearch from "@/components/ImageSearch";
 import CustomerCartSidebar from "@/components/CustomerCartSidebar";
 import CategoriesCarousel from "@/components/CategoriesCarousel";
 import GuestWelcomeModal from "@/components/GuestWelcomeModal";
+import ProfileEditModal from "@/components/ProfileEditModal";
 import { supabase } from "@/lib/supabase-client";
 import { useLang, Lang } from "@/lib/lang-context";
 
@@ -31,6 +32,7 @@ export default function Home() {
   const [searchSubmitted, setSearchSubmitted] = useState(false);
   const [suggestions, setSuggestions] = useState<typeof products>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [profileEditOpen, setProfileEditOpen] = useState(false);
   const [eyeCare, setEyeCare] = useState(false);
   const [fontSize, setFontSize] = useState(16);
   const [contactName, setContactName] = useState("");
@@ -220,24 +222,28 @@ export default function Home() {
                         </div>
                       </div>
                     ) : user ? (
-                      <div className="p-4 bg-gradient-to-br from-blue-50/80 via-indigo-50/50 to-purple-50/80 dark:from-blue-950/40 dark:via-gray-900 dark:to-purple-950/40 border-b border-gray-100 dark:border-gray-800">
+                      <div
+                        onClick={() => { setProfileEditOpen(true); setMenuOpen(false); }}
+                        className="p-4 bg-gradient-to-br from-blue-50/80 via-indigo-50/50 to-purple-50/80 dark:from-blue-950/40 dark:via-gray-900 dark:to-purple-950/40 border-b border-gray-100 dark:border-gray-800 cursor-pointer hover:bg-blue-100/60 dark:hover:bg-blue-900/50 transition-all group"
+                        title="انقر لتعديل الملف الشخصي والمعلومات الأمنيّة ✏️"
+                      >
                         <div className="flex items-center gap-3">
                           {user.avatarUrl ? (
                             <img
                               src={user.avatarUrl}
                               alt={user.fullName}
-                              className="w-12 h-12 rounded-2xl object-cover border-2 border-blue-500 shadow-sm flex-shrink-0"
+                              className="w-12 h-12 rounded-2xl object-cover border-2 border-blue-500 shadow-sm flex-shrink-0 group-hover:scale-105 transition-transform"
                             />
                           ) : (
-                            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 text-white font-extrabold text-lg flex items-center justify-center shadow-md flex-shrink-0">
+                            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 text-white font-extrabold text-lg flex items-center justify-center shadow-md flex-shrink-0 group-hover:scale-105 transition-transform">
                               {user.fullName?.charAt(0) || user.email?.charAt(0)?.toUpperCase() || "👤"}
                             </div>
                           )}
 
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <h4 className="font-extrabold text-sm text-gray-900 dark:text-white truncate">
-                                {user.fullName || "مستخدم مسجل"}
+                              <h4 className="font-extrabold text-sm text-gray-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                                {user.fullName || "مستخدم مسجل"} ✏️
                               </h4>
                               <span
                                 className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold flex-shrink-0 ${
@@ -653,6 +659,9 @@ export default function Home() {
 
       {/* Guest Welcome Modal */}
       <GuestWelcomeModal />
+
+      {/* Profile Edit Modal */}
+      <ProfileEditModal isOpen={profileEditOpen} onClose={() => setProfileEditOpen(false)} />
     </div>
   );
 }
