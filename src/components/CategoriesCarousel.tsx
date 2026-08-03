@@ -102,24 +102,6 @@ export default function CategoriesCarousel({ selectedCategory, onSelectCategory 
             </button>
           )}
         </div>
-
-        {/* Navigation Buttons */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => scroll("right")}
-            className="w-9 h-9 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-gray-700 shadow-sm transition-all hover:scale-105 active:scale-95 font-bold"
-            title="التمرير يميناً"
-          >
-            ➔
-          </button>
-          <button
-            onClick={() => scroll("left")}
-            className="w-9 h-9 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-gray-700 shadow-sm transition-all hover:scale-105 active:scale-95 font-bold"
-            title="التمرير يساراً"
-          >
-            ⬅
-          </button>
-        </div>
       </div>
 
       {/* Interactive Horizontal Carousel Track */}

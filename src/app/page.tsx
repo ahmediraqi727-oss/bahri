@@ -346,6 +346,57 @@ export default function Home() {
                         </>
                       )}
                       
+                      {/* Categories Section inside Main Dropdown */}
+                      <div className="border-t border-gray-100 dark:border-gray-800 my-1 pt-1">
+                        <button
+                          onClick={() => setCategoriesOpen(!categoriesOpen)}
+                          className="w-full flex items-center justify-between px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-right"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-xl">📁</span>
+                            <span className="text-sm font-bold text-gray-700 dark:text-gray-200">أقسام المنتجات</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {selectedCategory && (
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400">
+                                {selectedCategory}
+                              </span>
+                            )}
+                            <svg className={`w-4 h-4 transition-transform ${categoriesOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </div>
+                        </button>
+
+                        {categoriesOpen && (
+                          <div className="mr-4 pr-3 border-r-2 border-blue-500/40 my-1 space-y-1 max-h-48 overflow-y-auto">
+                            <button
+                              onClick={() => { setSelectedCategory(null); setMenuOpen(false); }}
+                              className={`w-full text-right px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
+                                !selectedCategory ? "bg-blue-600 text-white" : "hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200"
+                              }`}
+                            >
+                              عرض جميع الأقسام ({products.length})
+                            </button>
+                            {categoriesList.length === 0 ? (
+                              <p className="px-3 py-2 text-xs text-gray-400">لا توجد أقسام مخصصة بعد</p>
+                            ) : (
+                              categoriesList.map((cat) => (
+                                <button
+                                  key={cat}
+                                  onClick={() => { setSelectedCategory(cat); setMenuOpen(false); }}
+                                  className={`w-full text-right px-3 py-2 rounded-lg text-xs font-bold transition-colors truncate ${
+                                    selectedCategory === cat ? "bg-blue-600 text-white" : "hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200"
+                                  }`}
+                                >
+                                  📁 {cat}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      
                       <div className="border-t border-gray-100 dark:border-gray-800 my-1" />
                       
                       <button onClick={() => { toggleDarkMode(); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
@@ -369,60 +420,6 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Categories Button ("الأقسام") - Visible to EVERYONE */}
-              <div className="relative" ref={categoriesRef}>
-                <button
-                  onClick={() => setCategoriesOpen(!categoriesOpen)}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm sm:text-base font-bold text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 bg-gray-100 dark:bg-gray-800 rounded-xl hover:bg-gray-200 transition-colors"
-                  title="أقسام المنتجات"
-                >
-                  <span className="text-xl">📁</span>
-                  <span>الأقسام</span>
-                  {selectedCategory && (
-                    <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
-                  )}
-                  <svg className={`w-4 h-4 transition-transform ${categoriesOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                {categoriesOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden z-50 p-2 space-y-1 animate-fadeIn">
-                    <div className="px-3 py-2 text-xs font-bold text-gray-400 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
-                      <span>جميع الأقسام والفئات</span>
-                      {selectedCategory && (
-                        <button onClick={() => setSelectedCategory(null)} className="text-blue-600 dark:text-blue-400 hover:underline text-[11px]">
-                          إلغاء التصفية
-                        </button>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => { setSelectedCategory(null); setCategoriesOpen(false); }}
-                      className={`w-full text-right px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
-                        !selectedCategory ? "bg-blue-600 text-white" : "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
-                      }`}
-                    >
-                      عرض جميع الأقسام ({products.length})
-                    </button>
-                    {categoriesList.length === 0 ? (
-                      <p className="px-3 py-2 text-xs text-gray-400">لا توجد أقسام مخصصة بعد</p>
-                    ) : (
-                      categoriesList.map((cat) => (
-                        <button
-                          key={cat}
-                          onClick={() => { setSelectedCategory(cat); setCategoriesOpen(false); }}
-                          className={`w-full text-right px-3 py-2 rounded-xl text-xs font-bold transition-colors truncate ${
-                            selectedCategory === cat ? "bg-blue-600 text-white" : "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
-                          }`}
-                        >
-                          📁 {cat}
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-
               {/* Logo / Brand Name */}
               <Link href="/" className="flex items-center gap-2 mr-2">
                 {settings.logo ? (
@@ -436,30 +433,8 @@ export default function Home() {
               </Link>
             </div>
 
-            {/* Left: Search & Cart & Mode Action Icons */}
+            {/* Left: Search & Cart Icons */}
             <div className="flex items-center gap-1.5 sm:gap-2">
-              {/* Light / Dark Mode Toggle */}
-              <button
-                onClick={toggleDarkMode}
-                className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-xl"
-                title={settings.darkMode ? "التحويل للوضع النهاري (الفاتح)" : "التحويل للوضع المظلم (الليلي)"}
-              >
-                {settings.darkMode ? "☀️" : "🌙"}
-              </button>
-
-              {/* Eye Protection Sepia Toggle */}
-              <button
-                onClick={toggleEyeProtection}
-                className={`p-2 rounded-xl transition-all text-xl flex items-center justify-center ${
-                  settings.eyeProtection
-                    ? "bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 ring-2 ring-amber-400"
-                    : "hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400"
-                }`}
-                title={settings.eyeProtection ? "إيقاف وضع حماية العين" : "تفعيل وضع حماية العين (Warm Sepia)"}
-              >
-                👁️
-              </button>
-
               {/* Search Toggle Icon */}
               <button
                 onClick={() => setSearchOpen(!searchOpen)}
