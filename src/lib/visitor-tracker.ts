@@ -5,14 +5,33 @@ import { CustomerRecord } from "./types";
 
 const VISITOR_ID_KEY = "app_visitor_id";
 const WELCOME_MODAL_SHOWN_KEY = "app_visitor_welcome_dismissed";
+const GUEST_COOKIE_KEY = "app_guest_user";
+
+export function setCookie(name: string, value: string, days: number = 365) {
+  if (typeof document === "undefined") return;
+  const expires = new Date(Date.now() + days * 864e5).toUTCString();
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+}
+
+export function getCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
+  return match ? decodeURIComponent(match[2]) : null;
+}
+
+export function eraseCookie(name: string) {
+  if (typeof document === "undefined") return;
+  document.cookie = `${name}=; Max-Age=-99999999; path=/;`;
+}
 
 export function getOrCreateVisitorId(): string {
   if (typeof window === "undefined") return "vis_ssr";
-  let vid = localStorage.getItem(VISITOR_ID_KEY);
+  let vid = localStorage.getItem(VISITOR_ID_KEY) || getCookie(VISITOR_ID_KEY);
   if (!vid) {
     vid = `vis_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    localStorage.setItem(VISITOR_ID_KEY, vid);
   }
+  localStorage.setItem(VISITOR_ID_KEY, vid);
+  setCookie(VISITOR_ID_KEY, vid, 365);
   return vid;
 }
 
@@ -26,12 +45,16 @@ export function detectDeviceType(): string {
 
 export function isWelcomeModalDismissed(): boolean {
   if (typeof window === "undefined") return true;
-  return localStorage.getItem(WELCOME_MODAL_SHOWN_KEY) === "true";
+  return (
+    localStorage.getItem(WELCOME_MODAL_SHOWN_KEY) === "true" ||
+    getCookie(WELCOME_MODAL_SHOWN_KEY) === "true"
+  );
 }
 
 export function markWelcomeModalDismissed(): void {
   if (typeof window !== "undefined") {
     localStorage.setItem(WELCOME_MODAL_SHOWN_KEY, "true");
+    setCookie(WELCOME_MODAL_SHOWN_KEY, "true", 365);
   }
 }
 
@@ -209,10 +232,18 @@ export async function updateGuestIdentity(identity: {
         is_registered: Boolean(identity.email),
         is_suspicious: isSuspicious,
         change_count: currentChangeCount,
-        name_history: nameHistory,
-        phone_history: phoneHistory,
         address_history: addressHistory,
       });
+    }
+
+    if (identity.name || identity.governorate) {
+      const guestInfo = {
+        name: identity.name?.trim() || "ضيف زائر",
+        governorate: identity.governorate?.trim() || "",
+        visitorId,
+      };
+      setCookie("app_guest_user", JSON.stringify(guestInfo), 365);
+      setCookie(VISITOR_ID_KEY, visitorId, 365);
     }
 
     return true;

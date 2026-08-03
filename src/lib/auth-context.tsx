@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { User, Session, AuthError } from "@supabase/supabase-js";
 import { supabase } from "./supabase-client";
 import { UserRole } from "./types";
+import { getCookie, setCookie, eraseCookie } from "./visitor-tracker";
 import { updateGuestIdentity } from "./visitor-tracker";
 
 interface AuthUser {
@@ -161,6 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== "undefined") {
       localStorage.removeItem("guest-user");
       localStorage.removeItem("guestUser");
+      eraseCookie("app_guest_user");
       window.dispatchEvent(new Event("guest-user-updated"));
     }
   }, []);
@@ -181,6 +183,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== "undefined") {
       localStorage.setItem("guest-user", JSON.stringify(guest));
       localStorage.setItem("guestUser", JSON.stringify({ name: cleanName, governorate: cleanGov }));
+      setCookie("app_guest_user", JSON.stringify({ name: cleanName, governorate: cleanGov }), 365);
       window.dispatchEvent(new Event("guest-user-updated"));
     }
   }, []);
@@ -190,6 +193,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (typeof window === "undefined") return;
       const saved1 = localStorage.getItem("guest-user");
       const saved2 = localStorage.getItem("guestUser");
+      const savedCookie = getCookie("app_guest_user");
+
       if (saved1) {
         try { setUser(JSON.parse(saved1)); } catch {}
       } else if (saved2) {
@@ -204,6 +209,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             avatarUrl: "",
             isGuest: true,
           });
+        } catch {}
+      } else if (savedCookie) {
+        try {
+          const parsed = JSON.parse(savedCookie);
+          const restoredGuest: AuthUser = {
+            id: `guest-${Date.now()}`,
+            email: "",
+            fullName: parsed.name || "ضيف عزيز",
+            governorate: parsed.governorate || "",
+            role: "customer" as UserRole,
+            avatarUrl: "",
+            isGuest: true,
+          };
+          setUser(restoredGuest);
+          localStorage.setItem("guest-user", JSON.stringify(restoredGuest));
+          localStorage.setItem("guestUser", JSON.stringify({ name: parsed.name, governorate: parsed.governorate }));
         } catch {}
       }
     };
