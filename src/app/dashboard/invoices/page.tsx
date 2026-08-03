@@ -7,6 +7,7 @@ import { useActivityLog } from "@/lib/activity-log";
 import { supabase } from "@/lib/supabase-client";
 import { Order, CartItem, formatInvoiceSerial } from "@/lib/order-types";
 import PermissionGate from "@/components/PermissionGate";
+import { useAuth } from "@/lib/auth-context";
 import jsPDF from "jspdf";
 
 const STATUS_LABELS: Record<Order["status"], string> = {
@@ -29,6 +30,9 @@ export default function InvoicesPage() {
   const { products } = useData();
   const { settings } = useSettings();
   const { logActivity } = useActivityLog();
+  const { user } = useAuth();
+
+  const isCustomer = Boolean(user && user.role === "customer" && !user.isGuest && !user.id.startsWith("guest-"));
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -482,6 +486,15 @@ export default function InvoicesPage() {
   // Filtered Invoices Search Engine Logic
   const filteredInvoices = useMemo(() => {
     return orders.filter((o) => {
+      // 0. Customer Role Filter: Only show invoices belonging to this registered customer
+      if (isCustomer && user) {
+        const matchName = user.fullName && o.customerName.toLowerCase().includes(user.fullName.toLowerCase());
+        const matchEmail = user.email && o.notes && o.notes.toLowerCase().includes(user.email.toLowerCase());
+        const userPhone = (user as unknown as { phone?: string }).phone;
+        const matchPhone = userPhone && o.customerPhone && o.customerPhone.includes(userPhone);
+        if (!matchName && !matchPhone && !matchEmail) return false;
+      }
+
       // 1. Status Filter
       const matchStatus = statusFilter === "all" || o.status === statusFilter;
 

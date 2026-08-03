@@ -213,7 +213,7 @@ export default function Home() {
                 {menuOpen && (
                   <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fadeIn text-right" dir="rtl">
                     
-                    {/* Top User Profile Header Card */}
+                    {/* Top User Profile Header Card OR Login/Guest Prompt */}
                     {authLoading ? (
                       <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800 flex items-center gap-3 animate-pulse">
                         <div className="w-12 h-12 rounded-2xl bg-gray-300 dark:bg-gray-700 flex-shrink-0" />
@@ -282,72 +282,24 @@ export default function Home() {
                           </div>
                         </div>
                       </div>
-                    ) : null}
+                    ) : (
+                      <div className="p-3 bg-blue-50/50 dark:bg-blue-950/20 border-b border-gray-100 dark:border-gray-800">
+                        <Link
+                          href="/login"
+                          onClick={() => setMenuOpen(false)}
+                          className="w-full py-2.5 px-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md flex items-center justify-center gap-2 transition-all hover:scale-[1.02]"
+                        >
+                          <span>🔑</span>
+                          <span>تسجيل الدخول / الدخول كضيف</span>
+                        </Link>
+                      </div>
+                    )}
 
-                    {/* Menu Items List */}
                     <div className="p-2 space-y-1">
-                      {isManager ? (
-                        <>
-                          <Link href="/dashboard" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                            <span className="text-xl">📊</span>
-                            <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t.dashboard}</span>
-                          </Link>
-                          <Link href="/dashboard/products" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                            <span className="text-xl">📦</span>
-                            <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t.products}</span>
-                          </Link>
-                          <Link href="/dashboard/invoices" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                            <span className="text-xl">🧾</span>
-                            <span className="text-sm font-bold text-gray-700 dark:text-gray-200">الفواتير والطلبات</span>
-                          </Link>
-                          <Link href="/dashboard/settings" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                            <span className="text-xl">⚙️</span>
-                            <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t.settings}</span>
-                          </Link>
-                        </>
-                      ) : user && !user.isGuest && !user.id.startsWith("guest-") ? (
-                        <>
-                          <Link href="/dashboard/settings" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                            <span className="text-xl">⚙️</span>
-                            <span className="text-sm font-bold text-gray-700 dark:text-gray-200">إعدادات الحساب</span>
-                          </Link>
-                        </>
-                      ) : user?.isGuest || user?.id.startsWith("guest-") ? (
-                        <>
-                          <button
-                            onClick={() => { setGuestEditOpen(true); setMenuOpen(false); }}
-                            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors text-right"
-                          >
-                            <span className="text-xl">✏️</span>
-                            <span className="text-sm font-bold text-amber-800 dark:text-amber-300">تعديل بيانات الضيف</span>
-                          </button>
-                          
-                          <Link href="/login" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold transition-colors">
-                            <span className="text-xl">🔑</span>
-                            <span className="text-sm font-bold">ترقية لحساب رسمي</span>
-                          </Link>
-                        </>
-                      ) : (
-                        <>
-                          <Link href="/login" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold transition-colors">
-                            <span className="text-xl">🔑</span>
-                            <span className="text-sm font-bold">{t.login}</span>
-                          </Link>
-                        </>
-                      )}
-
-                      {user && (
-                        <>
-                          <div className="border-t border-gray-100 dark:border-gray-800 my-1" />
-                          <button onClick={() => { signOut(); setMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-                            <span className="text-xl">🚪</span>
-                            <span className="text-sm font-bold text-red-600 dark:text-red-400">{user.isGuest || user.id.startsWith("guest-") ? "خروج كزائر" : t.logout}</span>
-                          </button>
-                        </>
-                      )}
-                      
-                      {/* Categories Section inside Main Dropdown */}
-                      <div className="border-t border-gray-100 dark:border-gray-800 my-1 pt-1">
+                      {/* ------------------------------------------------------------------ */}
+                      {/* BRANCH 1: Categories (Always Visible to Everyone)                  */}
+                      {/* ------------------------------------------------------------------ */}
+                      <div>
                         <button
                           onClick={() => setCategoriesOpen(!categoriesOpen)}
                           className="w-full flex items-center justify-between px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-right"
@@ -396,22 +348,121 @@ export default function Home() {
                           </div>
                         )}
                       </div>
-                      
+
+                      {/* DIVIDER 1 */}
                       <div className="border-t border-gray-100 dark:border-gray-800 my-1" />
-                      
-                      <button onClick={() => { toggleDarkMode(); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+
+                      {/* ------------------------------------------------------------------ */}
+                      {/* BRANCH 2: Permissions & Control                                   */}
+                      {/* ------------------------------------------------------------------ */}
+
+                      {/* Invoices & Orders (Visible to Managers/Admins AND Registered Customers) */}
+                      {((user && (user.role === "manager" || user.role === "admin")) || (user && !user.isGuest && !user.id.startsWith("guest-"))) && (
+                        <Link
+                          href="/dashboard/invoices"
+                          onClick={() => setMenuOpen(false)}
+                          className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                        >
+                          <span className="text-xl">🧾</span>
+                          <span className="text-sm font-bold text-gray-700 dark:text-gray-200">
+                            {user.role === "manager" || user.role === "admin" ? "الفواتير والطلبات" : "فواتيري وطلباتي الشراء"}
+                          </span>
+                        </Link>
+                      )}
+
+                      {/* Dashboard (Visible to Managers / Admins Only) */}
+                      {user && (user.role === "manager" || user.role === "admin") && (
+                        <Link
+                          href="/dashboard"
+                          onClick={() => setMenuOpen(false)}
+                          className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                        >
+                          <span className="text-xl">📊</span>
+                          <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t.dashboard}</span>
+                        </Link>
+                      )}
+
+                      {/* Settings (Visible to Managers / Admins Only) */}
+                      {user && (user.role === "manager" || user.role === "admin") && (
+                        <Link
+                          href="/dashboard/settings"
+                          onClick={() => setMenuOpen(false)}
+                          className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                        >
+                          <span className="text-xl">⚙️</span>
+                          <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t.settings}</span>
+                        </Link>
+                      )}
+
+                      {/* Guest edit & upgrade options */}
+                      {(user?.isGuest || user?.id.startsWith("guest-")) && (
+                        <>
+                          <button
+                            onClick={() => { setGuestEditOpen(true); setMenuOpen(false); }}
+                            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors text-right"
+                          >
+                            <span className="text-xl">✏️</span>
+                            <span className="text-sm font-bold text-amber-800 dark:text-amber-300">تعديل بيانات الضيف</span>
+                          </button>
+                          
+                          <Link
+                            href="/login"
+                            onClick={() => setMenuOpen(false)}
+                            className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold transition-colors"
+                          >
+                            <span className="text-xl">🔑</span>
+                            <span className="text-sm font-bold">ترقية لحساب رسمي</span>
+                          </Link>
+                        </>
+                      )}
+
+                      {/* DIVIDER 2 */}
+                      <div className="border-t border-gray-100 dark:border-gray-800 my-1" />
+
+                      {/* ------------------------------------------------------------------ */}
+                      {/* BRANCH 3: Session & UI Settings                                    */}
+                      {/* ------------------------------------------------------------------ */}
+
+                      {/* Logout (Only visible if user is logged in as user or guest) */}
+                      {user && (
+                        <button
+                          onClick={() => { signOut(); setMenuOpen(false); }}
+                          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-right"
+                        >
+                          <span className="text-xl">🚪</span>
+                          <span className="text-sm font-bold text-red-600 dark:text-red-400">
+                            {user.isGuest || user.id.startsWith("guest-") ? "خروج كزائر" : t.logout}
+                          </span>
+                        </button>
+                      )}
+
+                      {/* Dark / Light Mode Toggle (Always Visible) */}
+                      <button
+                        onClick={() => toggleDarkMode()}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-right"
+                      >
                         <span className="text-xl">{settings.darkMode ? "☀️" : "🌙"}</span>
-                        <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{settings.darkMode ? t.lightMode : t.darkMode}</span>
+                        <span className="text-sm font-bold text-gray-700 dark:text-gray-200">
+                          {settings.darkMode ? t.lightMode : t.darkMode}
+                        </span>
                       </button>
 
-                      <button onClick={() => { toggleEyeProtection(); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                      {/* Eye Protection Toggle (Always Visible) */}
+                      <button
+                        onClick={() => toggleEyeProtection()}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-right"
+                      >
                         <span className="text-xl">{settings.eyeProtection ? "👁️" : "🕶️"}</span>
-                        <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{settings.eyeProtection ? t.eyeCareOff : t.eyeCare}</span>
+                        <span className="text-sm font-bold text-gray-700 dark:text-gray-200">
+                          {settings.eyeProtection ? t.eyeCareOff : t.eyeCare}
+                        </span>
                       </button>
 
-                      <div className="border-t border-gray-100 dark:border-gray-800 my-1" />
-                      
-                      <button onClick={() => { setContactOpen(true); setMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                      {/* Help / Contact Support (Always Visible) */}
+                      <button
+                        onClick={() => { setContactOpen(true); setMenuOpen(false); }}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-right"
+                      >
                         <span className="text-xl">💬</span>
                         <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t.help}</span>
                       </button>
