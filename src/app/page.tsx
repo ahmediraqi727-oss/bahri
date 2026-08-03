@@ -17,7 +17,7 @@ export default function Home() {
   const { settings, toggleDarkMode, toggleEyeProtection } = useSettings();
   const { products, suppliers } = useData();
   const { addItem, itemCount } = useCart();
-  const { user, signOut } = useAuth();
+  const { user, signOut, loading: authLoading } = useAuth();
   const { t, lang, setLang } = useLang();
   const theme = settings.roleThemes.customer;
 
@@ -208,64 +208,124 @@ export default function Home() {
                 </button>
 
                 {menuOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fadeIn">
+                  <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fadeIn text-right" dir="rtl">
+                    
+                    {/* Top User Profile Header Card */}
+                    {authLoading ? (
+                      <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800 flex items-center gap-3 animate-pulse">
+                        <div className="w-12 h-12 rounded-2xl bg-gray-300 dark:bg-gray-700 flex-shrink-0" />
+                        <div className="space-y-2 flex-1">
+                          <div className="h-3.5 bg-gray-300 dark:bg-gray-700 rounded w-3/4" />
+                          <div className="h-2.5 bg-gray-200 dark:bg-gray-800 rounded w-1/2" />
+                        </div>
+                      </div>
+                    ) : user ? (
+                      <div className="p-4 bg-gradient-to-br from-blue-50/80 via-indigo-50/50 to-purple-50/80 dark:from-blue-950/40 dark:via-gray-900 dark:to-purple-950/40 border-b border-gray-100 dark:border-gray-800">
+                        <div className="flex items-center gap-3">
+                          {user.avatarUrl ? (
+                            <img
+                              src={user.avatarUrl}
+                              alt={user.fullName}
+                              className="w-12 h-12 rounded-2xl object-cover border-2 border-blue-500 shadow-sm flex-shrink-0"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 text-white font-extrabold text-lg flex items-center justify-center shadow-md flex-shrink-0">
+                              {user.fullName?.charAt(0) || user.email?.charAt(0)?.toUpperCase() || "👤"}
+                            </div>
+                          )}
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="font-extrabold text-sm text-gray-900 dark:text-white truncate">
+                                {user.fullName || "مستخدم مسجل"}
+                              </h4>
+                              <span
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold flex-shrink-0 ${
+                                  user.role === "manager"
+                                    ? "bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300"
+                                    : user.role === "admin"
+                                    ? "bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300"
+                                    : "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300"
+                                }`}
+                              >
+                                {user.role === "manager"
+                                  ? "👑 مدير نظام"
+                                  : user.role === "admin"
+                                  ? "🛡️ إداري"
+                                  : "👤 زبون"}
+                              </span>
+                            </div>
+
+                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5 font-mono">
+                              {user.email || "حساب معتمد"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {/* Menu Items List */}
                     <div className="p-2 space-y-1">
                       {isManager ? (
                         <>
-                          <Link href="/dashboard" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                            <span className="text-xl">👤</span>
+                          <Link href="/dashboard" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                            <span className="text-xl">📊</span>
                             <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t.dashboard}</span>
                           </Link>
-                          <Link href="/dashboard/products" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                          <Link href="/dashboard/products" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                             <span className="text-xl">📦</span>
                             <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t.products}</span>
                           </Link>
-                          <Link href="/dashboard/settings" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                          <Link href="/dashboard/invoices" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                            <span className="text-xl">🧾</span>
+                            <span className="text-sm font-bold text-gray-700 dark:text-gray-200">الفواتير والطلبات</span>
+                          </Link>
+                          <Link href="/dashboard/settings" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                             <span className="text-xl">⚙️</span>
                             <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t.settings}</span>
                           </Link>
-                          <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
-                          <button onClick={() => { signOut(); setMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-                            <span className="text-xl">🚪</span>
-                            <span className="text-sm font-bold text-red-600 dark:text-red-400">{t.logout}</span>
-                          </button>
                         </>
                       ) : user ? (
                         <>
-                          <div className="flex items-center gap-3 px-4 py-3">
-                            <span className="text-xl">👤</span>
-                            <span className="text-sm font-bold text-gray-700 dark:text-gray-200 truncate">{user.fullName}</span>
-                          </div>
-                          <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
+                          <Link href="/dashboard/settings" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                            <span className="text-xl">⚙️</span>
+                            <span className="text-sm font-bold text-gray-700 dark:text-gray-200">إعدادات الحساب</span>
+                          </Link>
+                        </>
+                      ) : (
+                        <>
+                          <Link href="/login" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold transition-colors">
+                            <span className="text-xl">🔑</span>
+                            <span className="text-sm font-bold">{t.login}</span>
+                          </Link>
+                        </>
+                      )}
+
+                      {user && (
+                        <>
+                          <div className="border-t border-gray-100 dark:border-gray-800 my-1" />
                           <button onClick={() => { signOut(); setMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                             <span className="text-xl">🚪</span>
                             <span className="text-sm font-bold text-red-600 dark:text-red-400">{t.logout}</span>
                           </button>
                         </>
-                      ) : (
-                        <>
-                          <Link href="/login" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                            <span className="text-xl">👤</span>
-                            <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t.login}</span>
-                          </Link>
-                        </>
                       )}
                       
-                      <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
+                      <div className="border-t border-gray-100 dark:border-gray-800 my-1" />
                       
-                      <button onClick={() => { toggleDarkMode(); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                      <button onClick={() => { toggleDarkMode(); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                         <span className="text-xl">{settings.darkMode ? "☀️" : "🌙"}</span>
                         <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{settings.darkMode ? t.lightMode : t.darkMode}</span>
                       </button>
 
-                      <button onClick={() => { setEyeCare(!eyeCare); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                        <span className="text-xl">{eyeCare ? "👁️" : "🕶️"}</span>
-                        <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{eyeCare ? t.eyeCareOff : t.eyeCare}</span>
+                      <button onClick={() => { toggleEyeProtection(); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                        <span className="text-xl">{settings.eyeProtection ? "👁️" : "🕶️"}</span>
+                        <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{settings.eyeProtection ? t.eyeCareOff : t.eyeCare}</span>
                       </button>
 
-                      <div className="border-t border-gray-100 dark:border-gray-700 my-1" />
+                      <div className="border-t border-gray-100 dark:border-gray-800 my-1" />
                       
-                      <button onClick={() => { setContactOpen(true); setMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                      <button onClick={() => { setContactOpen(true); setMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                         <span className="text-xl">💬</span>
                         <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t.help}</span>
                       </button>
