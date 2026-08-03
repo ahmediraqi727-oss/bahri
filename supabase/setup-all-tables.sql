@@ -511,6 +511,15 @@ DROP POLICY IF EXISTS "Anyone can manage categories" ON categories;
 CREATE POLICY "Anyone can view categories" ON categories FOR SELECT USING (TRUE);
 CREATE POLICY "Anyone can manage categories" ON categories FOR ALL USING (TRUE);
 
+DROP POLICY IF EXISTS "Anyone can view customers" ON customers;
+DROP POLICY IF EXISTS "Anyone can insert customers" ON customers;
+DROP POLICY IF EXISTS "Anyone can update customers" ON customers;
+DROP POLICY IF EXISTS "Anyone can delete customers" ON customers;
+CREATE POLICY "Anyone can view customers" ON customers FOR SELECT USING (TRUE);
+CREATE POLICY "Anyone can insert customers" ON customers FOR INSERT WITH CHECK (TRUE);
+CREATE POLICY "Anyone can update customers" ON customers FOR UPDATE USING (TRUE);
+CREATE POLICY "Anyone can delete customers" ON customers FOR DELETE USING (TRUE);
+
 -- =====================
 -- 11. Storage Buckets
 -- =====================
@@ -530,6 +539,7 @@ GRANT ALL ON users TO authenticated;
 GRANT ALL ON products TO authenticated;
 GRANT ALL ON suppliers TO authenticated;
 GRANT ALL ON categories TO authenticated;
+GRANT ALL ON customers TO authenticated;
 GRANT ALL ON orders TO authenticated;
 GRANT ALL ON sales TO authenticated;
 GRANT ALL ON activity_log TO authenticated;
@@ -538,6 +548,7 @@ GRANT ALL ON notifications TO authenticated;
 GRANT ALL ON settings TO authenticated;
 GRANT ALL ON chat_cards TO authenticated;
 GRANT ALL ON hero_gallery TO authenticated;
+GRANT ALL ON customers TO anon;
 GRANT SELECT ON products TO anon;
 GRANT SELECT ON suppliers TO anon;
 GRANT SELECT ON categories TO anon;

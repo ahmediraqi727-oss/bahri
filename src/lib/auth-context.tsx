@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { User, Session, AuthError } from "@supabase/supabase-js";
 import { supabase } from "./supabase-client";
 import { UserRole } from "./types";
+import { updateGuestIdentity } from "./visitor-tracker";
 
 interface AuthUser {
   id: string;
@@ -113,6 +114,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           data: { full_name: fullName, role },
         },
       });
+      if (!error && email) {
+        updateGuestIdentity({ name: fullName, email });
+      }
       return { error };
     } catch (e: unknown) {
       return { error: e as AuthError };
@@ -122,6 +126,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = useCallback(async (email: string, password: string) => {
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (!error && email) {
+        updateGuestIdentity({ email });
+      }
       return { error };
     } catch (e: unknown) {
       return { error: e as AuthError };
