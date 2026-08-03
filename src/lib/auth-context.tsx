@@ -160,6 +160,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(null);
     if (typeof window !== "undefined") {
       localStorage.removeItem("guest-user");
+      localStorage.removeItem("guestUser");
+      window.dispatchEvent(new Event("guest-user-updated"));
     }
   }, []);
 
@@ -178,17 +180,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(guest);
     if (typeof window !== "undefined") {
       localStorage.setItem("guest-user", JSON.stringify(guest));
+      localStorage.setItem("guestUser", JSON.stringify({ name: cleanName, governorate: cleanGov }));
+      window.dispatchEvent(new Event("guest-user-updated"));
     }
   }, []);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && !user && !session) {
-      const saved = localStorage.getItem("guest-user");
-      if (saved) {
-        try { setUser(JSON.parse(saved)); } catch {}
+    const handleGuestUpdate = () => {
+      if (typeof window === "undefined") return;
+      const saved1 = localStorage.getItem("guest-user");
+      const saved2 = localStorage.getItem("guestUser");
+      if (saved1) {
+        try { setUser(JSON.parse(saved1)); } catch {}
+      } else if (saved2) {
+        try {
+          const parsed = JSON.parse(saved2);
+          setUser({
+            id: `guest-${Date.now()}`,
+            email: "",
+            fullName: parsed.name || "ضيف عزيز",
+            governorate: parsed.governorate || "",
+            role: "customer" as UserRole,
+            avatarUrl: "",
+            isGuest: true,
+          });
+        } catch {}
       }
+    };
+
+    handleGuestUpdate();
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("guest-user-updated", handleGuestUpdate);
+      return () => window.removeEventListener("guest-user-updated", handleGuestUpdate);
     }
-  }, [user, session]);
+  }, [session]);
 
   return (
     <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signInWithGoogle, signOut, guestLogin }}>

@@ -53,6 +53,10 @@ export default function GuestWelcomeModal({ forceOpen, onClose }: GuestWelcomeMo
     setSubmitting(true);
     try {
       guestLogin("ضيف زائر", "");
+      if (typeof window !== "undefined") {
+        localStorage.setItem("guestUser", JSON.stringify({ name: "ضيف زائر", governorate: "" }));
+        window.dispatchEvent(new Event("guest-user-updated"));
+      }
       markWelcomeModalDismissed();
       await trackVisitorSession("/");
     } catch (err) {
@@ -73,6 +77,11 @@ export default function GuestWelcomeModal({ forceOpen, onClose }: GuestWelcomeMo
 
       // Instantly update AuthContext Guest State!
       guestLogin(cleanName, cleanGov);
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("guestUser", JSON.stringify({ name: cleanName, governorate: cleanGov }));
+        window.dispatchEvent(new Event("guest-user-updated"));
+      }
 
       await updateGuestIdentity({
         name: cleanName,
