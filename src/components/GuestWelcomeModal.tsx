@@ -4,8 +4,13 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { isWelcomeModalDismissed, markWelcomeModalDismissed, updateGuestIdentity, trackVisitorSession } from "@/lib/visitor-tracker";
 
-export default function GuestWelcomeModal() {
-  const { user, session, loading } = useAuth();
+interface GuestWelcomeModalProps {
+  forceOpen?: boolean;
+  onClose?: () => void;
+}
+
+export default function GuestWelcomeModal({ forceOpen, onClose }: GuestWelcomeModalProps = {}) {
+  const { user, session, loading, guestLogin } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [name, setName] = useState("");
   const [governorate, setGovernorate] = useState("");
@@ -13,6 +18,13 @@ export default function GuestWelcomeModal() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    if (forceOpen) {
+      setIsOpen(true);
+      if (user?.fullName && user.fullName !== "ضيف عزيز") setName(user.fullName);
+      if (user?.governorate) setGovernorate(user.governorate);
+      return;
+    }
+
     if (loading) return;
 
     // 1. If user is logged in with an official account (User / Manager / Admin with email or valid session), NEVER show modal!
@@ -35,11 +47,12 @@ export default function GuestWelcomeModal() {
       // Quietly track session in background
       trackVisitorSession("/");
     }
-  }, [user, session, loading]);
+  }, [user, session, loading, forceOpen]);
 
   const handleDismiss = async () => {
     setSubmitting(true);
     try {
+      guestLogin("ضيف زائر", "");
       markWelcomeModalDismissed();
       await trackVisitorSession("/");
     } catch (err) {
@@ -47,6 +60,7 @@ export default function GuestWelcomeModal() {
     } finally {
       setSubmitting(false);
       setIsOpen(false);
+      if (onClose) onClose();
     }
   };
 
@@ -54,16 +68,22 @@ export default function GuestWelcomeModal() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      if (name.trim() || governorate.trim() || phone.trim()) {
-        await updateGuestIdentity({
-          name: name.trim(),
-          governorate: governorate.trim(),
-          phone: phone.trim(),
-        });
-      }
+      const cleanName = name.trim() || "ضيف زائر";
+      const cleanGov = governorate.trim();
+
+      // Instantly update AuthContext Guest State!
+      guestLogin(cleanName, cleanGov);
+
+      await updateGuestIdentity({
+        name: cleanName,
+        governorate: cleanGov,
+        phone: phone.trim(),
+      });
+
       markWelcomeModalDismissed();
       await trackVisitorSession("/");
       setIsOpen(false);
+      if (onClose) onClose();
     } catch (err) {
       console.warn("Welcome modal submit error:", err);
       handleDismiss();

@@ -12,6 +12,8 @@ interface AuthUser {
   fullName: string;
   role: UserRole;
   avatarUrl: string;
+  governorate?: string;
+  isGuest?: boolean;
 }
 
 interface AuthContextType {
@@ -162,16 +164,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const guestLogin = useCallback((name: string, governorate: string) => {
+    const cleanName = name?.trim() || "ضيف عزيز";
+    const cleanGov = governorate?.trim() || "";
     const guest: AuthUser = {
       id: `guest-${Date.now()}`,
       email: "",
-      fullName: name,
+      fullName: cleanName,
+      governorate: cleanGov,
       role: "customer" as UserRole,
       avatarUrl: "",
+      isGuest: true,
     };
     setUser(guest);
     if (typeof window !== "undefined") {
-      localStorage.setItem("guest-user", JSON.stringify({ ...guest, governorate }));
+      localStorage.setItem("guest-user", JSON.stringify(guest));
     }
   }, []);
 

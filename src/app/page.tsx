@@ -33,6 +33,7 @@ export default function Home() {
   const [suggestions, setSuggestions] = useState<typeof products>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileEditOpen, setProfileEditOpen] = useState(false);
+  const [guestEditOpen, setGuestEditOpen] = useState(false);
   const [eyeCare, setEyeCare] = useState(false);
   const [fontSize, setFontSize] = useState(16);
   const [contactName, setContactName] = useState("");
@@ -223,9 +224,16 @@ export default function Home() {
                       </div>
                     ) : user ? (
                       <div
-                        onClick={() => { setProfileEditOpen(true); setMenuOpen(false); }}
+                        onClick={() => {
+                          if (user.isGuest || user.id.startsWith("guest-")) {
+                            setGuestEditOpen(true);
+                          } else {
+                            setProfileEditOpen(true);
+                          }
+                          setMenuOpen(false);
+                        }}
                         className="p-4 bg-gradient-to-br from-blue-50/80 via-indigo-50/50 to-purple-50/80 dark:from-blue-950/40 dark:via-gray-900 dark:to-purple-950/40 border-b border-gray-100 dark:border-gray-800 cursor-pointer hover:bg-blue-100/60 dark:hover:bg-blue-900/50 transition-all group"
-                        title="انقر لتعديل الملف الشخصي والمعلومات الأمنيّة ✏️"
+                        title={user.isGuest || user.id.startsWith("guest-") ? "انقر لتعديل بيانات الضيف ✏️" : "انقر لتعديل الملف الشخصي والمعلومات الأمنيّة ✏️"}
                       >
                         <div className="flex items-center gap-3">
                           {user.avatarUrl ? (
@@ -235,26 +243,30 @@ export default function Home() {
                               className="w-12 h-12 rounded-2xl object-cover border-2 border-blue-500 shadow-sm flex-shrink-0 group-hover:scale-105 transition-transform"
                             />
                           ) : (
-                            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 text-white font-extrabold text-lg flex items-center justify-center shadow-md flex-shrink-0 group-hover:scale-105 transition-transform">
-                              {user.fullName?.charAt(0) || user.email?.charAt(0)?.toUpperCase() || "👤"}
+                            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 text-white font-extrabold text-lg flex items-center justify-center shadow-md flex-shrink-0 group-hover:scale-105 transition-transform">
+                              {user.isGuest || user.id.startsWith("guest-") ? "🤝" : user.fullName?.charAt(0) || user.email?.charAt(0)?.toUpperCase() || "👤"}
                             </div>
                           )}
 
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
                               <h4 className="font-extrabold text-sm text-gray-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                                {user.fullName || "مستخدم مسجل"} ✏️
+                                {user.fullName || "ضيف عزيز"} ✏️
                               </h4>
                               <span
                                 className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold flex-shrink-0 ${
-                                  user.role === "manager"
+                                  user.isGuest || user.id.startsWith("guest-")
+                                    ? "bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300"
+                                    : user.role === "manager"
                                     ? "bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300"
                                     : user.role === "admin"
                                     ? "bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300"
                                     : "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300"
                                 }`}
                               >
-                                {user.role === "manager"
+                                {user.isGuest || user.id.startsWith("guest-")
+                                  ? "🤝 ضيف / Guest"
+                                  : user.role === "manager"
                                   ? "👑 مدير نظام"
                                   : user.role === "admin"
                                   ? "🛡️ إداري"
@@ -263,7 +275,9 @@ export default function Home() {
                             </div>
 
                             <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5 font-mono">
-                              {user.email || "حساب معتمد"}
+                              {user.isGuest || user.id.startsWith("guest-")
+                                ? user.governorate ? `المحافظة: ${user.governorate}` : "زائر المتجر"
+                                : user.email || "حساب معتمد"}
                             </p>
                           </div>
                         </div>
@@ -291,11 +305,26 @@ export default function Home() {
                             <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t.settings}</span>
                           </Link>
                         </>
-                      ) : user ? (
+                      ) : user && !user.isGuest && !user.id.startsWith("guest-") ? (
                         <>
                           <Link href="/dashboard/settings" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                             <span className="text-xl">⚙️</span>
                             <span className="text-sm font-bold text-gray-700 dark:text-gray-200">إعدادات الحساب</span>
+                          </Link>
+                        </>
+                      ) : user?.isGuest || user?.id.startsWith("guest-") ? (
+                        <>
+                          <button
+                            onClick={() => { setGuestEditOpen(true); setMenuOpen(false); }}
+                            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors text-right"
+                          >
+                            <span className="text-xl">✏️</span>
+                            <span className="text-sm font-bold text-amber-800 dark:text-amber-300">تعديل بيانات الضيف</span>
+                          </button>
+                          
+                          <Link href="/login" onClick={() => setMenuOpen(false)} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold transition-colors">
+                            <span className="text-xl">🔑</span>
+                            <span className="text-sm font-bold">ترقية لحساب رسمي</span>
                           </Link>
                         </>
                       ) : (
@@ -312,7 +341,7 @@ export default function Home() {
                           <div className="border-t border-gray-100 dark:border-gray-800 my-1" />
                           <button onClick={() => { signOut(); setMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                             <span className="text-xl">🚪</span>
-                            <span className="text-sm font-bold text-red-600 dark:text-red-400">{t.logout}</span>
+                            <span className="text-sm font-bold text-red-600 dark:text-red-400">{user.isGuest || user.id.startsWith("guest-") ? "خروج كزائر" : t.logout}</span>
                           </button>
                         </>
                       )}
@@ -658,7 +687,7 @@ export default function Home() {
       <CustomerCartSidebar isOpen={cartOpen} onClose={() => setCartOpen(false)} />
 
       {/* Guest Welcome Modal */}
-      <GuestWelcomeModal />
+      <GuestWelcomeModal forceOpen={guestEditOpen} onClose={() => setGuestEditOpen(false)} />
 
       {/* Profile Edit Modal */}
       <ProfileEditModal isOpen={profileEditOpen} onClose={() => setProfileEditOpen(false)} />
