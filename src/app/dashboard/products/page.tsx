@@ -623,7 +623,7 @@ export default function ProductsPage() {
                   <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">سعر المفرد</th>
                   {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">الكمية</th>}
                   {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">المورد</th>}
-                  {isAdminOrManager && canEdit && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">إجراءات</th>}
+                  {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400 text-center">إجراءات</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -722,23 +722,25 @@ export default function ProductsPage() {
                         </td>
                       )}
 
-                      {isAdminOrManager && canEdit && (
+                      {isAdminOrManager && (
                         <td className="px-4 py-3">
-                          <div className="flex gap-1">
+                          <div className="flex items-center justify-center gap-2">
                             <button
                               onClick={() => { setEditingProduct(product); setModalOpen(true); }}
-                              className="px-2 py-1 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg text-xs font-semibold"
+                              className="px-2.5 py-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg text-xs font-bold border border-blue-200 dark:border-blue-800 flex items-center gap-1 transition-colors"
+                              title="تعديل"
                             >
-                              تعديل
+                              <span>✏️</span>
+                              <span>تعديل</span>
                             </button>
-                            {canDelete && (
-                              <button
-                                onClick={() => setDeleteConfirm(product.id)}
-                                className="px-2 py-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-xs font-semibold"
-                              >
-                                حذف
-                              </button>
-                            )}
+                            <button
+                              onClick={() => setDeleteConfirm(product.id)}
+                              className="px-2.5 py-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg text-xs font-bold border border-red-200 dark:border-red-800 flex items-center gap-1 transition-colors"
+                              title="حذف"
+                            >
+                              <span>🗑️</span>
+                              <span>حذف</span>
+                            </button>
                           </div>
                         </td>
                       )}

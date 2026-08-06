@@ -297,10 +297,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const bulkUpdateProducts = useCallback(async (ids: string[], updates: Partial<Product>) => {
     if (!ids || ids.length === 0) return;
     const row = productToRow(updates);
-    const { data: updated, error } = await supabase.from("products").update(row).in("id", ids).select();
-    if (error) throw error;
-    if (updated) {
-      const updatedMap = new Map(updated.map((r) => [r.id as string, rowToProduct(r)]));
+    const chunkSize = 200;
+    const updatedRows: Record<string, unknown>[] = [];
+
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const { data: updated, error } = await supabase.from("products").update(row).in("id", chunk).select();
+      if (error) throw error;
+      if (updated) updatedRows.push(...updated);
+    }
+
+    if (updatedRows.length > 0) {
+      const updatedMap = new Map(updatedRows.map((r) => [r.id as string, rowToProduct(r)]));
       setProducts((prev) =>
         prev.map((p) => (updatedMap.has(p.id) ? updatedMap.get(p.id)! : p))
       );
@@ -315,8 +323,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const bulkDeleteProducts = useCallback(async (ids: string[]) => {
     if (!ids || ids.length === 0) return;
-    const { error } = await supabase.from("products").delete().in("id", ids);
-    if (error) throw error;
+    const chunkSize = 200;
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const { error } = await supabase.from("products").delete().in("id", chunk);
+      if (error) throw error;
+    }
     const idSet = new Set(ids);
     setProducts((prev) => prev.filter((p) => !idSet.has(p.id)));
   }, []);

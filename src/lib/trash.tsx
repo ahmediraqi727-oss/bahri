@@ -82,10 +82,18 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
       data: payload.data,
       deleted_by: payload.deletedBy,
     }));
-    const { data: created, error } = await supabase.from("trash").insert(rows).select();
-    if (error) throw error;
-    if (created) {
-      const newItems = created.map(rowToTrash);
+
+    const chunkSize = 200;
+    const createdRows: Record<string, unknown>[] = [];
+    for (let i = 0; i < rows.length; i += chunkSize) {
+      const chunk = rows.slice(i, i + chunkSize);
+      const { data: created, error } = await supabase.from("trash").insert(chunk).select();
+      if (error) throw error;
+      if (created) createdRows.push(...created);
+    }
+
+    if (createdRows.length > 0) {
+      const newItems = createdRows.map(rowToTrash);
       setItems((prev) => [...newItems, ...prev]);
     }
   }, []);
@@ -101,8 +109,14 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
   const bulkRestore = useCallback(async (ids: string[]): Promise<TrashItem[]> => {
     if (!ids || ids.length === 0) return [];
     const restoredItems = items.filter((i) => ids.includes(i.id));
-    const { error } = await supabase.from("trash").delete().in("id", ids);
-    if (error) throw error;
+
+    const chunkSize = 200;
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const { error } = await supabase.from("trash").delete().in("id", chunk);
+      if (error) throw error;
+    }
+
     const idSet = new Set(ids);
     setItems((prev) => prev.filter((i) => !idSet.has(i.id)));
     return restoredItems;
@@ -116,8 +130,12 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
 
   const bulkPermanentDelete = useCallback(async (ids: string[]) => {
     if (!ids || ids.length === 0) return;
-    const { error } = await supabase.from("trash").delete().in("id", ids);
-    if (error) throw error;
+    const chunkSize = 200;
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const { error } = await supabase.from("trash").delete().in("id", chunk);
+      if (error) throw error;
+    }
     const idSet = new Set(ids);
     setItems((prev) => prev.filter((i) => !idSet.has(i.id)));
   }, []);
