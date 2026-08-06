@@ -353,10 +353,12 @@ export default function ImportExportBar() {
     let { updated, inserted, skipped } = restorationStats;
     const itemsToProcess = applyToAll ? duplicateQueue.slice(currentDuplicateIndex) : [duplicateQueue[currentDuplicateIndex]];
 
-    for (const pair of itemsToProcess) {
-      if (choice === "update") {
+    if (choice === "update") {
+      const updateRows = itemsToProcess.map((pair) => {
         const p = pair.incoming;
-        const updatePayload = {
+        return {
+          id: pair.existing.id,
+          name: pair.existing.name,
           image: p.image || pair.existing.image || "",
           cost_price: p.costPrice !== undefined ? p.costPrice : pair.existing.costPrice,
           profit_margin: p.profitMargin !== undefined ? p.profitMargin : pair.existing.profitMargin,
@@ -366,12 +368,14 @@ export default function ImportExportBar() {
           notes: p.notes || pair.existing.notes || "",
           updated_at: new Date().toISOString(),
         };
+      });
 
-        await supabase.from("products").update(updatePayload).eq("id", pair.existing.id);
-        updated++;
-      } else if (choice === "skip") {
-        skipped++;
+      const { error } = await supabase.from("products").upsert(updateRows);
+      if (!error) {
+        updated += itemsToProcess.length;
       }
+    } else if (choice === "skip") {
+      skipped += itemsToProcess.length;
     }
 
     setRestorationStats({ updated, inserted, skipped });

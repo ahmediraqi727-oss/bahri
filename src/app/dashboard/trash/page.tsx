@@ -13,11 +13,13 @@ const ENTITY_ICONS: Record<string, string> = {
 };
 
 export default function TrashPage() {
-  const { items, restore, permanentDelete, purgeExpired, autoDeleteDays, setAutoDeleteDays } = useTrash();
+  const { items, restore, bulkRestore, permanentDelete, bulkPermanentDelete, purgeExpired, autoDeleteDays, setAutoDeleteDays } = useTrash();
   const { logActivity } = useActivityLog();
   const [searchQuery, setSearchQuery] = useState("");
   const [entityFilter, setEntityFilter] = useState<string>("all");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isProcessingBulk, setIsProcessingBulk] = useState(false);
 
   const entities = useMemo(() => {
     const set = new Set(items.map((i) => i.entity));
@@ -38,6 +40,47 @@ export default function TrashPage() {
       return true;
     });
   }, [items, entityFilter, searchQuery]);
+
+  const handleBulkRestore = async () => {
+    if (selectedIds.length === 0) return;
+    setIsProcessingBulk(true);
+    try {
+      const restored = await bulkRestore(selectedIds);
+      await logActivity({
+        user: "manager",
+        action: "restore",
+        entity: "سلة المهملات",
+        details: `تمت استعادة ${restored.length} عنصر من سلة المهملات دفعة واحدة`,
+      });
+      alert(`🎉 تمت استعادة ${restored.length} عنصر بنجاح!`);
+      setSelectedIds([]);
+    } catch {
+      alert("حدث خطأ أثناء الاستعادة الجماعية");
+    } finally {
+      setIsProcessingBulk(false);
+    }
+  };
+
+  const handleBulkPermanentDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`هل أنت متأكد من الحذف النهائي لـ ${selectedIds.length} عنصر؟ لا يمكن التراجع عن هذا الإجراء.`)) return;
+    setIsProcessingBulk(true);
+    try {
+      await bulkPermanentDelete(selectedIds);
+      await logActivity({
+        user: "manager",
+        action: "delete",
+        entity: "سلة المهملات",
+        details: `حذف نهائي جماعي لـ ${selectedIds.length} عنصر`,
+      });
+      alert(`🗑️ تم الحذف النهائي لـ ${selectedIds.length} عنصر بنجاح!`);
+      setSelectedIds([]);
+    } catch {
+      alert("حدث خطأ أثناء الحذف النهائي الجماعي");
+    } finally {
+      setIsProcessingBulk(false);
+    }
+  };
 
   const handleRestore = async (item: TrashItem) => {
     const restored = await restore(item.id);

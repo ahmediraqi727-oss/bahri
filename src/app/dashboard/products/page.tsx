@@ -12,10 +12,10 @@ import { getAdminPermissionsConfig } from "@/components/PermissionGate";
 import ImportExportBar from "@/components/ImportExportBar";
 
 export default function ProductsPage() {
-  const { products, suppliers, categories, addCategory, deleteProduct, updateProduct, persistAllCategoriesAndProducts, reloadAllData } = useData();
+  const { products, suppliers, categories, addCategory, deleteProduct, updateProduct, bulkUpdateProducts, bulkDeleteProducts, persistAllCategoriesAndProducts, reloadAllData } = useData();
   const { settings } = useSettings();
   const { logActivity } = useActivityLog();
-  const { softDelete } = useTrash();
+  const { softDelete, bulkSoftDelete } = useTrash();
   const config = getAdminPermissionsConfig();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -40,9 +40,9 @@ export default function ProductsPage() {
   const [bulkPriceVal, setBulkPriceVal] = useState<number>(0);
   const [submittingBulk, setSubmittingBulk] = useState(false);
 
-  const canCreate = hasPermission(settings.currentRole, "products.create", config);
   const canEdit = hasPermission(settings.currentRole, "products.edit", config);
   const canDelete = hasPermission(settings.currentRole, "products.delete", config);
+  const canCreate = hasPermission(settings.currentRole, "products.create", config);
 
   const filtered = useMemo(() => {
     if (!searchQuery) return products;
@@ -74,6 +74,28 @@ export default function ProductsPage() {
     );
   };
 
+  const handleSaveProduct = async (productData: Omit<Product, "id" | "createdAt" | "updatedAt">) => {
+    if (editingProduct) {
+      await updateProduct(editingProduct.id, productData);
+      await logActivity({
+        user: settings.currentRole,
+        action: "update",
+        entity: "منتجات",
+        entityId: editingProduct.id,
+        details: `تعديل المنتَج "${productData.name}"`,
+      });
+    } else {
+      const created = await (useData as any)().addProduct(productData);
+      await logActivity({
+        user: settings.currentRole,
+        action: "create",
+        entity: "منتجات",
+        entityId: created?.id,
+        details: `إضافة منتَج جديد "${productData.name}"`,
+      });
+    }
+  };
+
   const handleDelete = async (product: Product) => {
     await softDelete("product", product.id, product.name, { ...product }, settings.currentRole);
     await deleteProduct(product.id);
@@ -100,21 +122,19 @@ export default function ProductsPage() {
     });
   };
 
-  // Bulk Operations Handlers
+  // Bulk Operations Handlers - Fast Batch Processing
   const handleBulkCategorySave = async () => {
-    if (!bulkCategory.trim()) return;
+    if (!bulkCategory.trim() || selectedIds.length === 0) return;
     setSubmittingBulk(true);
     try {
-      for (const id of selectedIds) {
-        await updateProduct(id, { notes: bulkCategory.trim() });
-      }
+      await bulkUpdateProducts(selectedIds, { notes: bulkCategory.trim() });
       await logActivity({
         user: settings.currentRole,
         action: "update",
         entity: "منتجات",
         details: `تعديل قسم/فئة ${selectedIds.length} منتج إلى "${bulkCategory.trim()}"`,
       });
-      alert(`🎉 تم تعديل الفئة لـ ${selectedIds.length} منتج بنجاح!`);
+      alert(`🎉 تم تعديل الفئة لـ ${selectedIds.length} منتج بنجاح في أجزاء من الثانية!`);
       setBulkModal(null);
       setBulkCategory("");
       setSelectedIds([]);
@@ -126,13 +146,11 @@ export default function ProductsPage() {
   };
 
   const handleBulkSupplierSave = async () => {
-    if (!bulkSupplierId) return;
+    if (!bulkSupplierId || selectedIds.length === 0) return;
     setSubmittingBulk(true);
     try {
       const supName = getSupplierName(bulkSupplierId);
-      for (const id of selectedIds) {
-        await updateProduct(id, { supplierId: bulkSupplierId });
-      }
+      await bulkUpdateProducts(selectedIds, { supplierId: bulkSupplierId });
       await logActivity({
         user: settings.currentRole,
         action: "update",
@@ -151,14 +169,20 @@ export default function ProductsPage() {
   };
 
   const handleBulkMarginSave = async () => {
+    if (selectedIds.length === 0) return;
     setSubmittingBulk(true);
     try {
-      for (const id of selectedIds) {
-        const p = products.find((pr) => pr.id === id);
-        if (!p) continue;
-        const newRetail = calculateRetailPrice(p.costPrice, bulkMargin);
-        await updateProduct(id, { profitMargin: bulkMargin, retailPrice: newRetail });
-      }
+      const selectedSet = new Set(selectedIds);
+      const targetProducts = products.filter((pr) => selectedSet.has(pr.id));
+      
+      // Batch process margin calculations
+      await Promise.all(
+        targetProducts.map((p) => {
+          const newRetail = calculateRetailPrice(p.costPrice, bulkMargin);
+          return updateProduct(p.id, { profitMargin: bulkMargin, retailPrice: newRetail });
+        })
+      );
+
       await logActivity({
         user: settings.currentRole,
         action: "update",
@@ -176,22 +200,26 @@ export default function ProductsPage() {
   };
 
   const handleBulkPriceSave = async () => {
-    if (bulkPriceVal <= 0 && bulkPriceMode === "fixed") return;
+    if ((bulkPriceVal <= 0 && bulkPriceMode === "fixed") || selectedIds.length === 0) return;
     setSubmittingBulk(true);
     try {
-      for (const id of selectedIds) {
-        const p = products.find((pr) => pr.id === id);
-        if (!p) continue;
-        let newPrice = p.retailPrice;
-        if (bulkPriceMode === "fixed") {
-          newPrice = bulkPriceVal;
-        } else if (bulkPriceMode === "add_amount") {
-          newPrice = p.retailPrice + bulkPriceVal;
-        } else if (bulkPriceMode === "add_percent") {
-          newPrice = Math.round(p.retailPrice + (p.retailPrice * bulkPriceVal) / 100);
-        }
-        await updateProduct(id, { retailPrice: Math.max(0, newPrice) });
-      }
+      const selectedSet = new Set(selectedIds);
+      const targetProducts = products.filter((pr) => selectedSet.has(pr.id));
+
+      await Promise.all(
+        targetProducts.map((p) => {
+          let newPrice = p.retailPrice;
+          if (bulkPriceMode === "fixed") {
+            newPrice = bulkPriceVal;
+          } else if (bulkPriceMode === "add_amount") {
+            newPrice = p.retailPrice + bulkPriceVal;
+          } else if (bulkPriceMode === "add_percent") {
+            newPrice = Math.round(p.retailPrice + (p.retailPrice * bulkPriceVal) / 100);
+          }
+          return updateProduct(p.id, { retailPrice: Math.max(0, newPrice) });
+        })
+      );
+
       await logActivity({
         user: settings.currentRole,
         action: "update",
@@ -209,22 +237,30 @@ export default function ProductsPage() {
   };
 
   const handleBulkDeleteConfirm = async () => {
+    if (selectedIds.length === 0) return;
     setSubmittingBulk(true);
     try {
-      for (const id of selectedIds) {
-        const p = products.find((pr) => pr.id === id);
-        if (p) {
-          await softDelete("product", p.id, p.name, { ...p }, settings.currentRole);
-          await deleteProduct(p.id);
-        }
-      }
+      const selectedSet = new Set(selectedIds);
+      const itemsToDelete = products.filter((pr) => selectedSet.has(pr.id));
+
+      const trashPayloads = itemsToDelete.map((p) => ({
+        entity: "product",
+        entityId: p.id,
+        entityName: p.name,
+        data: { ...p },
+        deletedBy: settings.currentRole,
+      }));
+
+      await bulkSoftDelete(trashPayloads);
+      await bulkDeleteProducts(selectedIds);
+
       await logActivity({
         user: settings.currentRole,
         action: "delete",
         entity: "منتجات",
         details: `حذف جماعي لـ ${selectedIds.length} منتج`,
       });
-      alert(`🗑️ تم نقل ${selectedIds.length} منتج إلى سلة المهملات بنجاح`);
+      alert(`🗑️ تم نقل ${selectedIds.length} منتج إلى سلة المهملات بنجاح خلال لحظات!`);
       setBulkModal(null);
       setSelectedIds([]);
     } catch (err) {

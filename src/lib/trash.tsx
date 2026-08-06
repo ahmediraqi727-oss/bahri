@@ -17,8 +17,11 @@ interface TrashContextType {
   items: TrashItem[];
   loading: boolean;
   softDelete: (entity: string, entityId: string, entityName: string, data: Record<string, unknown>, deletedBy: string) => Promise<void>;
+  bulkSoftDelete: (deletePayloads: { entity: string; entityId: string; entityName: string; data: Record<string, unknown>; deletedBy: string }[]) => Promise<void>;
   restore: (id: string) => Promise<TrashItem | null>;
+  bulkRestore: (ids: string[]) => Promise<TrashItem[]>;
   permanentDelete: (id: string) => Promise<void>;
+  bulkPermanentDelete: (ids: string[]) => Promise<void>;
   purgeExpired: () => Promise<number>;
   autoDeleteDays: number;
   setAutoDeleteDays: (days: number) => void;
@@ -70,6 +73,23 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     setItems((prev) => [rowToTrash(created), ...prev]);
   }, []);
 
+  const bulkSoftDelete = useCallback(async (deletePayloads: { entity: string; entityId: string; entityName: string; data: Record<string, unknown>; deletedBy: string }[]) => {
+    if (!deletePayloads || deletePayloads.length === 0) return;
+    const rows = deletePayloads.map((payload) => ({
+      entity: payload.entity,
+      entity_id: payload.entityId,
+      entity_name: payload.entityName,
+      data: payload.data,
+      deleted_by: payload.deletedBy,
+    }));
+    const { data: created, error } = await supabase.from("trash").insert(rows).select();
+    if (error) throw error;
+    if (created) {
+      const newItems = created.map(rowToTrash);
+      setItems((prev) => [...newItems, ...prev]);
+    }
+  }, []);
+
   const restore = useCallback(async (id: string): Promise<TrashItem | null> => {
     const item = items.find((i) => i.id === id);
     const { error } = await supabase.from("trash").delete().eq("id", id);
@@ -78,10 +98,28 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     return item || null;
   }, [items]);
 
+  const bulkRestore = useCallback(async (ids: string[]): Promise<TrashItem[]> => {
+    if (!ids || ids.length === 0) return [];
+    const restoredItems = items.filter((i) => ids.includes(i.id));
+    const { error } = await supabase.from("trash").delete().in("id", ids);
+    if (error) throw error;
+    const idSet = new Set(ids);
+    setItems((prev) => prev.filter((i) => !idSet.has(i.id)));
+    return restoredItems;
+  }, [items]);
+
   const permanentDelete = useCallback(async (id: string) => {
     const { error } = await supabase.from("trash").delete().eq("id", id);
     if (error) throw error;
     setItems((prev) => prev.filter((i) => i.id !== id));
+  }, []);
+
+  const bulkPermanentDelete = useCallback(async (ids: string[]) => {
+    if (!ids || ids.length === 0) return;
+    const { error } = await supabase.from("trash").delete().in("id", ids);
+    if (error) throw error;
+    const idSet = new Set(ids);
+    setItems((prev) => prev.filter((i) => !idSet.has(i.id)));
   }, []);
 
   const purgeExpired = useCallback(async (): Promise<number> => {
@@ -102,7 +140,7 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <TrashContext.Provider value={{ items, loading, softDelete, restore, permanentDelete, purgeExpired, autoDeleteDays, setAutoDeleteDays }}>
+    <TrashContext.Provider value={{ items, loading, softDelete, bulkSoftDelete, restore, bulkRestore, permanentDelete, bulkPermanentDelete, purgeExpired, autoDeleteDays, setAutoDeleteDays }}>
       {children}
     </TrashContext.Provider>
   );

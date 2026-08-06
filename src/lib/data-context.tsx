@@ -28,7 +28,9 @@ interface DataContextType {
   loading: boolean;
   addProduct: (product: Omit<Product, "id" | "createdAt" | "updatedAt">) => Promise<Product>;
   updateProduct: (id: string, updates: Partial<Product>) => Promise<void>;
+  bulkUpdateProducts: (ids: string[], updates: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
+  bulkDeleteProducts: (ids: string[]) => Promise<void>;
   addSupplier: (supplier: Omit<Supplier, "id" | "createdAt">) => Promise<Supplier>;
   updateSupplier: (id: string, updates: Partial<Supplier>) => Promise<void>;
   deleteSupplier: (id: string) => Promise<void>;
@@ -292,10 +294,31 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setProducts((prev) => prev.map((p) => (p.id === id ? product : p)));
   }, []);
 
+  const bulkUpdateProducts = useCallback(async (ids: string[], updates: Partial<Product>) => {
+    if (!ids || ids.length === 0) return;
+    const row = productToRow(updates);
+    const { data: updated, error } = await supabase.from("products").update(row).in("id", ids).select();
+    if (error) throw error;
+    if (updated) {
+      const updatedMap = new Map(updated.map((r) => [r.id as string, rowToProduct(r)]));
+      setProducts((prev) =>
+        prev.map((p) => (updatedMap.has(p.id) ? updatedMap.get(p.id)! : p))
+      );
+    }
+  }, []);
+
   const deleteProduct = useCallback(async (id: string) => {
     const { error } = await supabase.from("products").delete().eq("id", id);
     if (error) throw error;
     setProducts((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
+  const bulkDeleteProducts = useCallback(async (ids: string[]) => {
+    if (!ids || ids.length === 0) return;
+    const { error } = await supabase.from("products").delete().in("id", ids);
+    if (error) throw error;
+    const idSet = new Set(ids);
+    setProducts((prev) => prev.filter((p) => !idSet.has(p.id)));
   }, []);
 
   const addSupplier = useCallback(async (supplier: Omit<Supplier, "id" | "createdAt">) => {
@@ -497,7 +520,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     <DataContext.Provider
       value={{
         products, suppliers, categories, loading,
-        addProduct, updateProduct, deleteProduct,
+        addProduct, updateProduct, bulkUpdateProducts, deleteProduct, bulkDeleteProducts,
         addSupplier, updateSupplier, deleteSupplier,
         addCategory, updateCategory, deleteCategory, incrementCategoryViews,
         autoSyncCategoriesFromProducts,
