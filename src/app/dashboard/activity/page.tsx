@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useActivityLog, formatAction, formatRole, formatTimestamp, ActivityEntry } from "@/lib/activity-log";
+import DataTableWrapper from "@/components/DataTableWrapper";
 
 type ActionFilter = ActivityEntry["action"] | "all";
 
@@ -85,12 +86,12 @@ export default function ActivityPage() {
           onChange={(e) => setSearchQuery(e.target.value)}
           className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none"
         />
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {(["all", "create", "update", "delete", "restore", "login", "export", "import"] as ActionFilter[]).map((f) => (
             <button
               key={f}
               onClick={() => setActionFilter(f)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+              className={`px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors flex-1 sm:flex-none text-center ${
                 actionFilter === f
                   ? "bg-[var(--primary)] text-white"
                   : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
@@ -110,11 +111,11 @@ export default function ActivityPage() {
             <p>لا توجد حركات مسجلة</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <DataTableWrapper>
+            <table className="w-full text-sm min-w-[650px]">
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الوقت</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400 sticky right-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-sm">الوقت</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المستخدم</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الإجراء</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الكيان</th>
@@ -123,25 +124,25 @@ export default function ActivityPage() {
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {filtered.map((entry) => (
-                  <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap text-xs">
+                  <tr key={entry.id} className="group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap text-xs sticky right-0 z-10 bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800/90 transition-colors shadow-sm">
                       {formatTimestamp(entry.timestamp)}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 whitespace-nowrap">
                       <span className="font-medium text-gray-900 dark:text-white">{formatRole(entry.user)}</span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 whitespace-nowrap">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${ACTION_COLORS[entry.action] || ""}`}>
                         {formatAction(entry.action)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-900 dark:text-white font-medium">{entry.entity}</td>
+                    <td className="px-4 py-3 text-gray-900 dark:text-white font-medium whitespace-nowrap">{entry.entity}</td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-400 max-w-xs truncate">{entry.details}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </DataTableWrapper>
         )}
       </div>
 

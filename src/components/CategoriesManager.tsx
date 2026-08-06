@@ -403,7 +403,7 @@ export default function CategoriesManager() {
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center shadow-inner flex-shrink-0">
                         {displayImg ? (
-                          <img src={displayImg} alt={c.name} className="w-full h-full object-cover" />
+                          <img src={displayImg} alt={c.name} loading="lazy" className="w-full h-full object-cover" />
                         ) : (
                           <span className="text-xl">📁</span>
                         )}
@@ -684,14 +684,19 @@ export default function CategoriesManager() {
           </p>
         </div>
 
-        <div className="pt-2">
-          <ImageUploader
-            label="صورة أو أيقونة القسم المميزة"
-            image={catImage}
-            onUpload={(img) => setCatImage(img)}
-            aspect="aspect-square"
-            className="w-[200px] h-[200px] max-w-[200px] max-h-[200px] aspect-square"
-          />
+        <div className="bg-gray-900/90 border border-gray-800 p-4 sm:p-6 rounded-xl shadow-lg border-cyan-500/30">
+          <h2 className="text-sm font-bold mb-3 text-cyan-400 flex items-center gap-2">
+            <span>🖼️</span> صورة أو أيقونة القسم المميزة
+          </h2>
+          <div className="w-full max-w-xs h-40 sm:h-48 mx-auto border-2 border-dashed border-cyan-500/60 rounded-lg flex items-center justify-center overflow-hidden bg-gray-950/70 relative shadow-inner">
+            <ImageUploader
+              label=""
+              image={catImage}
+              onUpload={(img) => setCatImage(img)}
+              aspect="aspect-square"
+              className="w-full h-full object-cover"
+            />
+          </div>
         </div>
       </div>
 
