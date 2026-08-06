@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useSettings } from "@/lib/settings-context";
@@ -68,6 +68,52 @@ export default function Sidebar() {
   const [editingUser, setEditingUser] = useState<StaffUser | null>(null);
   const [editRole, setEditRole] = useState<UserRole>("admin");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+
+  // Close mobile sidebar on route navigation
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  // Touch swipe gestures for mobile sidebar
+  useEffect(() => {
+    const handleTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0];
+      touchStartX.current = touch.clientX;
+      touchStartY.current = touch.clientY;
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (touchStartX.current === null || touchStartY.current === null) return;
+      const touch = e.changedTouches[0];
+      const deltaX = touch.clientX - touchStartX.current;
+      const deltaY = touch.clientY - touchStartY.current;
+
+      // Ensure horizontal swipe is dominant over vertical scroll
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 40) {
+        // RTL Layout: Right edge touch (clientX >= innerWidth - 50) and swipe left (deltaX < -40) opens sidebar
+        if (!mobileOpen && touchStartX.current >= window.innerWidth - 50 && deltaX < -40) {
+          setMobileOpen(true);
+        }
+        // Swipe Right (deltaX > 40) when open closes sidebar
+        else if (mobileOpen && deltaX > 40) {
+          setMobileOpen(false);
+        }
+      }
+
+      touchStartX.current = null;
+      touchStartY.current = null;
+    };
+
+    window.addEventListener("touchstart", handleTouchStart, { passive: true });
+    window.addEventListener("touchend", handleTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener("touchstart", handleTouchStart);
+      window.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, [mobileOpen]);
 
   const visibleItems = NAV_ITEMS.filter((item) => {
     if (item.href === "/dashboard/roles") {
@@ -137,7 +183,31 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="w-64 min-h-screen bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 flex flex-col">
+    <>
+      {/* Floating Mobile Sidebar Toggle Button */}
+      <button
+        onClick={() => setMobileOpen((prev) => !prev)}
+        className="md:hidden fixed top-3 right-3 z-40 p-2.5 bg-white/90 dark:bg-gray-900/90 text-gray-800 dark:text-white rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 backdrop-blur-md flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+        aria-label="القائمة الجانبية"
+        title="فتح/إغلاق القائمة الجانبية"
+      >
+        <span className="text-xl font-bold">{mobileOpen ? "✕" : "☰"}</span>
+      </button>
+
+      {/* Mobile Backdrop Overlay */}
+      {mobileOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-40 transition-opacity animate-fadeIn"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Sidebar Container */}
+      <aside
+        className={`fixed md:sticky top-0 right-0 z-50 h-screen w-64 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 flex flex-col transition-transform duration-300 ease-in-out shrink-0 ${
+          mobileOpen ? "translate-x-0 shadow-2xl" : "translate-x-full md:translate-x-0"
+        }`}
+      >
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center gap-3 mb-3">
           <img src="/logo.jpg" alt="شعار أحمد بحري" className="w-10 h-10 rounded-lg object-cover shadow-md" />
@@ -364,5 +434,6 @@ export default function Sidebar() {
         </div>
       )}
     </aside>
+    </>
   );
 }

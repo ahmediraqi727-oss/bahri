@@ -623,7 +623,7 @@ export default function ProductsPage() {
                   <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">سعر المفرد</th>
                   {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">الكمية</th>}
                   {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">المورد</th>}
-                  {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400 text-center">إجراءات</th>}
+                  {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400 text-center whitespace-nowrap">إجراءات</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -723,11 +723,11 @@ export default function ProductsPage() {
                       )}
 
                       {isAdminOrManager && (
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-center gap-2">
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-2 whitespace-nowrap">
                             <button
                               onClick={() => { setEditingProduct(product); setModalOpen(true); }}
-                              className="px-2.5 py-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg text-xs font-bold border border-blue-200 dark:border-blue-800 flex items-center gap-1 transition-colors"
+                              className="px-2.5 py-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg text-xs font-bold border border-blue-200 dark:border-blue-800 inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
                               title="تعديل"
                             >
                               <span>✏️</span>
@@ -735,7 +735,7 @@ export default function ProductsPage() {
                             </button>
                             <button
                               onClick={() => setDeleteConfirm(product.id)}
-                              className="px-2.5 py-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg text-xs font-bold border border-red-200 dark:border-red-800 flex items-center gap-1 transition-colors"
+                              className="px-2.5 py-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg text-xs font-bold border border-red-200 dark:border-red-800 inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
                               title="حذف"
                             >
                               <span>🗑️</span>
