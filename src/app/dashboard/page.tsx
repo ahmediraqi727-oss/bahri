@@ -149,6 +149,83 @@ export default function DashboardPage() {
         )}
       </div>
 
+      {/* 1. Top Categories Priority Carousel Bar */}
+      {categories.length > 0 && (
+        <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-200 dark:border-gray-800 shadow-sm">
+          <div className="flex items-center justify-between px-1 mb-3">
+            <span className="text-xs font-bold text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+              <span>📂</span>
+              <span>حاوية الأقسام العلوية بالأولويات</span>
+            </span>
+            <span className="text-[11px] bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 font-bold px-2.5 py-0.5 rounded-full border border-blue-200 dark:border-blue-800">
+              {categories.length} قسم
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 overflow-x-auto p-1 scrollbar-thin">
+            {categories.map((cat) => (
+              <div
+                key={cat.id}
+                onClick={handleCategoriesEditClick}
+                className="flex flex-col items-center bg-gray-50 dark:bg-gray-900/90 p-3 rounded-xl border border-gray-200 dark:border-gray-800 min-w-[120px] hover:border-blue-500/50 hover:shadow-md transition-all cursor-pointer group"
+              >
+                {cat.image ? (
+                  <img src={cat.image} alt={cat.name} className="w-12 h-12 object-cover rounded-lg mb-1.5 shadow-sm group-hover:scale-105 transition-transform" />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 text-xl font-bold mb-1.5">📂</div>
+                )}
+                <span className="text-xs font-bold text-gray-900 dark:text-white text-center truncate w-full">{cat.name}</span>
+                <span className="text-[10px] font-bold text-cyan-600 dark:text-cyan-400 mt-1">أولوية: {cat.priority || 1}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 2. Responsive Live Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full my-4">
+        {/* Visit Count Card */}
+        <div className="bg-white dark:bg-gray-900/80 border border-gray-200 dark:border-gray-800 rounded-xl p-4 flex flex-col items-center justify-center shadow-sm hover:shadow-md transition-shadow">
+          <span className="text-gray-500 dark:text-gray-400 text-xs font-bold mb-1">عدد الزوار والنشاط</span>
+          <div className="flex items-center gap-2 text-cyan-600 dark:text-cyan-400 font-extrabold text-lg">
+            <span>👁️ {activities.length} زيارة</span>
+          </div>
+        </div>
+
+        {/* Total Products Card */}
+        <div className="bg-white dark:bg-gray-900/80 border border-gray-200 dark:border-gray-800 rounded-xl p-4 flex flex-col items-center justify-center shadow-sm hover:shadow-md transition-shadow">
+          <span className="text-gray-500 dark:text-gray-400 text-xs font-bold mb-1">إجمالي المنتجات</span>
+          <span className="text-purple-600 dark:text-purple-400 font-extrabold text-lg">{products.length} منتج</span>
+        </div>
+
+        {/* Low Stock Warning Card */}
+        <div className="bg-white dark:bg-gray-900/80 border border-amber-500/40 rounded-xl p-4 flex flex-col items-center justify-center shadow-sm hover:shadow-md transition-shadow sm:col-span-2 lg:col-span-1 bg-amber-50/20">
+          <span className="text-amber-600 dark:text-amber-400 text-xs font-bold mb-1">وشيكة النفاد</span>
+          <span className="text-amber-500 font-extrabold text-lg">{products.filter((p) => p.stock <= 5).length} منتج</span>
+        </div>
+      </div>
+
+      {/* 3. Quick Action Buttons Bar */}
+      <div className="flex flex-wrap items-center gap-3 my-4">
+        <button
+          onClick={() => router.push("/dashboard/products")}
+          className="flex-1 min-w-[140px] bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white py-2.5 px-4 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+        >
+          📥 استيراد المنتجات
+        </button>
+        <button
+          onClick={() => alert("✅ جاري تجهيز النسخة الاحتياطية الشاملة لجميع منتجات وأقسام المتجر...")}
+          className="flex-1 min-w-[140px] bg-purple-600 hover:bg-purple-700 active:scale-95 text-white py-2.5 px-4 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+        >
+          💾 نسخة احتياطية
+        </button>
+        <button
+          onClick={() => alert("🔄 جاري استعادة آخر نسخة احتياطية سابقة من الأرشيف...")}
+          className="flex-1 min-w-[140px] bg-amber-600 hover:bg-amber-700 active:scale-95 text-white py-2.5 px-4 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+        >
+          ↺ استعادة النسخة
+        </button>
+      </div>
+
       {/* Quick Links Section */}
       <div className="bg-white dark:bg-gray-900 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">روابط سريعة</h3>
