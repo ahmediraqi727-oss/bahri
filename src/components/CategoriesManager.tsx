@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useData } from "@/lib/data-context";
+import { useData, extractCategoryFromNotes } from "@/lib/data-context";
 import { useSettings } from "@/lib/settings-context";
 import ImageUploader from "@/components/ImageUploader";
 import { CategoryItem, getCategoryDisplayImage } from "@/lib/types";
@@ -49,12 +49,12 @@ export default function CategoriesManager() {
   const [syncingCategories, setSyncingCategories] = useState(false);
   const [successMsg, setSuccessMsg] = useState(false);
 
-  // Auto Sync Categories on Mount if categories are empty
+  // Auto Sync Categories on Mount whenever products exist
   useEffect(() => {
-    if (categories.length === 0 && products.length > 0) {
+    if (products.length > 0) {
       autoSyncCategoriesFromProducts();
     }
-  }, [categories.length, products.length, autoSyncCategoriesFromProducts]);
+  }, [products.length, autoSyncCategoriesFromProducts]);
 
   const handleManualAutoSync = async () => {
     setSyncingCategories(true);
@@ -69,15 +69,37 @@ export default function CategoriesManager() {
     }
   };
 
-  // Sorted Categories by Priority Ascending
-  const sortedCategories = useMemo(() => {
-    return [...categories].sort((a, b) => (a.priority || 0) - (b.priority || 0));
-  }, [categories]);
+  // Dynamically merged categories: Database categories + Categories extracted from products notes
+  const allAvailableCategories = useMemo(() => {
+    const map = new Map<string, CategoryItem>();
+    categories.forEach((c) => {
+      if (c && c.name) map.set(c.name.trim().toLowerCase(), c);
+    });
+
+    products.forEach((p) => {
+      const extracted = extractCategoryFromNotes(p.notes || "");
+      if (extracted && extracted !== "عام" && extracted !== "غير محدد") {
+        const key = extracted.trim().toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, {
+            id: `extracted-${key}`,
+            name: extracted,
+            image: p.image || "",
+            priority: map.size + 1,
+            keywords: extracted,
+            isActive: true,
+          });
+        }
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => (a.priority || 0) - (b.priority || 0));
+  }, [categories, products]);
 
   // Active Category object if editing
   const activeCategory = useMemo(() => {
-    return categories.find((c) => c.id === selectedCategoryId);
-  }, [categories, selectedCategoryId]);
+    return allAvailableCategories.find((c) => c.id === selectedCategoryId || c.name === selectedCategoryId);
+  }, [allAvailableCategories, selectedCategoryId]);
 
   // Handle click outside for combobox dropdown
   useEffect(() => {
@@ -96,13 +118,13 @@ export default function CategoriesManager() {
     if (selectedCategoryId === "new") {
       setCatName("");
       setCatImage("");
-      setCatPriority(categories.length + 1);
+      setCatPriority(allAvailableCategories.length + 1);
       setCatKeywords("");
       setSelectedProductIds(new Set());
     } else if (selectedCategoryId === "") {
       setCatName("");
       setCatImage("");
-      setCatPriority(categories.length + 1);
+      setCatPriority(allAvailableCategories.length + 1);
       setCatKeywords("");
       setSelectedProductIds(new Set());
     } else if (activeCategory) {
@@ -121,7 +143,7 @@ export default function CategoriesManager() {
       setSelectedProductIds(assigned);
     }
     setSuccessMsg(false);
-  }, [selectedCategoryId, activeCategory, categories.length, products]);
+  }, [selectedCategoryId, activeCategory, allAvailableCategories.length, products]);
 
   const handleSelectCategoryToEdit = (catId: string) => {
     setSelectedCategoryId(catId);
@@ -134,12 +156,12 @@ export default function CategoriesManager() {
 
   // Filtered Categories List for Combobox
   const filteredCategoriesList = useMemo(() => {
-    if (!catSearchQuery.trim()) return sortedCategories;
+    if (!catSearchQuery.trim()) return allAvailableCategories;
     const q = catSearchQuery.trim().toLowerCase();
-    return sortedCategories.filter(
+    return allAvailableCategories.filter(
       (c) => c.name.toLowerCase().includes(q) || (c.keywords && c.keywords.toLowerCase().includes(q))
     );
-  }, [sortedCategories, catSearchQuery]);
+  }, [allAvailableCategories, catSearchQuery]);
 
   // Filter products by search term
   const filteredProducts = useMemo(() => {
@@ -289,7 +311,7 @@ export default function CategoriesManager() {
           <div className="flex items-center gap-2">
             <span className="text-xl">📂</span>
             <h3 className="font-extrabold text-base text-gray-900 dark:text-white">
-              الأقسام التفاعلية السريعة ({sortedCategories.length})
+              الأقسام التفاعلية السريعة ({allAvailableCategories.length})
             </h3>
           </div>
           <div className="flex items-center gap-2">
@@ -308,7 +330,7 @@ export default function CategoriesManager() {
         </div>
 
         <div className="flex items-center gap-3 overflow-x-auto py-2 no-scrollbar scroll-smooth" style={{ scrollbarWidth: "none" }}>
-          {sortedCategories.map((c) => {
+          {allAvailableCategories.map((c) => {
             const isSelected = selectedCategoryId === c.id;
             const catProds = products.filter((p) => p.notes && p.notes.toLowerCase().includes(c.name.toLowerCase()));
             const displayImg = getCategoryDisplayImage(c, products);
@@ -351,7 +373,7 @@ export default function CategoriesManager() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {sortedCategories.map((c) => {
+          {allAvailableCategories.map((c) => {
             const catProds = products.filter((p) => p.notes && p.notes.toLowerCase().includes(c.name.toLowerCase()));
             const totalCount = catProds.length;
             const lowStockCount = catProds.filter((p) => p.stock > 0 && p.stock <= 5).length;
