@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { useTrash, TrashItem } from "@/lib/trash";
 import { useActivityLog, formatTimestamp } from "@/lib/activity-log";
+import DataTableWrapper from "@/components/DataTableWrapper";
 
 const ENTITY_ICONS: Record<string, string> = {
   product: "📦",
@@ -199,34 +200,34 @@ export default function TrashPage() {
             <p>سلة المهملات فارغة</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <DataTableWrapper>
+            <table className="w-full text-sm min-w-[750px]">
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
                   <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">النوع</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الاسم</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400 sticky right-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-sm">الاسم</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">حُذف بواسطة</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">تاريخ الحذف</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الأيام المتبقية</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">إجراءات</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400 sticky left-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-md border-r border-gray-200 dark:border-gray-700 whitespace-nowrap">إجراءات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {filtered.map((item) => {
                   const daysLeft = getDaysRemaining(item.deletedAt);
                   return (
-                    <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                    <tr key={item.id} className="group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 whitespace-nowrap">
                           <span>{ENTITY_ICONS[item.entity] || ENTITY_ICONS.default}</span>
                           <span className="font-medium text-gray-900 dark:text-white">{item.entity}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-gray-900 dark:text-white font-medium">{item.entityName}</td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{item.deletedBy}</td>
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{formatTimestamp(item.deletedAt)}</td>
+                      <td className="px-4 py-3 text-gray-900 dark:text-white font-medium sticky right-0 z-10 bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800/90 transition-colors shadow-sm whitespace-nowrap">{item.entityName}</td>
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">{item.deletedBy}</td>
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">{formatTimestamp(item.deletedAt)}</td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
                           daysLeft <= 3
                             ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
                             : daysLeft <= 10
@@ -236,17 +237,17 @@ export default function TrashPage() {
                           {daysLeft} يوم
                         </span>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-2">
+                      <td className="px-4 py-3 sticky left-0 z-10 bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800/90 transition-colors shadow-md border-r border-gray-200 dark:border-gray-700 whitespace-nowrap">
+                        <div className="flex items-center gap-2 whitespace-nowrap">
                           <button
                             onClick={() => handleRestore(item)}
-                            className="px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                            className="px-3 py-1 text-xs font-bold text-blue-600 hover:text-blue-700 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors whitespace-nowrap shrink-0"
                           >
                             استعادة
                           </button>
                           <button
                             onClick={() => setConfirmDelete(item.id)}
-                            className="px-3 py-1 text-xs font-medium text-red-600 hover:text-red-700 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                            className="px-3 py-1 text-xs font-bold text-red-600 hover:text-red-700 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors whitespace-nowrap shrink-0"
                           >
                             حذف نهائي
                           </button>
@@ -257,7 +258,7 @@ export default function TrashPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </DataTableWrapper>
         )}
       </div>
 
