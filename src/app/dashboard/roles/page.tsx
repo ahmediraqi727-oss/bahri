@@ -7,21 +7,35 @@ import {
   getDefaultAdminPermissions,
   getAllPermissionCategories,
   getPermissionsByCategory,
+  hasPermission,
 } from "@/lib/permissions";
 import { getAdminPermissionsConfig, saveAdminPermissionsConfig } from "@/components/PermissionGate";
 import { useActivityLog } from "@/lib/activity-log";
+import { useAuth } from "@/lib/auth-context";
+import { useRouter } from "next/navigation";
 
 export default function RolesPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
   const [adminPerms, setAdminPerms] = useState<Permission[]>([]);
   const [mounted, setMounted] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const { logActivity } = useActivityLog();
 
   useEffect(() => {
-    const config = getAdminPermissionsConfig();
-    setAdminPerms(config?.permissions || getDefaultAdminPermissions());
-    setMounted(true);
-  }, []);
+    if (!loading) {
+      const config = getAdminPermissionsConfig();
+      const isManager = user?.role === "manager";
+      const isAdminWithPermission = user?.role === "admin" && hasPermission("admin", "permissions.manage", config);
+
+      if (!user || user.isGuest || (!isManager && !isAdminWithPermission)) {
+        router.replace("/");
+        return;
+      }
+      setAdminPerms(config?.permissions || getDefaultAdminPermissions());
+      setMounted(true);
+    }
+  }, [user, loading, router]);
 
   const togglePermission = (perm: Permission) => {
     setAdminPerms((prev) =>

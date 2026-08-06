@@ -29,7 +29,18 @@ export default function LoginPage() {
   const govRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!loading && user) {
+    // Read query parameter if mode=signup or upgrade=true is specified
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("mode") === "signup" || params.get("upgrade") === "true") {
+        setMode("signup");
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    // Only redirect if user is logged in WITH A REAL REGISTERED ACCOUNT (not a guest)
+    if (!loading && user && !user.isGuest && !user.id?.startsWith("guest-")) {
       const target = user.role === "customer" ? "/" : "/dashboard";
       window.location.href = target;
     }
@@ -51,7 +62,8 @@ export default function LoginPage() {
     );
   }
 
-  if (user) {
+  // Only render redirection loader if user is logged in as an official registered user
+  if (user && !user.isGuest && !user.id?.startsWith("guest-")) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 gap-4">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
@@ -131,6 +143,18 @@ export default function LoginPage() {
               {mode === "guest" ? "أدخل اسمك ومحافظتك للتسوق" : mode === "login" ? "أدخل بياناتك للدخول" : "أنشئ حسابك للتسوق"}
             </p>
           </div>
+
+          {(user?.isGuest || user?.id?.startsWith("guest-")) && (
+            <div className="mb-6 p-4 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 border border-blue-200 dark:border-blue-700 text-right shadow-sm">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xl">🌟</span>
+                <h3 className="font-bold text-sm text-blue-900 dark:text-blue-200">ترقية حسابك إلى حساب رسمي</h3>
+              </div>
+              <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
+                أنت متصل حالياً كـ <strong>({user.fullName || "ضيف"})</strong>. قم بإنشاء حسابك الرسمي أو تسجيل الدخول لحفظ طلباتك وسلتك دائماً.
+              </p>
+            </div>
+          )}
 
           {mode === "guest" ? (
             <div className="space-y-5">

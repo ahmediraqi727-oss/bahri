@@ -8,6 +8,8 @@ import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/lib/supabase-client";
 import { useActivityLog } from "@/lib/activity-log";
 import { UserRole } from "@/lib/types";
+import { hasPermission } from "@/lib/permissions";
+import { getAdminPermissionsConfig } from "@/components/PermissionGate";
 
 const NAV_ITEMS = [
   { label: "القائمة الرئيسية", href: "/dashboard", icon: "🏠", roles: ["manager", "admin"] as UserRole[] },
@@ -23,7 +25,7 @@ const NAV_ITEMS = [
   { label: "سجل الحركات", href: "/dashboard/activity", icon: "📝", roles: ["manager"] as UserRole[] },
   { label: "سلة المهملات", href: "/dashboard/trash", icon: "🗑️", roles: ["manager"] as UserRole[] },
   { label: "المتجر", href: "/", icon: "🏪", roles: ["manager", "admin", "customer"] as UserRole[] },
-  { label: "صلاحيات الإداري", href: "/dashboard/roles", icon: "🔐", roles: ["manager"] as UserRole[] },
+  { label: "صلاحيات الإداري", href: "/dashboard/roles", icon: "🔐", roles: ["manager", "admin"] as UserRole[] },
   { label: "إعدادات", href: "/dashboard/settings", icon: "⚙️", roles: ["manager"] as UserRole[] },
   { label: "صور الواجهة", href: "/dashboard/hero-gallery", icon: "🖼️", roles: ["manager"] as UserRole[] },
 ];
@@ -67,7 +69,13 @@ export default function Sidebar() {
   const [editRole, setEditRole] = useState<UserRole>("admin");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  const visibleItems = NAV_ITEMS.filter((item) => item.roles.includes(currentRole));
+  const visibleItems = NAV_ITEMS.filter((item) => {
+    if (item.href === "/dashboard/roles") {
+      const config = getAdminPermissionsConfig();
+      return currentRole === "manager" || hasPermission(currentRole, "permissions.manage", config);
+    }
+    return item.roles.includes(currentRole);
+  });
 
   const fetchStaff = async () => {
     const { data } = await supabase

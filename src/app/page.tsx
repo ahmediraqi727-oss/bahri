@@ -13,6 +13,8 @@ import GuestWelcomeModal from "@/components/GuestWelcomeModal";
 import ProfileEditModal from "@/components/ProfileEditModal";
 import { supabase } from "@/lib/supabase-client";
 import { useLang, Lang } from "@/lib/lang-context";
+import { hasPermission } from "@/lib/permissions";
+import { getAdminPermissionsConfig } from "@/components/PermissionGate";
 
 export default function Home() {
   const { settings, toggleDarkMode, toggleEyeProtection } = useSettings();
@@ -409,6 +411,18 @@ export default function Home() {
                         </Link>
                       )}
 
+                      {/* Admin Permissions Management (Visible EXCLUSIVELY to Super Admin / Manager OR Admins with delegated permissions.manage) */}
+                      {user && !user.isGuest && !user.id.startsWith("guest-") && (user.role === "manager" || hasPermission(user.role, "permissions.manage", getAdminPermissionsConfig())) && (
+                        <Link
+                          href="/dashboard/roles"
+                          onClick={() => setMenuOpen(false)}
+                          className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 transition-colors"
+                        >
+                          <span className="text-xl">🔐</span>
+                          <span className="text-sm font-bold">إدارة الصلاحيات</span>
+                        </Link>
+                      )}
+
                       {/* Guest edit & upgrade options */}
                       {(user?.isGuest || user?.id.startsWith("guest-")) && (
                         <>
@@ -421,7 +435,7 @@ export default function Home() {
                           </button>
                           
                           <Link
-                            href="/login"
+                            href="/login?mode=signup&upgrade=true"
                             onClick={() => setMenuOpen(false)}
                             className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold transition-colors"
                           >

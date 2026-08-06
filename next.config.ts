@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: "export",
   // Transpile Capacitor and other modern packages so older Android WebViews
   // (which may not support ES2022+ syntax like object destructuring spread,
   //  optional chaining, etc.) can run the app without Syntax Errors.
