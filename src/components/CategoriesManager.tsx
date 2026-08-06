@@ -690,6 +690,7 @@ export default function CategoriesManager() {
             image={catImage}
             onUpload={(img) => setCatImage(img)}
             aspect="aspect-square"
+            className="w-[200px] h-[200px] max-w-[200px] max-h-[200px] aspect-square"
           />
         </div>
       </div>

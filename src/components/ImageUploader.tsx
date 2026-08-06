@@ -9,6 +9,7 @@ interface ImageUploaderProps {
   onUpload: (imageUrl: string) => void;
   aspect?: string;
   bucket?: string;
+  className?: string;
 }
 
 export default function ImageUploader({
@@ -17,6 +18,7 @@ export default function ImageUploader({
   onUpload,
   aspect = "aspect-video",
   bucket = "site-assets",
+  className = "",
 }: ImageUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -107,7 +109,8 @@ export default function ImageUploader({
     <div className="flex flex-col gap-2">
       <label className="text-sm font-bold text-gray-700 dark:text-gray-300">{label}</label>
       <div
-        className={`relative ${aspect} rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 overflow-hidden group cursor-pointer hover:border-blue-500 transition-colors bg-gray-50 dark:bg-gray-800/50`}
+        className={`relative ${aspect} rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 overflow-hidden group cursor-pointer hover:border-blue-500 transition-colors bg-gray-50 dark:bg-gray-800/50 ${className}`}
+        style={aspect === "aspect-square" ? { aspectRatio: "1 / 1", maxWidth: "200px", maxHeight: "200px" } : undefined}
         onClick={() => inputRef.current?.click()}
       >
         {uploading ? (
