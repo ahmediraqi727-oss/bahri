@@ -9,6 +9,7 @@ import { Order, CartItem, formatInvoiceSerial } from "@/lib/order-types";
 import PermissionGate from "@/components/PermissionGate";
 import { useAuth } from "@/lib/auth-context";
 import jsPDF from "jspdf";
+import DataTableWrapper from "@/components/DataTableWrapper";
 
 const STATUS_LABELS: Record<Order["status"], string> = {
   pending: "قيد الانتظار",
@@ -668,82 +669,84 @@ export default function InvoicesPage() {
           </div>
         ) : (
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
-            <table className="w-full text-right text-xs">
-              <thead className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold border-b border-gray-200 dark:border-gray-700">
-                <tr>
-                  <th className="p-3.5 text-center">الرقم التسلسلي</th>
-                  <th className="p-3.5">الزبون والهاتف</th>
-                  <th className="p-3.5">المحافظة والعنوان</th>
-                  <th className="p-3.5 text-center">عدد المنتجات</th>
-                  <th className="p-3.5 text-center">تكلفة التوصيل</th>
-                  <th className="p-3.5 text-left">الإجمالي النهائي</th>
-                  <th className="p-3.5 text-center">حالة الفاتورة</th>
-                  <th className="p-3.5 text-center">تاريخ الإصدار</th>
-                  <th className="p-3.5 text-center">الإجراء</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {filteredInvoices.map((inv) => {
-                  const serialStr = formatInvoiceSerial(inv);
-                  const statusStyle = STATUS_COLORS[inv.status];
+            <DataTableWrapper>
+              <table className="w-full text-right text-xs min-w-[850px]">
+                <thead className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold border-b border-gray-200 dark:border-gray-700">
+                  <tr>
+                    <th className="p-3.5 text-center sticky right-0 z-20 bg-gray-100 dark:bg-gray-800 shadow-sm">الرقم التسلسلي</th>
+                    <th className="p-3.5">الزبون والهاتف</th>
+                    <th className="p-3.5">المحافظة والعنوان</th>
+                    <th className="p-3.5 text-center">عدد المنتجات</th>
+                    <th className="p-3.5 text-center">تكلفة التوصيل</th>
+                    <th className="p-3.5 text-left">الإجمالي النهائي</th>
+                    <th className="p-3.5 text-center">حالة الفاتورة</th>
+                    <th className="p-3.5 text-center">تاريخ الإصدار</th>
+                    <th className="p-3.5 text-center sticky left-0 z-20 bg-gray-100 dark:bg-gray-800 shadow-md border-r border-gray-200 dark:border-gray-700 whitespace-nowrap">الإجراء</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {filteredInvoices.map((inv) => {
+                    const serialStr = formatInvoiceSerial(inv);
+                    const statusStyle = STATUS_COLORS[inv.status];
 
-                  return (
-                    <tr
-                      key={inv.id}
-                      onClick={() => openInvoiceModal(inv)}
-                      className="hover:bg-blue-50/40 dark:hover:bg-gray-800/60 transition-colors cursor-pointer"
-                    >
-                      <td className="p-3.5 text-center font-mono font-bold text-blue-600 dark:text-blue-400">
-                        {serialStr}
-                      </td>
+                    return (
+                      <tr
+                        key={inv.id}
+                        onClick={() => openInvoiceModal(inv)}
+                        className="group hover:bg-blue-50/40 dark:hover:bg-gray-800/60 transition-colors cursor-pointer"
+                      >
+                        <td className="p-3.5 text-center font-mono font-bold text-blue-600 dark:text-blue-400 sticky right-0 z-10 bg-white dark:bg-gray-900 group-hover:bg-blue-50/90 dark:group-hover:bg-gray-800/90 transition-colors shadow-sm">
+                          {serialStr}
+                        </td>
 
-                      <td className="p-3.5">
-                        <p className="font-bold text-gray-900 dark:text-white">{inv.customerName}</p>
-                        <p className="text-[11px] text-gray-500 font-mono" dir="ltr">{inv.customerPhone}</p>
-                      </td>
+                        <td className="p-3.5">
+                          <p className="font-bold text-gray-900 dark:text-white">{inv.customerName}</p>
+                          <p className="text-[11px] text-gray-500 font-mono" dir="ltr">{inv.customerPhone}</p>
+                        </td>
 
-                      <td className="p-3.5 text-gray-700 dark:text-gray-300 max-w-[180px] truncate">
-                        {inv.customerAddress}
-                      </td>
+                        <td className="p-3.5 text-gray-700 dark:text-gray-300 max-w-[180px] truncate">
+                          {inv.customerAddress}
+                        </td>
 
-                      <td className="p-3.5 text-center font-semibold">
-                        {inv.items.length} منتجات
-                      </td>
+                        <td className="p-3.5 text-center font-semibold">
+                          {inv.items.length} منتجات
+                        </td>
 
-                      <td className="p-3.5 text-center text-blue-600 dark:text-blue-400 font-semibold">
-                        {inv.deliveryFee ? `${inv.deliveryFee.toLocaleString()} د.ع` : "مجاني"}
-                      </td>
+                        <td className="p-3.5 text-center text-blue-600 dark:text-blue-400 font-semibold">
+                          {inv.deliveryFee ? `${inv.deliveryFee.toLocaleString()} د.ع` : "مجاني"}
+                        </td>
 
-                      <td className="p-3.5 text-left font-black text-emerald-600 dark:text-emerald-400 text-sm">
-                        {inv.total.toLocaleString()} د.ع
-                      </td>
+                        <td className="p-3.5 text-left font-black text-emerald-600 dark:text-emerald-400 text-sm">
+                          {inv.total.toLocaleString()} د.ع
+                        </td>
 
-                      <td className="p-3.5 text-center">
-                        <span className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}>
-                          {STATUS_LABELS[inv.status]}
-                        </span>
-                      </td>
+                        <td className="p-3.5 text-center">
+                          <span className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}>
+                            {STATUS_LABELS[inv.status]}
+                          </span>
+                        </td>
 
-                      <td className="p-3.5 text-center text-gray-500 text-[11px]">
-                        {new Date(inv.createdAt).toLocaleDateString("ar-EG")}
-                      </td>
+                        <td className="p-3.5 text-center text-gray-500 text-[11px]">
+                          {new Date(inv.createdAt).toLocaleDateString("ar-EG")}
+                        </td>
 
-                      <td className="p-3.5 text-center">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openInvoiceModal(inv);
-                          }}
-                          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-[11px] hover:bg-blue-700 transition-colors shadow-sm"
-                        >
-                          👁️ معاينة وطباعة
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        <td className="p-3.5 text-center sticky left-0 z-10 bg-white dark:bg-gray-900 group-hover:bg-blue-50/90 dark:group-hover:bg-gray-800/90 transition-colors shadow-md border-r border-gray-200 dark:border-gray-700 whitespace-nowrap">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openInvoiceModal(inv);
+                            }}
+                            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-[11px] hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap shrink-0"
+                          >
+                            👁️ معاينة وطباعة
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </DataTableWrapper>
           </div>
         )}
 

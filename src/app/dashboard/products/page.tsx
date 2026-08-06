@@ -10,6 +10,7 @@ import { Product, calculateRetailPrice } from "@/lib/types";
 import { hasPermission } from "@/lib/permissions";
 import { getAdminPermissionsConfig } from "@/components/PermissionGate";
 import ImportExportBar from "@/components/ImportExportBar";
+import DataTableWrapper from "@/components/DataTableWrapper";
 
 export default function ProductsPage() {
   const { products, suppliers, categories, addCategory, deleteProduct, updateProduct, bulkUpdateProducts, bulkDeleteProducts, persistAllCategoriesAndProducts, reloadAllData } = useData();
@@ -600,12 +601,12 @@ export default function ProductsPage() {
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-right">
+          <DataTableWrapper>
+            <table className="w-full text-sm text-right min-w-[900px]">
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
                   {isAdminOrManager && (
-                    <th className="px-4 py-3 w-10 text-center">
+                    <th className="px-4 py-3 w-10 text-center sticky right-0 z-20 bg-gray-50 dark:bg-gray-800">
                       <input
                         type="checkbox"
                         checked={isAllSelected}
@@ -615,7 +616,7 @@ export default function ProductsPage() {
                       />
                     </th>
                   )}
-                  <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">المنتج والوصف</th>
+                  <th className={`px-4 py-3 font-medium text-gray-600 dark:text-gray-400 ${isAdminOrManager ? "sticky right-10 z-20 bg-gray-50 dark:bg-gray-800 shadow-sm" : "sticky right-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-sm"}`}>المنتج والوصف</th>
                   <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">القسم</th>
                   {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">التكاليف</th>}
                   {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">الجملة</th>}
@@ -623,21 +624,22 @@ export default function ProductsPage() {
                   <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">سعر المفرد</th>
                   {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">الكمية</th>}
                   {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">المورد</th>}
-                  {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400 text-center whitespace-nowrap">إجراءات</th>}
+                  {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400 text-center whitespace-nowrap sticky left-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-md border-r border-gray-200 dark:border-gray-700">إجراءات</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {filtered.map((product) => {
                   const isSelected = selectedIds.includes(product.id);
+                  const rowBg = isSelected
+                    ? "bg-blue-50/90 dark:bg-blue-900/40"
+                    : "bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800/50";
                   return (
                     <tr
                       key={product.id}
-                      className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
-                        isSelected ? "bg-blue-50/50 dark:bg-blue-900/20" : ""
-                      }`}
+                      className="group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                     >
                       {isAdminOrManager && (
-                        <td className="px-4 py-3 text-center">
+                        <td className={`px-4 py-3 text-center sticky right-0 z-10 transition-colors ${rowBg}`}>
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -646,7 +648,7 @@ export default function ProductsPage() {
                           />
                         </td>
                       )}
-                      <td className="px-4 py-3">
+                      <td className={`px-4 py-3 sticky ${isAdminOrManager ? "right-10" : "right-0"} z-10 transition-colors ${rowBg} shadow-sm`}>
                         <div className="flex items-center gap-3">
                           {product.image ? (
                             <img src={product.image} alt="" className="w-10 h-10 rounded-lg object-cover border border-gray-200 dark:border-gray-700" />
@@ -654,8 +656,8 @@ export default function ProductsPage() {
                             <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 text-lg">📦</div>
                           )}
                           <div>
-                            <p className="font-bold text-gray-900 dark:text-white">{product.name}</p>
-                            {product.notes && <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[220px]">{product.notes}</p>}
+                            <p className="font-bold text-gray-900 dark:text-white whitespace-nowrap">{product.name}</p>
+                            {product.notes && <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[180px]">{product.notes}</p>}
                           </div>
                         </div>
                       </td>
@@ -717,13 +719,13 @@ export default function ProductsPage() {
                       )}
 
                       {isAdminOrManager && (
-                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-xs font-medium">
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-xs font-medium whitespace-nowrap">
                           {getSupplierName(product.supplierId)}
                         </td>
                       )}
 
                       {isAdminOrManager && (
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        <td className={`px-4 py-3 whitespace-nowrap sticky left-0 z-10 transition-colors ${rowBg} shadow-md border-r border-gray-200 dark:border-gray-700`}>
                           <div className="flex items-center justify-center gap-2 whitespace-nowrap">
                             <button
                               onClick={() => { setEditingProduct(product); setModalOpen(true); }}
@@ -749,7 +751,7 @@ export default function ProductsPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </DataTableWrapper>
         )}
       </div>
 
