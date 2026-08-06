@@ -1,11 +1,11 @@
--- ============================================================================
--- SUPABASE SQL MIGRATION: BULK OPERATIONS OPTIMIZATION & INDEXES
--- ============================================================================
+-- 0. Enable PostgreSQL Trigram Extension for Fast Text Searching
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- 1. High-Performance Indexes for Products, Suppliers & Trash
 CREATE INDEX IF NOT EXISTS idx_products_id ON products(id);
 CREATE INDEX IF NOT EXISTS idx_products_supplier_id ON products(supplier_id);
 CREATE INDEX IF NOT EXISTS idx_products_created_at ON products(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_products_name ON products(name);
 CREATE INDEX IF NOT EXISTS idx_products_name_trgm ON products USING gin (name gin_trgm_ops);
 
 CREATE INDEX IF NOT EXISTS idx_trash_id ON trash(id);
