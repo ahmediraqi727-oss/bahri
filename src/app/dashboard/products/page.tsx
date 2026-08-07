@@ -602,11 +602,11 @@ export default function ProductsPage() {
           </div>
         ) : (
           <DataTableWrapper>
-            <table className="w-full text-sm text-right min-w-[900px]">
+            <table className="w-full text-xs text-right border-collapse">
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
                   {isAdminOrManager && (
-                    <th className="px-4 py-3 w-10 text-center sticky right-0 z-20 bg-gray-50 dark:bg-gray-800">
+                    <th className="p-2 w-8 text-center">
                       <input
                         type="checkbox"
                         checked={isAllSelected}
@@ -616,15 +616,15 @@ export default function ProductsPage() {
                       />
                     </th>
                   )}
-                  <th className={`px-4 py-3 font-medium text-gray-600 dark:text-gray-400 min-w-[200px] ${isAdminOrManager ? "sticky right-10 z-20 bg-gray-50 dark:bg-gray-800 shadow-sm" : "sticky right-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-sm"}`}>المنتج والوصف</th>
-                  <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">القسم</th>
-                  {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">التكاليف</th>}
-                  {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">الجملة</th>}
-                  {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">فائدة %</th>}
-                  <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">سعر المفرد</th>
-                  {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">الكمية</th>}
-                  {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">المورد</th>}
-                  {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400 text-center whitespace-nowrap sticky left-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-md border-r border-gray-200 dark:border-gray-700">إجراءات</th>}
+                  <th className="p-2.5 font-bold text-gray-700 dark:text-gray-300 max-w-[200px]">المنتج والوصف</th>
+                  <th className="p-2.5 font-bold text-gray-700 dark:text-gray-300">القسم</th>
+                  {isAdminOrManager && <th className="p-2 text-center font-bold text-gray-700 dark:text-gray-300">التكلفة</th>}
+                  {isAdminOrManager && <th className="p-2 text-center font-bold text-gray-700 dark:text-gray-300">الجملة</th>}
+                  {isAdminOrManager && <th className="p-2 text-center font-bold text-gray-700 dark:text-gray-300">ربح %</th>}
+                  <th className="p-2 text-center font-bold text-blue-600 dark:text-blue-400">المفرد</th>
+                  {isAdminOrManager && <th className="p-2 text-center font-bold text-gray-700 dark:text-gray-300">الكمية</th>}
+                  {isAdminOrManager && <th className="p-2 font-bold text-gray-700 dark:text-gray-300">المورد</th>}
+                  {isAdminOrManager && <th className="p-2.5 text-center font-bold text-gray-700 dark:text-gray-300 whitespace-nowrap sticky left-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-md border-r border-gray-200 dark:border-gray-700">إجراءات</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -639,7 +639,7 @@ export default function ProductsPage() {
                       className="group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                     >
                       {isAdminOrManager && (
-                        <td className={`px-4 py-3 text-center sticky right-0 z-10 transition-colors ${rowBg}`}>
+                        <td className="p-2 text-center">
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -648,38 +648,36 @@ export default function ProductsPage() {
                           />
                         </td>
                       )}
-                      <td className={`px-4 py-3 min-w-[200px] sticky ${isAdminOrManager ? "right-10" : "right-0"} z-10 transition-colors ${rowBg} shadow-sm`}>
-                        <div className="flex items-center gap-3">
+                      <td className="p-2.5 max-w-[200px]">
+                        <div className="flex items-center gap-2">
                           {product.image ? (
-                            <img src={product.image} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0 border border-gray-200 dark:border-gray-700" />
+                            <img src={product.image} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0 border border-gray-200 dark:border-gray-700" />
                           ) : (
-                            <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 text-lg flex-shrink-0">📦</div>
+                            <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 text-sm flex-shrink-0">📦</div>
                           )}
-                          <div>
-                            <p className="font-bold text-gray-900 dark:text-white whitespace-nowrap">{product.name}</p>
-                            {product.notes && <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[180px]">{product.notes}</p>}
+                          <div className="min-w-0">
+                            <p className="font-bold text-gray-900 dark:text-white truncate max-w-[140px]" title={product.name}>{product.name}</p>
+                            {product.notes && <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate max-w-[140px]">{product.notes}</p>}
                           </div>
                         </div>
                       </td>
 
-                      <td className="px-4 py-3">
+                      <td className="p-2 text-center">
                         {(() => {
                           const match = product.notes ? product.notes.match(/الفئة:\s*([^|,\n]+)/) : null;
                           const catName = match && match[1] ? match[1].trim() : null;
                           return catName ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-xs whitespace-nowrap">
-                              📁 {catName}
+                            <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-[11px] whitespace-nowrap">
+                              {catName}
                             </span>
                           ) : (
-                            <span className="text-gray-400 dark:text-gray-500 text-xs italic">
-                              غير مصنف
-                            </span>
+                            <span className="text-gray-400 text-[10px] italic">غير مصنف</span>
                           );
                         })()}
                       </td>
 
                       {isAdminOrManager && (
-                        <td className="px-4 py-3">
+                        <td className="p-2 text-center whitespace-nowrap">
                           {canEdit ? (
                             <InlineNumber value={product.costPrice} onSave={(v) => handleInlineEdit(product.id, "costPrice", v)} />
                           ) : (
@@ -689,7 +687,7 @@ export default function ProductsPage() {
                       )}
 
                       {isAdminOrManager && (
-                        <td className="px-4 py-3">
+                        <td className="p-2 text-center whitespace-nowrap">
                           {canEdit ? (
                             <InlineNumber value={product.wholesalePrice} onSave={(v) => handleInlineEdit(product.id, "wholesalePrice", v)} />
                           ) : (
@@ -699,17 +697,17 @@ export default function ProductsPage() {
                       )}
 
                       {isAdminOrManager && (
-                        <td className="px-4 py-3 text-emerald-600 dark:text-emerald-400 font-bold">
+                        <td className="p-2 text-center text-emerald-600 dark:text-emerald-400 font-bold whitespace-nowrap">
                           {product.profitMargin || 0}%
                         </td>
                       )}
 
-                      <td className="px-4 py-3 font-extrabold text-blue-600 dark:text-blue-400 text-base">
+                      <td className="p-2 text-center font-black text-blue-600 dark:text-blue-400 text-xs whitespace-nowrap">
                         {product.retailPrice.toLocaleString()} د.ع
                       </td>
 
                       {isAdminOrManager && (
-                        <td className="px-4 py-3">
+                        <td className="p-2 text-center whitespace-nowrap">
                           {canEdit ? (
                             <InlineNumber value={product.stock} onSave={(v) => handleInlineEdit(product.id, "stock", v)} isInteger />
                           ) : (
@@ -719,17 +717,17 @@ export default function ProductsPage() {
                       )}
 
                       {isAdminOrManager && (
-                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-xs font-medium whitespace-nowrap">
+                        <td className="p-2 text-gray-600 dark:text-gray-400 text-[11px] font-medium whitespace-nowrap">
                           {getSupplierName(product.supplierId)}
                         </td>
                       )}
 
                       {isAdminOrManager && (
-                        <td className={`px-4 py-3 whitespace-nowrap sticky left-0 z-10 transition-colors ${rowBg} shadow-md border-r border-gray-200 dark:border-gray-700`}>
-                          <div className="flex items-center justify-center gap-2 whitespace-nowrap">
+                        <td className={`p-2 whitespace-nowrap sticky left-0 z-10 transition-colors ${rowBg} shadow-md border-r border-gray-200 dark:border-gray-700`}>
+                          <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
                             <button
                               onClick={() => { setEditingProduct(product); setModalOpen(true); }}
-                              className="px-2.5 py-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg text-xs font-bold border border-blue-200 dark:border-blue-800 inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
+                              className="px-2 py-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded text-[11px] font-bold border border-blue-200 dark:border-blue-800 inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
                               title="تعديل"
                             >
                               <span>✏️</span>
@@ -737,7 +735,7 @@ export default function ProductsPage() {
                             </button>
                             <button
                               onClick={() => setDeleteConfirm(product.id)}
-                              className="px-2.5 py-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg text-xs font-bold border border-red-200 dark:border-red-800 inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
+                              className="px-2 py-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded text-[11px] font-bold border border-red-200 dark:border-red-800 inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
                               title="حذف"
                             >
                               <span>🗑️</span>
