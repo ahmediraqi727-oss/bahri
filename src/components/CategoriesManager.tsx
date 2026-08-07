@@ -372,7 +372,7 @@ export default function CategoriesManager() {
           <span className="text-xs text-gray-400">تحديث تلقائي لحالة مخزون المنتجات وعدد الزيارات</span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {allAvailableCategories.map((c) => {
             const catProds = products.filter((p) => p.notes && p.notes.toLowerCase().includes(c.name.toLowerCase()));
             const totalCount = catProds.length;
@@ -383,69 +383,69 @@ export default function CategoriesManager() {
 
             // Border Alert Logic: Red if out of stock, Yellow if low stock, Normal if healthy
             let borderStyle = "border-emerald-300 dark:border-emerald-800 bg-white dark:bg-gray-800/90";
-            let alertBadge = <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/40 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">✅ المخزون متوفر</span>;
+            let alertBadge = <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">✅ متوفر</span>;
 
             if (outOfStockCount > 0) {
-              borderStyle = "border-red-500 dark:border-red-600 bg-red-50/40 dark:bg-red-950/20 text-red-900 dark:text-red-200 ring-2 ring-red-500/20";
-              alertBadge = <span className="text-[11px] font-bold text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-900/50 px-2.5 py-0.5 rounded-full border border-red-300 dark:border-red-800 animate-pulse">🚨 منتجات منفذة بالكامل</span>;
+              borderStyle = "border-red-500 dark:border-red-600 bg-red-50/40 dark:bg-red-950/20 text-red-900 dark:text-red-200 ring-1 ring-red-500/20";
+              alertBadge = <span className="text-[10px] font-bold text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-900/50 px-2 py-0.5 rounded-full border border-red-300 dark:border-red-800 animate-pulse">🚨 منفذ</span>;
             } else if (lowStockCount > 0) {
-              borderStyle = "border-amber-400 dark:border-amber-500 bg-amber-50/40 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200 ring-2 ring-amber-400/20";
-              alertBadge = <span className="text-[11px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/50 px-2.5 py-0.5 rounded-full border border-amber-300 dark:border-amber-800">⚠️ وشيكة على النفاد</span>;
+              borderStyle = "border-amber-400 dark:border-amber-500 bg-amber-50/40 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200 ring-1 ring-amber-400/20";
+              alertBadge = <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/50 px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-800">⚠️ وشيك</span>;
             }
 
             return (
               <div
                 key={c.id}
-                className={`p-5 rounded-2xl border transition-all duration-300 shadow-sm space-y-4 flex flex-col justify-between ${borderStyle}`}
+                className={`p-3 rounded-xl border transition-all duration-300 shadow-xs space-y-2 flex flex-col justify-between ${borderStyle}`}
               >
                 <div>
-                  <div className="flex items-start justify-between gap-3 border-b border-gray-100 dark:border-gray-700 pb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center shadow-inner flex-shrink-0">
+                  <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-700 pb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center shadow-inner flex-shrink-0">
                         {displayImg ? (
                           <img src={displayImg} alt={c.name} loading="lazy" className="w-full h-full object-cover" />
                         ) : (
-                          <span className="text-xl">📁</span>
+                          <span className="text-base">📁</span>
                         )}
                       </div>
                       <div>
-                        <h4 className="font-extrabold text-sm text-gray-900 dark:text-white">{c.name}</h4>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">رقم الأولوية: {c.priority}</p>
+                        <h4 className="font-extrabold text-xs text-gray-900 dark:text-white leading-tight">{c.name}</h4>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400">أولوية: {c.priority}</p>
                       </div>
                     </div>
                     {alertBadge}
                   </div>
 
                   {/* Analytics Stats Grid */}
-                  <div className="grid grid-cols-2 gap-2 pt-3">
-                    <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-100 dark:border-gray-700 text-center">
-                      <span className="block text-xs font-bold text-gray-500 dark:text-gray-400">إجمالي المنتجات</span>
-                      <span className="text-base font-extrabold text-blue-600 dark:text-blue-400 mt-0.5 block">{totalCount} منتج</span>
+                  <div className="grid grid-cols-2 gap-1.5 pt-2">
+                    <div className="p-1.5 rounded-lg bg-gray-50 dark:bg-gray-900/60 border border-gray-100 dark:border-gray-700 text-center">
+                      <span className="block text-[10px] font-bold text-gray-500 dark:text-gray-400">إجمالي المنتجات</span>
+                      <span className="text-xs font-black text-blue-600 dark:text-blue-400 mt-0.5 block">{totalCount} منتج</span>
                     </div>
 
-                    <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-gray-100 dark:border-gray-700 text-center">
-                      <span className="block text-xs font-bold text-gray-500 dark:text-gray-400">عدد الزوار</span>
-                      <span className="text-base font-extrabold text-indigo-600 dark:text-indigo-400 mt-0.5 block">👁️ {viewsCount} زيارة</span>
+                    <div className="p-1.5 rounded-lg bg-gray-50 dark:bg-gray-900/60 border border-gray-100 dark:border-gray-700 text-center">
+                      <span className="block text-[10px] font-bold text-gray-500 dark:text-gray-400">عدد الزوار</span>
+                      <span className="text-xs font-black text-indigo-600 dark:text-indigo-400 mt-0.5 block">👁️ {viewsCount}</span>
                     </div>
 
-                    <div className="p-2.5 rounded-xl bg-amber-50/50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-center">
-                      <span className="block text-[11px] font-bold text-amber-700 dark:text-amber-300">وشيكة النفاد</span>
-                      <span className="text-sm font-extrabold text-amber-600 dark:text-amber-400 mt-0.5 block">{lowStockCount} منتج</span>
+                    <div className="p-1.5 rounded-lg bg-amber-50/50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-center">
+                      <span className="block text-[10px] font-bold text-amber-700 dark:text-amber-300">وشيك النفاد</span>
+                      <span className="text-xs font-black text-amber-600 dark:text-amber-400 mt-0.5 block">{lowStockCount}</span>
                     </div>
 
-                    <div className="p-2.5 rounded-xl bg-red-50/50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-center">
-                      <span className="block text-[11px] font-bold text-red-700 dark:text-red-300">نفذت بالكامل</span>
-                      <span className="text-sm font-extrabold text-red-600 dark:text-red-400 mt-0.5 block">{outOfStockCount} منتج</span>
+                    <div className="p-1.5 rounded-lg bg-red-50/50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-center">
+                      <span className="block text-[10px] font-bold text-red-700 dark:text-red-300">نفذ بالكامل</span>
+                      <span className="text-xs font-black text-red-600 dark:text-red-400 mt-0.5 block">{outOfStockCount}</span>
                     </div>
                   </div>
                 </div>
 
                 <button
                   onClick={() => handleSelectCategoryToEdit(c.id)}
-                  className="w-full py-2 bg-gray-100 dark:bg-gray-700 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-gray-700 dark:text-gray-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm mt-2"
+                  className="w-full py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-gray-700 dark:text-gray-200 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 shadow-xs mt-1.5"
                 >
                   <span>✏️</span>
-                  <span>استحضار وتعديل بيانات هذا القسم</span>
+                  <span>تعديل هذا القسم</span>
                 </button>
               </div>
             );
