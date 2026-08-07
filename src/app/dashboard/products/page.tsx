@@ -623,7 +623,7 @@ export default function ProductsPage() {
                   {isAdminOrManager && <th className="p-2 text-center font-bold text-gray-700 dark:text-gray-300">ربح %</th>}
                   <th className="p-2 text-center font-bold text-blue-600 dark:text-blue-400">المفرد</th>
                   {isAdminOrManager && <th className="p-2 text-center font-bold text-gray-700 dark:text-gray-300">الكمية</th>}
-                  {isAdminOrManager && <th className="p-2 font-bold text-gray-700 dark:text-gray-300">المورد</th>}
+                  {isAdminOrManager && <th className="p-1.5 font-bold text-gray-700 dark:text-gray-300 text-center max-w-[75px] leading-tight">المورد</th>}
                   {isAdminOrManager && <th className="p-2.5 text-center font-bold text-gray-700 dark:text-gray-300 whitespace-nowrap sticky left-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-md border-r border-gray-200 dark:border-gray-700">إجراءات</th>}
                 </tr>
               </thead>
@@ -717,7 +717,7 @@ export default function ProductsPage() {
                       )}
 
                       {isAdminOrManager && (
-                        <td className="p-2 text-gray-600 dark:text-gray-400 text-[11px] font-medium whitespace-nowrap">
+                        <td className="p-1.5 text-gray-600 dark:text-gray-400 text-[10px] font-bold text-center max-w-[75px] leading-tight break-words">
                           {getSupplierName(product.supplierId)}
                         </td>
                       )}
