@@ -205,7 +205,7 @@ export default function TrashPage() {
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
                   <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">النوع</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400 sticky right-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-sm">الاسم</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400 min-w-[200px] sticky right-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-sm">الاسم</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">حُذف بواسطة</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">تاريخ الحذف</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الأيام المتبقية</th>
@@ -223,7 +223,7 @@ export default function TrashPage() {
                           <span className="font-medium text-gray-900 dark:text-white">{item.entity}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-gray-900 dark:text-white font-medium sticky right-0 z-10 bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800/90 transition-colors shadow-sm whitespace-nowrap">{item.entityName}</td>
+                      <td className="px-4 py-3 text-gray-900 dark:text-white font-medium min-w-[200px] sticky right-0 z-10 bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800/90 transition-colors shadow-sm whitespace-nowrap">{item.entityName}</td>
                       <td className="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">{item.deletedBy}</td>
                       <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">{formatTimestamp(item.deletedAt)}</td>
                       <td className="px-4 py-3">

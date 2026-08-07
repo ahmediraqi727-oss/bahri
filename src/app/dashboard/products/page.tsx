@@ -616,7 +616,7 @@ export default function ProductsPage() {
                       />
                     </th>
                   )}
-                  <th className={`px-4 py-3 font-medium text-gray-600 dark:text-gray-400 ${isAdminOrManager ? "sticky right-10 z-20 bg-gray-50 dark:bg-gray-800 shadow-sm" : "sticky right-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-sm"}`}>المنتج والوصف</th>
+                  <th className={`px-4 py-3 font-medium text-gray-600 dark:text-gray-400 min-w-[200px] ${isAdminOrManager ? "sticky right-10 z-20 bg-gray-50 dark:bg-gray-800 shadow-sm" : "sticky right-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-sm"}`}>المنتج والوصف</th>
                   <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">القسم</th>
                   {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">التكاليف</th>}
                   {isAdminOrManager && <th className="px-4 py-3 font-medium text-gray-600 dark:text-gray-400">الجملة</th>}
@@ -648,12 +648,12 @@ export default function ProductsPage() {
                           />
                         </td>
                       )}
-                      <td className={`px-4 py-3 sticky ${isAdminOrManager ? "right-10" : "right-0"} z-10 transition-colors ${rowBg} shadow-sm`}>
+                      <td className={`px-4 py-3 min-w-[200px] sticky ${isAdminOrManager ? "right-10" : "right-0"} z-10 transition-colors ${rowBg} shadow-sm`}>
                         <div className="flex items-center gap-3">
                           {product.image ? (
-                            <img src={product.image} alt="" className="w-10 h-10 rounded-lg object-cover border border-gray-200 dark:border-gray-700" />
+                            <img src={product.image} alt="" className="w-10 h-10 rounded-lg object-cover flex-shrink-0 border border-gray-200 dark:border-gray-700" />
                           ) : (
-                            <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 text-lg">📦</div>
+                            <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 text-lg flex-shrink-0">📦</div>
                           )}
                           <div>
                             <p className="font-bold text-gray-900 dark:text-white whitespace-nowrap">{product.name}</p>

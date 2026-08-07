@@ -674,7 +674,7 @@ export default function InvoicesPage() {
                 <thead className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold border-b border-gray-200 dark:border-gray-700">
                   <tr>
                     <th className="p-3.5 text-center sticky right-0 z-20 bg-gray-100 dark:bg-gray-800 shadow-sm">الرقم التسلسلي</th>
-                    <th className="p-3.5">الزبون والهاتف</th>
+                    <th className="p-3.5 min-w-[200px]">الزبون والهاتف</th>
                     <th className="p-3.5">المحافظة والعنوان</th>
                     <th className="p-3.5 text-center">عدد المنتجات</th>
                     <th className="p-3.5 text-center">تكلفة التوصيل</th>
@@ -699,7 +699,7 @@ export default function InvoicesPage() {
                           {serialStr}
                         </td>
 
-                        <td className="p-3.5">
+                        <td className="p-3.5 min-w-[200px]">
                           <p className="font-bold text-gray-900 dark:text-white">{inv.customerName}</p>
                           <p className="text-[11px] text-gray-500 font-mono" dir="ltr">{inv.customerPhone}</p>
                         </td>
