@@ -241,30 +241,40 @@ export default function TrashPage() {
 
   // ─── Permanent Delete Handlers ────────────────────────────────────────────
   const handleConfirmPermanentDelete = async () => {
+    // 1. Close confirmation modal immediately to free UI
+    const modalType = confirmDeleteModal;
+    const singleItem = targetSingleItem;
+    setConfirmDeleteModal(null);
+    setTargetSingleItem(null);
+
     setIsProcessing(true);
 
-    if (confirmDeleteModal === "single" && targetSingleItem) {
-      const toastId = toastLoading("جاري الحذف النهائي...", `حذف "${targetSingleItem.entityName}" من Supabase`);
+    if (modalType === "single" && singleItem) {
+      const toastId = toastLoading("جاري الحذف النهائي...", `حذف "${singleItem.entityName}" من Supabase`);
       try {
-        await permanentDelete(targetSingleItem.id);
+        await permanentDelete(singleItem.id);
         await reloadTrash();
         await logActivity({
           user: "manager",
           action: "delete",
-          entity: targetSingleItem.entity,
-          entityId: targetSingleItem.entityId,
-          details: `حذف نهائي لـ "${targetSingleItem.entityName}" من سلة المهملات`,
+          entity: singleItem.entity,
+          entityId: singleItem.entityId,
+          details: `حذف نهائي لـ "${singleItem.entityName}" من سلة المهملات`,
         });
-        resolveToast(toastId, "success", `🗑️ تم الحذف النهائي لـ "${targetSingleItem.entityName}"`);
-        setSelectedIds((prev) => prev.filter((id) => id !== targetSingleItem.id));
+        resolveToast(toastId, "success", `🗑️ تم الحذف النهائي لـ "${singleItem.entityName}"`);
+        setSelectedIds((prev) => prev.filter((id) => id !== singleItem.id));
       } catch (err: any) {
         resolveToast(toastId, "error", "فشل الحذف النهائي", err?.message);
+      } finally {
+        setIsProcessing(false);
       }
-    } else if (confirmDeleteModal === "bulk" && selectedIds.length > 0) {
+    } else if (modalType === "bulk" && selectedIds.length > 0) {
       const total = selectedIds.length;
-      const toastId = toastLoading("جاري بدء عملية الحذف...", `جاري تجهيز ${total} عنصر...`);
+      // 2. Create single toast ID once before loop
+      const toastId = toastLoading("جاري بدء الحذف النهائي...", `جاري معالجة 0 من ${total}...`);
       try {
         await bulkPermanentDelete(selectedIds, (processed, totalCount) => {
+          // 3. Update the exact same toast in-place without triggering new toasts
           toastLoading(`جاري الحذف ${processed} من ${totalCount}... (دفعات 50 عنصر/طلب)`, "جاري معالجة قاعدة البيانات Supabase", toastId);
         });
         await reloadTrash();
@@ -272,18 +282,20 @@ export default function TrashPage() {
           user: "manager",
           action: "delete",
           entity: "سلة المهملات",
-          details: `حذف نهائي جماعي لـ ${total} عنصر من سلة المهملات (دفعات 50 عنصر/طلب)`,
+          details: `حذف نهائي جماعي لـ ${total} عنصر من سلة المهملات`,
         });
+        // 4. Resolve toast on completion
         resolveToast(toastId, "success", `🗑️ تم الحذف النهائي لـ ${total} عنصر بنجاح!`);
         setSelectedIds([]);
       } catch (err: any) {
-        resolveToast(toastId, "error", "فشل الحذف النهائي الجماعي", err?.message);
+        // 5. Resolve toast on failure
+        resolveToast(toastId, "error", "فشلت العملية", err?.message || "حدث خطأ في قاعدة البيانات");
+      } finally {
+        setIsProcessing(false);
       }
+    } else {
+      setIsProcessing(false);
     }
-
-    setIsProcessing(false);
-    setConfirmDeleteModal(null);
-    setTargetSingleItem(null);
   };
 
   // Purge expired items
