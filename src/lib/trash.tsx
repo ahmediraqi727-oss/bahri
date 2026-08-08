@@ -41,12 +41,12 @@ const TrashContext = createContext<TrashContextType | undefined>(undefined);
 function rowToTrash(row: Record<string, unknown>): TrashItem {
   return {
     id: row.id as string,
-    entity: row.entity as string,
-    entityId: row.entity_id as string,
-    entityName: row.entity_name as string,
+    entity: (row.entity as string) || (row.type as string) || "product",
+    entityId: (row.entity_id as string) || (row.entityId as string) || (row.id as string),
+    entityName: (row.entity_name as string) || (row.name as string) || "عنصر",
     data: (row.data as Record<string, unknown>) || {},
     deletedBy: (row.deleted_by as string) || "",
-    deletedAt: row.deleted_at as string,
+    deletedAt: (row.deleted_at as string) || new Date().toISOString(),
   };
 }
 
@@ -182,35 +182,38 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     const item = items.find((i) => i.id === id);
     if (!item) return null;
 
+    const eType = (item.entity || (item as any).type || "product").toLowerCase();
+    const targetEntityId = item.entityId || item.id;
+
     // 1. Re-insert item back to original Supabase table
-    if (item.entity === "product" && item.data) {
+    if (eType === "product" && item.data) {
       const row = productToRow(item.data);
-      if (item.entityId && isUUID(item.entityId)) row.id = item.entityId;
+      if (targetEntityId && isUUID(targetEntityId)) row.id = targetEntityId;
       const { error: upsertErr } = await supabase.from("products").upsert(row).select();
       if (upsertErr) {
         console.error("Supabase restore product error:", upsertErr);
         throw new Error(`فشلت استعادة المنتج لقاعدة البيانات: ${upsertErr.message} [Code: ${upsertErr.code}]`);
       }
-    } else if (item.entity === "supplier" && item.data) {
+    } else if (eType === "supplier" && item.data) {
       const row = supplierToRow(item.data);
-      if (item.entityId && isUUID(item.entityId)) row.id = item.entityId;
+      if (targetEntityId && isUUID(targetEntityId)) row.id = targetEntityId;
       const { error: upsertErr } = await supabase.from("suppliers").upsert(row).select();
       if (upsertErr) {
         console.error("Supabase restore supplier error:", upsertErr);
         throw new Error(`فشلت استعادة المورد لقاعدة البيانات: ${upsertErr.message} [Code: ${upsertErr.code}]`);
       }
-    } else if (item.entity === "category" && item.data) {
+    } else if (eType === "category" && item.data) {
       const row = categoryToRow(item.data);
-      if (item.entityId && isUUID(item.entityId)) row.id = item.entityId;
+      if (targetEntityId && isUUID(targetEntityId)) row.id = targetEntityId;
       const { error: upsertErr } = await supabase.from("categories").upsert(row, { onConflict: "name" }).select();
       if (upsertErr) {
         console.error("Supabase restore category error:", upsertErr);
         throw new Error(`فشلت استعادة القسم لقاعدة البيانات: ${upsertErr.message} [Code: ${upsertErr.code}]`);
       }
-    } else if (item.entity === "customer" && item.data) {
+    } else if (eType === "customer" && item.data) {
       const { error: upsertErr } = await supabase.from("customers").upsert(item.data).select();
       if (upsertErr) throw new Error(`فشلت استعادة الزبون: ${upsertErr.message} [Code: ${upsertErr.code}]`);
-    } else if (item.entity === "order" && item.data) {
+    } else if (eType === "order" && item.data) {
       const { error: upsertErr } = await supabase.from("orders").upsert(item.data).select();
       if (upsertErr) throw new Error(`فشلت استعادة الطلب: ${upsertErr.message} [Code: ${upsertErr.code}]`);
     }
@@ -234,51 +237,61 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     if (!ids || ids.length === 0) return [];
     const restoredItems = items.filter((i) => ids.includes(i.id));
 
+    const getItemsByEntityType = (entityType: string) => {
+      return restoredItems.filter((i) => {
+        const eType = (i.entity || (i as any).type || "").toLowerCase();
+        return eType === entityType && i.data;
+      });
+    };
+
     // Batch re-insert restored items back to target tables in CHUNK_SIZE = 50
-    const productsToRestore = restoredItems.filter((i) => i.entity === "product" && i.data);
+    const productsToRestore = getItemsByEntityType("product");
     for (let i = 0; i < productsToRestore.length; i += CHUNK_SIZE) {
       const chunk = productsToRestore.slice(i, i + CHUNK_SIZE);
       const rows = chunk.map((item) => {
         const r = productToRow(item.data);
-        if (item.entityId && isUUID(item.entityId)) r.id = item.entityId;
+        const targetId = item.entityId || item.id;
+        if (targetId && isUUID(targetId)) r.id = targetId;
         return r;
       });
       const { error: upsertErr } = await supabase.from("products").upsert(rows).select();
       if (upsertErr) throw new Error(`فشلت استعادة المنتجات: ${upsertErr.message} [Code: ${upsertErr.code}]`);
     }
 
-    const suppliersToRestore = restoredItems.filter((i) => i.entity === "supplier" && i.data);
+    const suppliersToRestore = getItemsByEntityType("supplier");
     for (let i = 0; i < suppliersToRestore.length; i += CHUNK_SIZE) {
       const chunk = suppliersToRestore.slice(i, i + CHUNK_SIZE);
       const rows = chunk.map((item) => {
         const r = supplierToRow(item.data);
-        if (item.entityId && isUUID(item.entityId)) r.id = item.entityId;
+        const targetId = item.entityId || item.id;
+        if (targetId && isUUID(targetId)) r.id = targetId;
         return r;
       });
       const { error: upsertErr } = await supabase.from("suppliers").upsert(rows).select();
       if (upsertErr) throw new Error(`فشلت استعادة الموردين: ${upsertErr.message} [Code: ${upsertErr.code}]`);
     }
 
-    const categoriesToRestore = restoredItems.filter((i) => i.entity === "category" && i.data);
+    const categoriesToRestore = getItemsByEntityType("category");
     for (let i = 0; i < categoriesToRestore.length; i += CHUNK_SIZE) {
       const chunk = categoriesToRestore.slice(i, i + CHUNK_SIZE);
       const rows = chunk.map((item) => {
         const r = categoryToRow(item.data);
-        if (item.entityId && isUUID(item.entityId)) r.id = item.entityId;
+        const targetId = item.entityId || item.id;
+        if (targetId && isUUID(targetId)) r.id = targetId;
         return r;
       });
       const { error: upsertErr } = await supabase.from("categories").upsert(rows, { onConflict: "name" }).select();
       if (upsertErr) throw new Error(`فشلت استعادة الأقسام: ${upsertErr.message} [Code: ${upsertErr.code}]`);
     }
 
-    const customersToRestore = restoredItems.filter((i) => i.entity === "customer" && i.data);
+    const customersToRestore = getItemsByEntityType("customer");
     for (let i = 0; i < customersToRestore.length; i += CHUNK_SIZE) {
       const chunk = customersToRestore.slice(i, i + CHUNK_SIZE);
       const { error: upsertErr } = await supabase.from("customers").upsert(chunk.map((item) => item.data)).select();
       if (upsertErr) throw new Error(`فشلت استعادة الزبائن: ${upsertErr.message} [Code: ${upsertErr.code}]`);
     }
 
-    const ordersToRestore = restoredItems.filter((i) => i.entity === "order" && i.data);
+    const ordersToRestore = getItemsByEntityType("order");
     for (let i = 0; i < ordersToRestore.length; i += CHUNK_SIZE) {
       const chunk = ordersToRestore.slice(i, i + CHUNK_SIZE);
       const { error: upsertErr } = await supabase.from("orders").upsert(chunk.map((item) => item.data)).select();
@@ -304,21 +317,26 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
   const permanentDelete = useCallback(async (id: string) => {
     const item = items.find((i) => i.id === id);
     if (item) {
-      if (item.entity === "product" && item.entityId && isUUID(item.entityId)) {
-        const { error: pErr } = await supabase.from("products").delete().eq("id", item.entityId);
-        if (pErr) console.warn("Notice deleting product entity:", pErr.message);
-      } else if (item.entity === "supplier" && item.entityId && isUUID(item.entityId)) {
-        const { error: sErr } = await supabase.from("suppliers").delete().eq("id", item.entityId);
-        if (sErr) console.warn("Notice deleting supplier entity:", sErr.message);
-      } else if (item.entity === "category" && item.entityId && isUUID(item.entityId)) {
-        const { error: cErr } = await supabase.from("categories").delete().eq("id", item.entityId);
-        if (cErr) console.warn("Notice deleting category entity:", cErr.message);
-      } else if (item.entity === "customer" && item.entityId && isUUID(item.entityId)) {
-        const { error: custErr } = await supabase.from("customers").delete().eq("id", item.entityId);
-        if (custErr) console.warn("Notice deleting customer entity:", custErr.message);
-      } else if (item.entity === "order" && item.entityId && isUUID(item.entityId)) {
-        const { error: oErr } = await supabase.from("orders").delete().eq("id", item.entityId);
-        if (oErr) console.warn("Notice deleting order entity:", oErr.message);
+      const eType = (item.entity || (item as any).type || "").toLowerCase();
+      const targetId = item.entityId || item.id;
+
+      if (targetId && isUUID(targetId)) {
+        if (eType === "product") {
+          const { error: pErr } = await supabase.from("products").delete().eq("id", targetId);
+          if (pErr) console.error("Notice deleting product entity:", pErr.message);
+        } else if (eType === "supplier") {
+          const { error: sErr } = await supabase.from("suppliers").delete().eq("id", targetId);
+          if (sErr) console.error("Notice deleting supplier entity:", sErr.message);
+        } else if (eType === "category") {
+          const { error: cErr } = await supabase.from("categories").delete().eq("id", targetId);
+          if (cErr) console.error("Notice deleting category entity:", cErr.message);
+        } else if (eType === "customer") {
+          const { error: custErr } = await supabase.from("customers").delete().eq("id", targetId);
+          if (custErr) console.error("Notice deleting customer entity:", custErr.message);
+        } else if (eType === "order") {
+          const { error: oErr } = await supabase.from("orders").delete().eq("id", targetId);
+          if (oErr) console.error("Notice deleting order entity:", oErr.message);
+        }
       }
     }
 
@@ -346,47 +364,64 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
         const chunk = ids.slice(i, i + CHUNK_SIZE);
         const itemsInChunk = items.filter((item) => chunk.includes(item.id));
 
-        // 1. Delete original entity records from products table if any
-        const productEntityIds = itemsInChunk
-          .filter((item) => item.entity === "product" && item.entityId && isUUID(item.entityId))
-          .map((item) => item.entityId);
+        // Helper to extract valid UUID entity IDs for target tables (fallback: item.entityId || item.id)
+        const getEntityIds = (entityType: string) => {
+          return itemsInChunk
+            .filter((item) => {
+              const eType = (item.entity || (item as any).type || "").toLowerCase();
+              return eType === entityType;
+            })
+            .map((item) => {
+              const targetId = item.entityId || item.id;
+              return isUUID(targetId) ? targetId : null;
+            })
+            .filter((id): id is string => Boolean(id));
+        };
+
+        // 1. Delete original entity records from target tables (throw Error on failure to prevent silent deletion drops)
+        const productEntityIds = getEntityIds("product");
         if (productEntityIds.length > 0) {
           const { error: prodError } = await supabase.from("products").delete().in("id", productEntityIds);
           if (prodError) {
-            console.warn("تنبيه حذف المنتجات من Supabase:", prodError.message);
+            console.error("خطأ حذف المنتجات من Supabase:", prodError);
+            throw new Error(`فشل الحذف من جدول المنتجات الأصلي: ${prodError.message} [Code: ${prodError.code}]`);
           }
         }
 
-        const supplierEntityIds = itemsInChunk
-          .filter((item) => item.entity === "supplier" && item.entityId && isUUID(item.entityId))
-          .map((item) => item.entityId);
+        const supplierEntityIds = getEntityIds("supplier");
         if (supplierEntityIds.length > 0) {
           const { error: supError } = await supabase.from("suppliers").delete().in("id", supplierEntityIds);
-          if (supError) console.warn("تنبيه حذف الموردين:", supError.message);
+          if (supError) {
+            console.error("خطأ حذف الموردين من Supabase:", supError);
+            throw new Error(`فشل الحذف من جدول الموردين الأصلي: ${supError.message} [Code: ${supError.code}]`);
+          }
         }
 
-        const categoryEntityIds = itemsInChunk
-          .filter((item) => item.entity === "category" && item.entityId && isUUID(item.entityId))
-          .map((item) => item.entityId);
+        const categoryEntityIds = getEntityIds("category");
         if (categoryEntityIds.length > 0) {
           const { error: catError } = await supabase.from("categories").delete().in("id", categoryEntityIds);
-          if (catError) console.warn("تنبيه حذف الأقسام:", catError.message);
+          if (catError) {
+            console.error("خطأ حذف الأقسام من Supabase:", catError);
+            throw new Error(`فشل الحذف من جدول الأقسام الأصلي: ${catError.message} [Code: ${catError.code}]`);
+          }
         }
 
-        const customerEntityIds = itemsInChunk
-          .filter((item) => item.entity === "customer" && item.entityId && isUUID(item.entityId))
-          .map((item) => item.entityId);
+        const customerEntityIds = getEntityIds("customer");
         if (customerEntityIds.length > 0) {
           const { error: custError } = await supabase.from("customers").delete().in("id", customerEntityIds);
-          if (custError) console.warn("تنبيه حذف الزبائن:", custError.message);
+          if (custError) {
+            console.error("خطأ حذف الزبائن من Supabase:", custError);
+            throw new Error(`فشل الحذف من جدول الزبائن الأصلي: ${custError.message} [Code: ${custError.code}]`);
+          }
         }
 
-        const orderEntityIds = itemsInChunk
-          .filter((item) => item.entity === "order" && item.entityId && isUUID(item.entityId))
-          .map((item) => item.entityId);
+        const orderEntityIds = getEntityIds("order");
         if (orderEntityIds.length > 0) {
           const { error: ordError } = await supabase.from("orders").delete().in("id", orderEntityIds);
-          if (ordError) console.warn("تنبيه حذف الطلبات:", ordError.message);
+          if (ordError) {
+            console.error("خطأ حذف الطلبات من Supabase:", ordError);
+            throw new Error(`فشل الحذف من جدول الطلبات الأصلي: ${ordError.message} [Code: ${ordError.code}]`);
+          }
         }
 
         // 2. Delete entries from trash table in Supabase
