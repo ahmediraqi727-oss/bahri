@@ -26,11 +26,11 @@ interface TrashContextType {
   loading: boolean;
   reloadTrash: () => Promise<void>;
   softDelete: (entity: string, entityId: string, entityName: string, data: Record<string, unknown>, deletedBy: string) => Promise<void>;
-  bulkSoftDelete: (deletePayloads: { entity: string; entityId: string; entityName: string; data: Record<string, unknown>; deletedBy: string }[]) => Promise<void>;
+  bulkSoftDelete: (deletePayloads: { entity: string; entityId: string; entityName: string; data: Record<string, unknown>; deletedBy: string }[], onProgress?: (processed: number, total: number) => void) => Promise<void>;
   restore: (id: string) => Promise<TrashItem | null>;
-  bulkRestore: (ids: string[]) => Promise<TrashItem[]>;
+  bulkRestore: (ids: string[], onProgress?: (processed: number, total: number) => void) => Promise<TrashItem[]>;
   permanentDelete: (id: string) => Promise<void>;
-  bulkPermanentDelete: (ids: string[]) => Promise<void>;
+  bulkPermanentDelete: (ids: string[], onProgress?: (processed: number, total: number) => void) => Promise<void>;
   purgeExpired: () => Promise<number>;
   autoDeleteDays: number;
   setAutoDeleteDays: (days: number) => Promise<void>;
@@ -51,6 +51,7 @@ function rowToTrash(row: Record<string, unknown>): TrashItem {
 }
 
 const TRASH_DAYS_KEY = "app_trash_auto_delete_days";
+const CHUNK_SIZE = 50; // Optimized batch size (50 items per payload to prevent HTTP 414 / PostgREST limits)
 
 export function TrashProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<TrashItem[]>([]);
@@ -143,7 +144,10 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const bulkSoftDelete = useCallback(async (deletePayloads: { entity: string; entityId: string; entityName: string; data: Record<string, unknown>; deletedBy: string }[]) => {
+  const bulkSoftDelete = useCallback(async (
+    deletePayloads: { entity: string; entityId: string; entityName: string; data: Record<string, unknown>; deletedBy: string }[],
+    onProgress?: (processed: number, total: number) => void
+  ) => {
     if (!deletePayloads || deletePayloads.length === 0) return;
     const rows = deletePayloads.map((payload) => ({
       entity: payload.entity,
@@ -153,16 +157,19 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
       deleted_by: payload.deletedBy,
     }));
 
-    const chunkSize = 200;
     const createdRows: Record<string, unknown>[] = [];
-    for (let i = 0; i < rows.length; i += chunkSize) {
-      const chunk = rows.slice(i, i + chunkSize);
+    let processed = 0;
+
+    for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+      const chunk = rows.slice(i, i + CHUNK_SIZE);
       const { data: created, error } = await supabase.from("trash").insert(chunk).select();
       if (error) {
         console.error("Supabase bulkSoftDelete error:", error);
         throw new Error(`فشل الحذف الجماعي إلى السلة: ${error.message} [Code: ${error.code}]`);
       }
       if (created) createdRows.push(...created);
+      processed += chunk.length;
+      if (onProgress) onProgress(processed, rows.length);
     }
 
     if (createdRows.length > 0) {
@@ -208,7 +215,7 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
       if (upsertErr) throw new Error(`فشلت استعادة الطلب: ${upsertErr.message} [Code: ${upsertErr.code}]`);
     }
 
-    // 2. Delete entry from trash table in Supabase (with .select() check)
+    // 2. Delete entry from trash table in Supabase
     const { data: delData, error: delErr } = await supabase.from("trash").delete().eq("id", id).select();
     if (delErr) {
       console.error("Supabase delete from trash error:", delErr);
@@ -216,23 +223,27 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (!delData || delData.length === 0) {
-      console.warn("Supabase trash delete returned 0 rows. Checking if row was already deleted.");
+      console.warn("Supabase trash delete returned 0 rows.");
     }
 
     setItems((prev) => prev.filter((i) => i.id !== id));
     return item;
   }, [items]);
 
-  const bulkRestore = useCallback(async (ids: string[]): Promise<TrashItem[]> => {
+  const bulkRestore = useCallback(async (
+    ids: string[],
+    onProgress?: (processed: number, total: number) => void
+  ): Promise<TrashItem[]> => {
     if (!ids || ids.length === 0) return [];
     const restoredItems = items.filter((i) => ids.includes(i.id));
 
-    // Batch re-insert restored items back to target tables in Supabase
+    // Batch re-insert restored items back to target tables in CHUNK_SIZE = 50
     const productsToRestore = restoredItems.filter((i) => i.entity === "product" && i.data);
-    if (productsToRestore.length > 0) {
-      const rows = productsToRestore.map((i) => {
-        const r = productToRow(i.data);
-        if (i.entityId && isUUID(i.entityId)) r.id = i.entityId;
+    for (let i = 0; i < productsToRestore.length; i += CHUNK_SIZE) {
+      const chunk = productsToRestore.slice(i, i + CHUNK_SIZE);
+      const rows = chunk.map((item) => {
+        const r = productToRow(item.data);
+        if (item.entityId && isUUID(item.entityId)) r.id = item.entityId;
         return r;
       });
       const { error: upsertErr } = await supabase.from("products").upsert(rows).select();
@@ -240,10 +251,11 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     }
 
     const suppliersToRestore = restoredItems.filter((i) => i.entity === "supplier" && i.data);
-    if (suppliersToRestore.length > 0) {
-      const rows = suppliersToRestore.map((i) => {
-        const r = supplierToRow(i.data);
-        if (i.entityId && isUUID(i.entityId)) r.id = i.entityId;
+    for (let i = 0; i < suppliersToRestore.length; i += CHUNK_SIZE) {
+      const chunk = suppliersToRestore.slice(i, i + CHUNK_SIZE);
+      const rows = chunk.map((item) => {
+        const r = supplierToRow(item.data);
+        if (item.entityId && isUUID(item.entityId)) r.id = item.entityId;
         return r;
       });
       const { error: upsertErr } = await supabase.from("suppliers").upsert(rows).select();
@@ -251,10 +263,11 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     }
 
     const categoriesToRestore = restoredItems.filter((i) => i.entity === "category" && i.data);
-    if (categoriesToRestore.length > 0) {
-      const rows = categoriesToRestore.map((i) => {
-        const r = categoryToRow(i.data);
-        if (i.entityId && isUUID(i.entityId)) r.id = i.entityId;
+    for (let i = 0; i < categoriesToRestore.length; i += CHUNK_SIZE) {
+      const chunk = categoriesToRestore.slice(i, i + CHUNK_SIZE);
+      const rows = chunk.map((item) => {
+        const r = categoryToRow(item.data);
+        if (item.entityId && isUUID(item.entityId)) r.id = item.entityId;
         return r;
       });
       const { error: upsertErr } = await supabase.from("categories").upsert(rows, { onConflict: "name" }).select();
@@ -262,23 +275,27 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     }
 
     const customersToRestore = restoredItems.filter((i) => i.entity === "customer" && i.data);
-    if (customersToRestore.length > 0) {
-      const { error: upsertErr } = await supabase.from("customers").upsert(customersToRestore.map((i) => i.data)).select();
+    for (let i = 0; i < customersToRestore.length; i += CHUNK_SIZE) {
+      const chunk = customersToRestore.slice(i, i + CHUNK_SIZE);
+      const { error: upsertErr } = await supabase.from("customers").upsert(chunk.map((item) => item.data)).select();
       if (upsertErr) throw new Error(`فشلت استعادة الزبائن: ${upsertErr.message} [Code: ${upsertErr.code}]`);
     }
 
     const ordersToRestore = restoredItems.filter((i) => i.entity === "order" && i.data);
-    if (ordersToRestore.length > 0) {
-      const { error: upsertErr } = await supabase.from("orders").upsert(ordersToRestore.map((i) => i.data)).select();
+    for (let i = 0; i < ordersToRestore.length; i += CHUNK_SIZE) {
+      const chunk = ordersToRestore.slice(i, i + CHUNK_SIZE);
+      const { error: upsertErr } = await supabase.from("orders").upsert(chunk.map((item) => item.data)).select();
       if (upsertErr) throw new Error(`فشلت استعادة الطلبات: ${upsertErr.message} [Code: ${upsertErr.code}]`);
     }
 
-    // Delete restored entries from trash table in batch chunks
-    const chunkSize = 200;
-    for (let i = 0; i < ids.length; i += chunkSize) {
-      const chunk = ids.slice(i, i + chunkSize);
+    // Delete restored entries from trash table in CHUNK_SIZE = 50 batches
+    let processed = 0;
+    for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + CHUNK_SIZE);
       const { error: delErr } = await supabase.from("trash").delete().in("id", chunk).select();
       if (delErr) throw new Error(`فشل مسح السلة من Supabase: ${delErr.message} [Code: ${delErr.code}]`);
+      processed += chunk.length;
+      if (onProgress) onProgress(processed, ids.length);
     }
 
     const idSet = new Set(ids);
@@ -298,11 +315,17 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     setItems((prev) => prev.filter((i) => i.id !== id));
   }, []);
 
-  const bulkPermanentDelete = useCallback(async (ids: string[]) => {
+  const bulkPermanentDelete = useCallback(async (
+    ids: string[],
+    onProgress?: (processed: number, total: number) => void
+  ) => {
     if (!ids || ids.length === 0) return;
-    const chunkSize = 200;
-    for (let i = 0; i < ids.length; i += chunkSize) {
-      const chunk = ids.slice(i, i + chunkSize);
+
+    let processed = 0;
+    const total = ids.length;
+
+    for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + CHUNK_SIZE);
       const { data, error } = await supabase.from("trash").delete().in("id", chunk).select();
       if (error) {
         console.error("Supabase bulkPermanentDelete error:", error);
@@ -311,7 +334,12 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
       if (!data || data.length === 0) {
         console.warn(`Supabase batch delete chunk returned 0 rows for ${chunk.length} requested IDs.`);
       }
+      processed += chunk.length;
+      if (onProgress) {
+        onProgress(processed, total);
+      }
     }
+
     const idSet = new Set(ids);
     setItems((prev) => prev.filter((i) => !idSet.has(i.id)));
   }, []);

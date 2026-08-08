@@ -217,15 +217,18 @@ export default function TrashPage() {
   const handleBulkRestore = async () => {
     if (selectedIds.length === 0) return;
     setIsProcessing(true);
-    const toastId = toastLoading("جاري الاستعادة الجماعية...", `معالجة ${selectedIds.length} عنصر في Supabase`);
+    const total = selectedIds.length;
+    const toastId = toastLoading("جاري الاستعادة الجماعية...", `جاري معالجة 0 من ${total}... (دفعات 50 عنصر/طلب)`);
     try {
-      const restored = await bulkRestore(selectedIds);
+      const restored = await bulkRestore(selectedIds, (processed, totalCount) => {
+        toastLoading(`جاري استعادة ${processed} من ${totalCount}... (دفعات 50 عنصر/طلب)`);
+      });
       await Promise.all([reloadAllData(), reloadTrash()]);
       await logActivity({
         user: "manager",
         action: "restore",
         entity: "سلة المهملات",
-        details: `استعادة جماعية لـ ${restored.length} عنصر من سلة المهملات إلى Supabase`,
+        details: `استعادة جماعية لـ ${restored.length} عنصر من سلة المهملات إلى Supabase (دفعات 50 عنصر/طلب)`,
       });
       resolveToast(toastId, "success", `🎉 تمت استعادة ${restored.length} عنصر بنجاح إلى جداولها الأصلية!`);
       setSelectedIds([]);
@@ -258,17 +261,20 @@ export default function TrashPage() {
         resolveToast(toastId, "error", "فشل الحذف النهائي", err?.message);
       }
     } else if (confirmDeleteModal === "bulk" && selectedIds.length > 0) {
-      const toastId = toastLoading("جاري الحذف النهائي الجماعي...", `حذف ${selectedIds.length} عنصر من Supabase`);
+      const total = selectedIds.length;
+      const toastId = toastLoading("جاري الحذف النهائي الجماعي...", `جاري الحذف 0 من ${total}... (دفعات 50 عنصر/طلب)`);
       try {
-        await bulkPermanentDelete(selectedIds);
+        await bulkPermanentDelete(selectedIds, (processed, totalCount) => {
+          toastLoading(`جاري الحذف ${processed} من ${totalCount}... (دفعات 50 عنصر/طلب)`);
+        });
         await reloadTrash();
         await logActivity({
           user: "manager",
           action: "delete",
           entity: "سلة المهملات",
-          details: `حذف نهائي جماعي لـ ${selectedIds.length} عنصر من سلة المهملات`,
+          details: `حذف نهائي جماعي لـ ${total} عنصر من سلة المهملات (دفعات 50 عنصر/طلب)`,
         });
-        resolveToast(toastId, "success", `🗑️ تم الحذف النهائي لـ ${selectedIds.length} عنصر بنجاح`);
+        resolveToast(toastId, "success", `🗑️ تم الحذف النهائي لـ ${total} عنصر بنجاح (دفعات 50 عنصر/طلب)`);
         setSelectedIds([]);
       } catch (err: any) {
         resolveToast(toastId, "error", "فشل الحذف النهائي الجماعي", err?.message);
