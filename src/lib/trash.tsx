@@ -50,10 +50,23 @@ function rowToTrash(row: Record<string, unknown>): TrashItem {
   };
 }
 
+const TRASH_DAYS_KEY = "app_trash_auto_delete_days";
+
 export function TrashProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<TrashItem[]>([]);
   const [autoDeleteDays, setAutoDeleteDaysState] = useState(30);
   const [loading, setLoading] = useState(true);
+
+  // Load saved auto-delete days setting from localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem(TRASH_DAYS_KEY);
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed > 0) setAutoDeleteDaysState(parsed);
+      }
+    }
+  }, []);
 
   // Manual & automatic reload handler
   const reloadTrash = useCallback(async () => {
@@ -289,7 +302,11 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
   }, [autoDeleteDays]);
 
   const setAutoDeleteDays = useCallback((days: number) => {
-    setAutoDeleteDaysState(days);
+    const valid = Math.max(1, days);
+    setAutoDeleteDaysState(valid);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(TRASH_DAYS_KEY, valid.toString());
+    }
   }, []);
 
   return (
