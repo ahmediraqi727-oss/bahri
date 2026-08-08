@@ -14,6 +14,7 @@ import { CartProvider } from "@/lib/cart-context";
 import { SalesProvider } from "@/lib/sales-context";
 import { LangProvider } from "@/lib/lang-context";
 import ThemeProvider from "@/components/ThemeProvider";
+import { ToastProvider } from "@/components/ToastProvider";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [isOffline, setIsOffline] = useState(false);
@@ -77,24 +78,26 @@ export default function Providers({ children }: { children: React.ReactNode }) {
                   <SalesProvider>
                     <CartProvider>
                       <ThemeProvider>
-                        {isOffline && (
-                          <div className="fixed top-0 left-0 right-0 z-50 bg-amber-600 text-white text-xs font-bold py-2 px-4 text-center flex items-center justify-center gap-2 shadow-md">
-                            <span>⚠️</span>
-                            <span>أنت غير متصل بالإنترنت حالياً - يرجى التحقق من الشبكة</span>
-                            <button
-                              onClick={async () => {
-                                try {
-                                  const status = await Network.getStatus();
-                                  setIsOffline(!status.connected);
-                                } catch {}
-                              }}
-                              className="bg-white/20 hover:bg-white/30 px-2 py-0.5 rounded text-[11px] underline cursor-pointer"
-                            >
-                              إعادة المحاولة
-                            </button>
-                          </div>
-                        )}
-                        {children}
+                        <ToastProvider>
+                          {isOffline && (
+                            <div className="fixed top-0 left-0 right-0 z-50 bg-amber-600 text-white text-xs font-bold py-2 px-4 text-center flex items-center justify-center gap-2 shadow-md">
+                              <span>⚠️</span>
+                              <span>أنت غير متصل بالإنترنت حالياً - يرجى التحقق من الشبكة</span>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    const status = await Network.getStatus();
+                                    setIsOffline(!status.connected);
+                                  } catch {}
+                                }}
+                                className="bg-white/20 hover:bg-white/30 px-2 py-0.5 rounded text-[11px] underline cursor-pointer"
+                              >
+                                إعادة المحاولة
+                              </button>
+                            </div>
+                          )}
+                          {children}
+                        </ToastProvider>
                       </ThemeProvider>
                     </CartProvider>
                   </SalesProvider>

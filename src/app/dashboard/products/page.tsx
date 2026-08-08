@@ -11,12 +11,15 @@ import { hasPermission } from "@/lib/permissions";
 import { getAdminPermissionsConfig } from "@/components/PermissionGate";
 import ImportExportBar from "@/components/ImportExportBar";
 import DataTableWrapper from "@/components/DataTableWrapper";
+import DateFilterPanel from "@/components/DateFilterPanel";
+import { useToast } from "@/components/ToastProvider";
 
 export default function ProductsPage() {
   const { products, suppliers, categories, addCategory, deleteProduct, updateProduct, bulkUpdateProducts, bulkDeleteProducts, persistAllCategoriesAndProducts, reloadAllData } = useData();
   const { settings } = useSettings();
   const { logActivity } = useActivityLog();
   const { softDelete, bulkSoftDelete } = useTrash();
+  const { success: toastSuccess, error: toastError } = useToast();
   const config = getAdminPermissionsConfig();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -493,6 +496,54 @@ export default function ProductsPage() {
       </div>
 
       {isAdminOrManager && <ImportExportBar />}
+
+      {/* Date-Based Product Filtering & Bulk Management Panel */}
+      {isAdminOrManager && (
+        <DateFilterPanel
+          products={products}
+          categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+          onSelectionChange={(ids) => setSelectedIds(ids)}
+          onBulkAction={async (action, ids, payload) => {
+            if (action === "category" && payload?.category) {
+              try {
+                await bulkUpdateProducts(ids, { notes: `الفئة: ${payload.category}` });
+                await logActivity({
+                  user: settings.currentRole,
+                  action: "update",
+                  entity: "منتجات",
+                  details: `نقل ${ids.length} منتج إلى قسم "${payload.category}" عبر فلتر التاريخ`,
+                });
+                toastSuccess(`✅ تم نقل ${ids.length} منتج إلى قسم "${payload.category}"`);
+              } catch (err: any) {
+                toastError("خطأ أثناء نقل المنتجات", err?.message);
+              }
+            } else if (action === "delete") {
+              try {
+                const selectedSet = new Set(ids);
+                const itemsToDelete = products.filter((p) => selectedSet.has(p.id));
+                const trashPayloads = itemsToDelete.map((p) => ({
+                  entity: "product",
+                  entityId: p.id,
+                  entityName: p.name,
+                  data: { ...p },
+                  deletedBy: settings.currentRole,
+                }));
+                await bulkSoftDelete(trashPayloads);
+                await bulkDeleteProducts(ids);
+                await logActivity({
+                  user: settings.currentRole,
+                  action: "delete",
+                  entity: "منتجات",
+                  details: `حذف جماعي بالتاريخ لـ ${ids.length} منتج`,
+                });
+                toastSuccess(`🗑️ تم حذف ${ids.length} منتج بنجاح`);
+              } catch (err: any) {
+                toastError("خطأ أثناء الحذف", err?.message);
+              }
+            }
+          }}
+        />
+      )}
 
       {/* Search Input Box */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">

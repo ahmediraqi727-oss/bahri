@@ -8,6 +8,8 @@ import { useActivityLog } from "@/lib/activity-log";
 import { calculateRetailPrice, Product, CategoryItem, Supplier } from "@/lib/types";
 import { supabase } from "@/lib/supabase-client";
 import DuplicateResolutionModal, { DuplicateActionChoice } from "./DuplicateResolutionModal";
+import { validateImportColumns } from "@/lib/import-validator";
+import { useToast } from "@/components/ToastProvider";
 
 interface DuplicatePair {
   existing: Product;
@@ -18,8 +20,18 @@ export default function ImportExportBar() {
   const { products, suppliers, categories, addSupplier, importProducts, exportAllData, reloadAllData } = useData();
   const { settings } = useSettings();
   const { logActivity } = useActivityLog();
+  const { success, error: toastError, warning, loading: toastLoading, resolve: resolveToast } = useToast();
   const importRef = useRef<HTMLInputElement>(null);
   const backupRef = useRef<HTMLInputElement>(null);
+
+  // ── Category Assignment Modal (shown when file has no category column) ──
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [pendingMappedRows, setPendingMappedRows] = useState<Partial<Product>[]>([]);
+  const [pendingFileName, setPendingFileName] = useState("");
+  const [assignedCategory, setAssignedCategory] = useState("");
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [categoryTab, setCategoryTab] = useState<"existing" | "new">("existing");
+  const [isImporting, setIsImporting] = useState(false);
 
   // Restore Duplicate Resolution State
   const [duplicateQueue, setDuplicateQueue] = useState<DuplicatePair[]>([]);
@@ -30,26 +42,122 @@ export default function ImportExportBar() {
 
   const getSupplierName = (id: string) => suppliers.find((s) => s.id === id)?.name || "—";
 
-  // Excel/CSV Products Import
+  // ─── Shared row-value finder (exact → fuzzy) ───────────────────────────────
+  const findVal = (row: Record<string, any>, keys: string[]): any => {
+    for (const k of Object.keys(row)) {
+      const cleanK = k.trim().toLowerCase();
+      for (const key of keys) {
+        if (cleanK === key.toLowerCase()) return row[k];
+      }
+    }
+    for (const k of Object.keys(row)) {
+      const cleanK = k.trim().toLowerCase();
+      for (const key of keys) {
+        if (cleanK.includes(key.toLowerCase())) return row[k];
+      }
+    }
+    return undefined;
+  };
+
+  // ─── Parse rows from workbook into mapped product objects ─────────────────
+  const parseRowsToProducts = async (
+    rows: Record<string, any>[],
+    supplierMap: Map<string, string>
+  ): Promise<Partial<Product>[]> => {
+    const mapped: Partial<Product>[] = [];
+    for (const row of rows) {
+      const nameVal = findVal(row, ["name", "اسم المنتج", "الاسم", "اسم", "منتج", "product"]);
+      if (!nameVal) continue;
+      const nameStr = String(nameVal).trim();
+      if (!nameStr) continue;
+
+      let costPrice = parseFloat(String(findVal(row, ["costprice", "cost_price", "cost", "سعر التكلفة", "التكلفة", "تكلفة"]) || 0)) || 0;
+      const profitMargin = parseFloat(String(findVal(row, ["profitmargin", "profit_margin", "profit", "margin", "هامش الربح", "الربح", "نسبة الربح"]) || 0)) || 0;
+      let wholesalePrice = parseFloat(String(findVal(row, ["wholesaleprice", "wholesale_price", "wholesale", "سعر الجملة", "الجملة", "جملة"]) || 0)) || 0;
+      let retailPrice = parseFloat(String(findVal(row, ["retailprice", "retail_price", "retail", "price", "سعر المفرد", "المفرد", "السعر", "سعر البيع"]) || 0)) || 0;
+
+      if (retailPrice === 0 && costPrice > 0 && profitMargin > 0) {
+        retailPrice = calculateRetailPrice(costPrice, profitMargin);
+      }
+      if (costPrice === 0 && retailPrice > 0) costPrice = retailPrice;
+      if (wholesalePrice === 0) wholesalePrice = retailPrice > 0 ? retailPrice : costPrice;
+
+      const stock = parseInt(String(findVal(row, ["stock", "quantity", "qty", "count", "الكمية", "المخزون", "العدد"]) || 0)) || 0;
+      const supplierVal = findVal(row, ["supplier", "supplierid", "supplier_id", "المورد", "اسم المورد", "مورد"]);
+      const supplierPhone = String(findVal(row, ["معلومات اتصال المورد", "هاتف المورد", "رقم المورد", "تلفون المورد"]) || "");
+      let supplierId = "";
+
+      if (supplierVal) {
+        const rawSup = String(supplierVal).trim();
+        const lowerSup = rawSup.toLowerCase();
+        if (supplierMap.has(lowerSup)) {
+          supplierId = supplierMap.get(lowerSup)!;
+        } else if (rawSup.length > 0) {
+          try {
+            const newSup = await addSupplier({
+              name: rawSup,
+              phone: supplierPhone,
+              email: "",
+              address: "",
+              notes: "أُضيف تلقائياً أثناء استيراد الملفات",
+            });
+            supplierId = newSup.id;
+            supplierMap.set(lowerSup, newSup.id);
+          } catch {
+            supplierId = "";
+          }
+        }
+      }
+
+      const desc = String(findVal(row, ["notes", "note", "description", "ملاحظات", "تفاصيل", "الوصف", "الوصف التفصيلي"]) || "");
+      const category = String(findVal(row, ["category", "category_name", "القسم", "قسم", "الفئة", "فئة", "التصنيف"]) || "");
+      const notes = category && desc ? `الفئة: ${category} | ${desc}` : category || desc;
+      const image = String(findVal(row, ["image", "img", "photo", "pic", "الصورة", "صورة", "رابط الصورة", "رابط صورة المنتج", "صورة المنتج", "product_image", "productimage"]) || "");
+
+      mapped.push({ name: nameStr, image, costPrice, wholesalePrice, profitMargin, retailPrice, stock, supplierId, notes });
+    }
+    return mapped;
+  };
+
+  // ─── Finalize import: push rows to Supabase ───────────────────────────────
+  const finalizeImport = async (mappedRows: Partial<Product>[], fileName: string, overrideCategory?: string) => {
+    setIsImporting(true);
+    const toastId = toastLoading("جاري الاستيراد...", `معالجة ${mappedRows.length} منتج من ${fileName}`);
+    try {
+      // If an override category was assigned, inject it into notes
+      const finalRows = overrideCategory
+        ? mappedRows.map((p) => ({
+            ...p,
+            notes: p.notes
+              ? `الفئة: ${overrideCategory} | ${p.notes}`
+              : `الفئة: ${overrideCategory}`,
+          }))
+        : mappedRows;
+
+      const count = await importProducts(finalRows as any);
+      await logActivity({
+        user: settings.currentRole,
+        action: "import",
+        entity: "منتجات",
+        details: `استيراد ${count} منتج${overrideCategory ? ` في قسم "${overrideCategory}"` : ""} من ملف ${fileName}`,
+      });
+      resolveToast(toastId, "success", `✅ تم استيراد ${count} منتج بنجاح!`, overrideCategory ? `القسم المعيّن: ${overrideCategory}` : undefined);
+      setCategoryModalOpen(false);
+      setPendingMappedRows([]);
+      setPendingFileName("");
+    } catch (err: any) {
+      console.error("Import error:", err);
+      resolveToast(toastId, "error", "فشل الاستيراد", err?.message || "حدث خطأ غير متوقع");
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  // ─── Excel/CSV Products Import — main handler ─────────────────────────────
   const handleImportProducts = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    const findVal = (row: Record<string, any>, keys: string[]): any => {
-      for (const k of Object.keys(row)) {
-        const cleanK = k.trim().toLowerCase();
-        for (const key of keys) {
-          if (cleanK === key.toLowerCase()) return row[k];
-        }
-      }
-      for (const k of Object.keys(row)) {
-        const cleanK = k.trim().toLowerCase();
-        for (const key of keys) {
-          if (cleanK.includes(key.toLowerCase())) return row[k];
-        }
-      }
-      return undefined;
-    };
+    e.target.value = "";
 
     const reader = new FileReader();
     reader.onload = async (ev) => {
@@ -59,10 +167,30 @@ export default function ImportExportBar() {
         const sheetName = workbook.SheetNames[0];
         if (!sheetName) throw new Error("الملف فارغ أو غير صالح");
         const sheet = workbook.Sheets[sheetName];
-        const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet);
 
+        // ── 1. Extract headers and validate ───────────────────────────────
+        const headerRow = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 })[0] || [];
+        const validation = validateImportColumns(headerRow.map(String));
+
+        if (!validation.isValid) {
+          // Critical error: no product name column
+          const errIssue = validation.issues.find((i) => i.severity === "error");
+          toastError(
+            "خطأ في هيكل الملف",
+            errIssue?.message || "الملف لا يحتوي على الأعمدة الإلزامية."
+          );
+          return;
+        }
+
+        // Show informational warnings
+        validation.issues
+          .filter((i) => i.severity === "info")
+          .forEach((i) => warning(i.message));
+
+        // ── 2. Parse all data rows ─────────────────────────────────────────
+        const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet);
         if (!rows || rows.length === 0) {
-          alert("لم يتم العثور على أي صفوف في الملف");
+          warning("لا توجد بيانات", "لم يتم العثور على أي صفوف في الملف");
           return;
         }
 
@@ -72,90 +200,35 @@ export default function ImportExportBar() {
           supplierMap.set(s.name.trim().toLowerCase(), s.id);
         });
 
-        const mapped = [];
-        for (const row of rows) {
-          const nameVal = findVal(row, ["name", "اسم المنتج", "الاسم", "اسم", "product"]);
-          if (!nameVal) continue;
-
-          const nameStr = String(nameVal).trim();
-          if (!nameStr) continue;
-
-          let costPrice = parseFloat(String(findVal(row, ["costprice", "cost_price", "cost", "سعر التكلفة", "التكلفة", "تكلفة"]) || 0)) || 0;
-          const profitMargin = parseFloat(String(findVal(row, ["profitmargin", "profit_margin", "profit", "margin", "هامش الربح", "الربح", "نسبة الربح"]) || 0)) || 0;
-          let wholesalePrice = parseFloat(String(findVal(row, ["wholesaleprice", "wholesale_price", "wholesale", "سعر الجملة", "الجملة", "جملة"]) || 0)) || 0;
-          let retailPrice = parseFloat(String(findVal(row, ["retailprice", "retail_price", "retail", "price", "سعر المفرد", "المفرد", "السعر", "سعر البيع"]) || 0)) || 0;
-
-          if (retailPrice === 0 && costPrice > 0 && profitMargin > 0) {
-            retailPrice = calculateRetailPrice(costPrice, profitMargin);
-          }
-          if (costPrice === 0 && retailPrice > 0) costPrice = retailPrice;
-          if (wholesalePrice === 0) wholesalePrice = retailPrice > 0 ? retailPrice : costPrice;
-
-          const stock = parseInt(String(findVal(row, ["stock", "quantity", "qty", "count", "الكمية", "المخزون", "العدد"]) || 0)) || 0;
-          const supplierVal = findVal(row, ["supplier", "supplierid", "supplier_id", "المورد", "اسم المورد", "مورد"]);
-          const supplierPhone = String(findVal(row, ["معلومات اتصال المورد", "هاتف المورد", "رقم المورد", "تلفون المورد"]) || "");
-          let supplierId = "";
-
-          if (supplierVal) {
-            const rawSup = String(supplierVal).trim();
-            const lowerSup = rawSup.toLowerCase();
-            if (supplierMap.has(lowerSup)) {
-              supplierId = supplierMap.get(lowerSup)!;
-            } else if (rawSup.length > 0) {
-              try {
-                const newSup = await addSupplier({
-                  name: rawSup,
-                  phone: supplierPhone,
-                  email: "",
-                  address: "",
-                  notes: "أُضيف تلقائياً أثناء استيراد الملفات",
-                });
-                supplierId = newSup.id;
-                supplierMap.set(lowerSup, newSup.id);
-              } catch {
-                supplierId = "";
-              }
-            }
-          }
-
-          const desc = String(findVal(row, ["notes", "note", "description", "ملاحظات", "تفاصيل", "الوصف", "الوصف التفصيلي"]) || "");
-          const category = String(findVal(row, ["category", "الفئة", "فئة"]) || "");
-          const notes = category && desc ? `الفئة: ${category} | ${desc}` : category || desc;
-          const image = String(findVal(row, ["image", "img", "photo", "pic", "الصورة", "صورة", "رابط الصورة", "رابط صورة المنتج", "صورة المنتج", "product_image", "productimage"]) || "");
-
-          mapped.push({
-            name: nameStr,
-            image,
-            costPrice,
-            wholesalePrice,
-            profitMargin,
-            retailPrice,
-            stock,
-            supplierId,
-            notes,
-          });
-        }
+        const mapped = await parseRowsToProducts(rows, supplierMap);
 
         if (mapped.length === 0) {
-          alert("لم نتمكن من التعرف على اسم المنتجات في الملف. يرجى التأكد من أن رأس العمود يحتوي على كلمة 'الاسم' أو 'name'.");
+          toastError(
+            "تعذّر قراءة المنتجات",
+            "يرجى التأكد من أن عمود الاسم يحتوي على كلمة 'الاسم' أو 'name'."
+          );
           return;
         }
 
-        const count = await importProducts(mapped);
-        await logActivity({
-          user: settings.currentRole,
-          action: "import",
-          entity: "منتجات",
-          details: `استيراد ${count} منتج مع الصور والمعلومات من ملف ${file.name}`,
-        });
-        alert(`🎉 تم استيراد ${count} منتج بنجاح مدمجة مع صورها وجميع معلوماتها!`);
+        // ── 3. If no category column → show assignment modal ──────────────
+        if (validation.requiresCategoryAction) {
+          setPendingMappedRows(mapped);
+          setPendingFileName(file.name);
+          setAssignedCategory("");
+          setNewCategoryName("");
+          setCategoryTab("existing");
+          setCategoryModalOpen(true);
+          return; // wait for user modal action
+        }
+
+        // ── 4. All good — import directly ─────────────────────────────────
+        await finalizeImport(mapped, file.name);
       } catch (err: any) {
         console.error("Error importing products:", err);
-        alert(`❌ حدث خطأ أثناء استيراد الملف: ${err?.message || err}`);
+        toastError("خطأ أثناء استيراد الملف", err?.message || "حدث خطأ غير متوقع");
       }
     };
     reader.readAsArrayBuffer(file);
-    e.target.value = "";
   };
 
   // Excel Products Export
@@ -409,10 +482,11 @@ export default function ImportExportBar() {
       <div className="flex flex-wrap items-center gap-2.5">
         <button
           onClick={() => importRef.current?.click()}
-          className="px-4 py-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-all shadow-sm flex items-center gap-2"
+          disabled={isImporting}
+          className="px-4 py-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-all shadow-sm flex items-center gap-2 disabled:opacity-60"
         >
-          <span>📥</span>
-          <span>استيراد المنتجات مع الصور (Excel/CSV)</span>
+          <span>{isImporting ? "⏳" : "📥"}</span>
+          <span>{isImporting ? "جاري الاستيراد..." : "استيراد المنتجات مع الصور (Excel/CSV)"}</span>
         </button>
 
         <button
@@ -457,6 +531,129 @@ export default function ImportExportBar() {
           totalDuplicates={duplicateQueue.length}
           onResolve={handleResolveDuplicate}
         />
+      )}
+
+      {/* ── Category Assignment Modal ─────────────────────────────────────── */}
+      {categoryModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          dir="rtl"
+        >
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-indigo-200 dark:border-indigo-700 w-full max-w-lg overflow-hidden">
+            {/* Modal header */}
+            <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-4">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">📁</span>
+                <div>
+                  <h3 className="text-white font-extrabold text-base leading-none">
+                    تعيين قسم للمنتجات المستوردة
+                  </h3>
+                  <p className="text-indigo-200 text-xs mt-1">
+                    الملف <strong>{pendingFileName}</strong> لا يحتوي على عمود &quot;القسم&quot;
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Info banner */}
+              <div className="flex items-start gap-2.5 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-700">
+                <span className="text-xl mt-0.5 shrink-0">⚠️</span>
+                <div>
+                  <p className="text-sm font-bold text-amber-800 dark:text-amber-300">
+                    سيتم استيراد {pendingMappedRows.length} منتج بدون قسم محدد
+                  </p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                    يرجى تحديد قسم موحد لجميع هذه المنتجات، أو اختر &quot;استيراد بدون قسم&quot; لتصنيفها لاحقاً.
+                  </p>
+                </div>
+              </div>
+
+              {/* Tab switch */}
+              <div className="flex rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <button
+                  onClick={() => setCategoryTab("existing")}
+                  className={`flex-1 py-2 text-xs font-bold transition-colors ${
+                    categoryTab === "existing"
+                      ? "bg-indigo-600 text-white"
+                      : "bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100"
+                  }`}
+                >
+                  📂 اختر قسم موجود
+                </button>
+                <button
+                  onClick={() => setCategoryTab("new")}
+                  className={`flex-1 py-2 text-xs font-bold transition-colors ${
+                    categoryTab === "new"
+                      ? "bg-indigo-600 text-white"
+                      : "bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-100"
+                  }`}
+                >
+                  ➕ إنشاء قسم جديد
+                </button>
+              </div>
+
+              {/* Existing category dropdown */}
+              {categoryTab === "existing" && (
+                <select
+                  value={assignedCategory}
+                  onChange={(e) => setAssignedCategory(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                >
+                  <option value="">— اختر القسم —</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              )}
+
+              {/* New category input */}
+              {categoryTab === "new" && (
+                <input
+                  type="text"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  placeholder="أدخل اسم القسم الجديد..."
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              )}
+
+              {/* Action buttons */}
+              <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                <button
+                  onClick={async () => {
+                    const cat = categoryTab === "existing" ? assignedCategory : newCategoryName.trim();
+                    await finalizeImport(pendingMappedRows, pendingFileName, cat || undefined);
+                  }}
+                  disabled={
+                    isImporting ||
+                    (categoryTab === "existing" && !assignedCategory) ||
+                    (categoryTab === "new" && !newCategoryName.trim())
+                  }
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm disabled:opacity-50 transition-all"
+                >
+                  {isImporting ? "⏳ جاري الاستيراد..." : "✅ استيراد مع القسم المحدد"}
+                </button>
+
+                <button
+                  onClick={() => finalizeImport(pendingMappedRows, pendingFileName)}
+                  disabled={isImporting}
+                  className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-all disabled:opacity-50"
+                >
+                  استيراد بدون قسم
+                </button>
+
+                <button
+                  onClick={() => { setCategoryModalOpen(false); setPendingMappedRows([]); }}
+                  disabled={isImporting}
+                  className="px-4 py-2.5 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 font-bold text-sm hover:bg-red-100 transition-all"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
