@@ -60,6 +60,15 @@ export default function ImportExportBar() {
     return undefined;
   };
 
+  // ─── Clean price strings with commas or currency symbols (e.g. "15,000 د.ع" -> 15000) ───
+  const parsePrice = (val: any): number => {
+    if (typeof val === "number") return isNaN(val) ? 0 : val;
+    if (!val) return 0;
+    const cleanStr = String(val).replace(/,/g, "").replace(/[^0-9.]/g, "");
+    const num = parseFloat(cleanStr);
+    return isNaN(num) ? 0 : num;
+  };
+
   // ─── Parse rows from workbook into mapped product objects ─────────────────
   const parseRowsToProducts = async (
     rows: Record<string, any>[],
@@ -72,18 +81,17 @@ export default function ImportExportBar() {
       const nameStr = String(nameVal).trim();
       if (!nameStr) continue;
 
-      // Extract raw price candidate values
-      const rawCost = findVal(row, ["costprice", "cost_price", "cost", "buyingprice", "buying_price", "سعر التكلفة", "التكلفة", "تكلفة", "الكلفة", "كلفة", "سعر الكلفة", "سعر الشراء"]);
-      const rawWholesale = findVal(row, ["wholesaleprice", "wholesale_price", "wholesale", "سعر الجملة", "الجملة", "جملة"]);
-      const rawRetail = findVal(row, ["retailprice", "retail_price", "retail", "price", "sellingprice", "selling_price", "unit_price", "سعر المفرد", "المفرد", "مفرد", "السعر", "سعر البيع", "سعر"]);
-      const profitMargin = parseFloat(String(findVal(row, ["profitmargin", "profit_margin", "profit", "margin", "هامش الربح", "الربح", "نسبة الربح"]) || 0)) || 0;
+      // Extract raw price candidate values using clean parsePrice
+      const rawCostVal = findVal(row, ["costprice", "cost_price", "cost", "buyingprice", "buying_price", "التكلفة / الكلفة", "سعر التكلفة", "التكلفة", "تكلفة", "الكلفة", "كلفة", "سعر الكلفة", "سعر الشراء"]);
+      const rawWholesaleVal = findVal(row, ["wholesaleprice", "wholesale_price", "wholesale", "سعر الجملة", "الجملة", "جملة"]);
+      const rawRetailVal = findVal(row, ["retailprice", "retail_price", "retail", "price", "sellingprice", "selling_price", "unit_price", "سعر المفرد", "المفرد", "مفرد", "السعر", "سعر البيع", "سعر"]);
+      const profitMargin = parsePrice(findVal(row, ["profitmargin", "profit_margin", "profit", "margin", "هامش الربح", "الربح", "نسبة الربح"]));
 
-      const rawCostNum = parseFloat(String(rawCost || 0)) || 0;
-      const rawWholesaleNum = parseFloat(String(rawWholesale || 0)) || 0;
-      const rawRetailNum = parseFloat(String(rawRetail || 0)) || 0;
+      const rawCostNum = parsePrice(rawCostVal);
+      const rawWholesaleNum = parsePrice(rawWholesaleVal);
+      const rawRetailNum = parsePrice(rawRetailVal);
 
       // ─── Price Triplet Ascending Sorting Algorithm ───────────────────────
-      // Sort discovered positive prices so cost <= wholesale <= retail
       const validPrices = [rawCostNum, rawWholesaleNum, rawRetailNum].filter((p) => p > 0);
 
       let costPrice = 0;
@@ -92,9 +100,9 @@ export default function ImportExportBar() {
 
       if (validPrices.length >= 3) {
         validPrices.sort((a, b) => a - b);
-        costPrice = validPrices[0];        // Lowest = Cost
-        wholesalePrice = validPrices[1];   // Middle = Wholesale
-        retailPrice = validPrices[2];      // Highest = Retail
+        costPrice = validPrices[0];                             // Lowest price = Cost
+        wholesalePrice = validPrices[1];                        // Middle price = Wholesale
+        retailPrice = validPrices[validPrices.length - 1];      // Highest price = Retail
       } else if (validPrices.length === 2) {
         validPrices.sort((a, b) => a - b);
         costPrice = validPrices[0];
@@ -106,8 +114,8 @@ export default function ImportExportBar() {
           retailPrice = calculateRetailPrice(costPrice, profitMargin);
           wholesalePrice = Math.round(costPrice + (retailPrice - costPrice) * 0.5);
         } else {
-          wholesalePrice = Math.round(costPrice * 1.15);
-          retailPrice = Math.round(costPrice * 1.30);
+          wholesalePrice = Math.round(costPrice * 1.15); // +15%
+          retailPrice = Math.round(costPrice * 1.30);    // +30%
         }
       }
 
