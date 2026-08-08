@@ -228,8 +228,10 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     }
 
     setItems((prev) => prev.filter((i) => i.id !== id));
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    await reloadTrash();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    if (typeof reloadTrash === "function") {
+      await reloadTrash();
+    }
     return item;
   }, [items, reloadTrash]);
 
@@ -319,8 +321,10 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
 
     const idSet = new Set(ids);
     setItems((prev) => prev.filter((i) => !idSet.has(i.id)));
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    await reloadTrash();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    if (typeof reloadTrash === "function") {
+      await reloadTrash();
+    }
     return restoredItems;
   }, [items, reloadTrash]);
 
@@ -361,8 +365,10 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     }
 
     setItems((prev) => prev.filter((i) => i.id !== id));
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    await reloadTrash();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    if (typeof reloadTrash === "function") {
+      await reloadTrash();
+    }
   }, [items, reloadTrash]);
 
   const bulkPermanentDelete = useCallback(
@@ -470,13 +476,17 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // 4. Optimistic state update
+      // 4. Optimistic state update using O(1) Set lookup
       const idSet = new Set(ids);
       setItems((prev) => prev.filter((item) => !idSet.has(item.id)));
 
-      // 5. Brief propagation delay before server revalidation
-      await new Promise((resolve) => setTimeout(resolve, 150));
-      await reloadTrash();
+      // 5. 300ms propagation delay for Supabase DB commit completion
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      // 6. Safety check for reloadTrash callback
+      if (typeof reloadTrash === "function") {
+        await reloadTrash();
+      }
     },
     [items, reloadTrash]
   );
