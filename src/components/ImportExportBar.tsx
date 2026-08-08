@@ -112,7 +112,10 @@ export default function ImportExportBar() {
         costPrice = validPrices[0];
         if (profitMargin > 0) {
           retailPrice = calculateRetailPrice(costPrice, profitMargin);
-          wholesalePrice = Math.round(costPrice + (retailPrice - costPrice) * 0.5);
+          wholesalePrice = Math.max(
+            costPrice,
+            Math.round(costPrice + (retailPrice - costPrice) * 0.5)
+          );
         } else {
           wholesalePrice = Math.round(costPrice * 1.15); // +15%
           retailPrice = Math.round(costPrice * 1.30);    // +30%
