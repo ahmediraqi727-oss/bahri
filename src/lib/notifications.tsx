@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { supabase } from "./supabase-client";
 import { useAuth } from "./auth-context";
+import { isUUID } from "./data-context";
 
 export interface Notification {
   id: string;
@@ -47,7 +48,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     async function load() {
       try {
         let query = supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(100);
-        if (user?.id) {
+        if (user?.id && isUUID(user.id)) {
           query = query.eq("user_id", user.id);
         }
         const { data } = await query;
@@ -67,7 +68,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       title: n.title,
       message: n.message,
       product_id: n.productId || "",
-      user_id: user?.id || null,
+      user_id: user?.id && isUUID(user.id) ? user.id : null,
       read: false,
     };
     const { data: created, error } = await supabase.from("notifications").insert(row).select().single();
@@ -82,14 +83,14 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   const markAllAsRead = useCallback(async () => {
     let query = supabase.from("notifications").update({ read: true }).eq("read", false);
-    if (user?.id) query = query.eq("user_id", user.id);
+    if (user?.id && isUUID(user.id)) query = query.eq("user_id", user.id);
     await query;
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   }, [user?.id]);
 
   const clearAll = useCallback(async () => {
     let query = supabase.from("notifications").delete().neq("id", "");
-    if (user?.id) query = query.eq("user_id", user.id);
+    if (user?.id && isUUID(user.id)) query = query.eq("user_id", user.id);
     await query;
     setNotifications([]);
   }, [user?.id]);

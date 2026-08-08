@@ -48,7 +48,7 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
-function isUUID(str: string): boolean {
+export function isUUID(str: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 }
 
@@ -466,7 +466,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           is_active: c.isActive !== false,
           keywords: c.keywords || "",
         };
-        if (c.id && c.id.length > 20 && !c.id.startsWith("auto-") && !c.id.startsWith("cat-")) {
+        if (c.id && isUUID(c.id)) {
           r.id = c.id;
         }
         return r;

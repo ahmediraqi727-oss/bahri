@@ -10,6 +10,7 @@ import { supabase } from "@/lib/supabase-client";
 import DuplicateResolutionModal, { DuplicateActionChoice } from "./DuplicateResolutionModal";
 import { validateImportColumns } from "@/lib/import-validator";
 import { useToast } from "@/components/ToastProvider";
+import { isUUID } from "@/lib/data-context";
 
 interface DuplicatePair {
   existing: Product;
@@ -374,7 +375,7 @@ export default function ImportExportBar() {
             retail_price: p.retailPrice || p.costPrice || 0,
             stock: p.stock || 0,
             notes: p.notes || "",
-            supplier_id: p.supplierId || null,
+            supplier_id: p.supplierId && isUUID(p.supplierId) ? p.supplierId : null,
           }));
 
           const { error } = await supabase.from("products").insert(rowsToInsert);
