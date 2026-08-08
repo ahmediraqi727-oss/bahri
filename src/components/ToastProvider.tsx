@@ -41,7 +41,7 @@ interface ToastContextValue {
   update: (id: string, opts: Partial<Omit<Toast, "id">>) => void;
   dismiss: (id: string) => void;
   dismissAll: () => void;
-  /** Replace a loading toast once the operation completes */
+  /** Replace/update a loading toast in-place once the operation completes */
   resolve: (id: string, type: Omit<ToastType, "loading">, title: string, message?: string) => void;
 }
 
@@ -81,7 +81,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const toast = useCallback(
     (opts: Omit<Toast, "id">): string => {
-      const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
       const duration = opts.duration !== undefined ? opts.duration : opts.type === "loading" ? 0 : 4500;
       setToasts((prev) => [{ ...opts, id, duration }, ...prev].slice(0, 6));
       scheduleAutoDismiss(id, duration);
@@ -106,27 +106,54 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     (title: string, message?: string) => toast({ type: "info", title, message }),
     [toast]
   );
+  
   const update = useCallback((id: string, opts: Partial<Omit<Toast, "id">>) => {
-    setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, ...opts } : t)));
+    setToasts((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, ...opts } : t))
+    );
   }, []);
 
   const loading = useCallback(
     (title: string, message?: string, existingId?: string) => {
       if (existingId) {
-        update(existingId, { title, message });
+        // Update existing toast in-place without adding new item to array
+        setToasts((prev) =>
+          prev.map((t) =>
+            t.id === existingId
+              ? { ...t, title, message, type: "loading" }
+              : t
+          )
+        );
         return existingId;
       }
-      return toast({ type: "loading", title, message, duration: 0 });
+
+      const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      const newToast: Toast = { id, title, message, type: "loading", duration: 0 };
+      setToasts((prev) => [newToast, ...prev].slice(0, 6));
+      return id;
     },
-    [toast, update]
+    []
   );
 
   const resolve = useCallback(
     (id: string, type: Omit<ToastType, "loading">, title: string, message?: string) => {
-      dismiss(id);
-      toast({ type: type as ToastType, title, message });
+      const duration = type === "error" ? 6000 : 4500;
+      setToasts((prev) =>
+        prev.map((t) =>
+          t.id === id
+            ? {
+                ...t,
+                type: type as ToastType,
+                title,
+                message,
+                duration,
+              }
+            : t
+        )
+      );
+      scheduleAutoDismiss(id, duration);
     },
-    [dismiss, toast]
+    [scheduleAutoDismiss]
   );
 
   // Cleanup timers on unmount
@@ -161,153 +188,90 @@ const TOAST_CONFIG: Record<
   { icon: string; bg: string; border: string; text: string; progress: string }
 > = {
   success: {
-    icon: "✅",
-    bg: "from-emerald-950/95 to-emerald-900/95",
-    border: "border-emerald-500/40",
-    text: "text-emerald-100",
-    progress: "bg-emerald-400",
+    icon: "✓",
+    bg: "bg-emerald-50 dark:bg-emerald-950/80",
+    border: "border-emerald-500/40 dark:border-emerald-500/30",
+    text: "text-emerald-900 dark:text-emerald-200",
+    progress: "bg-emerald-500",
   },
   error: {
-    icon: "❌",
-    bg: "from-red-950/95 to-red-900/95",
-    border: "border-red-500/40",
-    text: "text-red-100",
-    progress: "bg-red-400",
+    icon: "✕",
+    bg: "bg-rose-50 dark:bg-rose-950/80",
+    border: "border-rose-500/40 dark:border-rose-500/30",
+    text: "text-rose-900 dark:text-rose-200",
+    progress: "bg-rose-500",
   },
   warning: {
-    icon: "⚠️",
-    bg: "from-amber-950/95 to-amber-900/95",
-    border: "border-amber-500/40",
-    text: "text-amber-100",
-    progress: "bg-amber-400",
+    icon: "⚠",
+    bg: "bg-amber-50 dark:bg-amber-950/80",
+    border: "border-amber-500/40 dark:border-amber-500/30",
+    text: "text-amber-900 dark:text-amber-200",
+    progress: "bg-amber-500",
   },
   info: {
-    icon: "ℹ️",
-    bg: "from-blue-950/95 to-blue-900/95",
-    border: "border-blue-500/40",
-    text: "text-blue-100",
-    progress: "bg-blue-400",
+    icon: "ℹ",
+    bg: "bg-blue-50 dark:bg-blue-950/80",
+    border: "border-blue-500/40 dark:border-blue-500/30",
+    text: "text-blue-900 dark:text-blue-200",
+    progress: "bg-blue-500",
   },
   loading: {
     icon: "⏳",
-    bg: "from-slate-900/95 to-slate-800/95",
-    border: "border-slate-500/40",
-    text: "text-slate-100",
-    progress: "bg-slate-400",
+    bg: "bg-indigo-50 dark:bg-indigo-950/80",
+    border: "border-indigo-500/40 dark:border-indigo-500/30",
+    text: "text-indigo-900 dark:text-indigo-200",
+    progress: "bg-indigo-500",
   },
 };
 
-// ─── Toast Item ───────────────────────────────────────────────────────────────
+// ─── UI Container & Cards ─────────────────────────────────────────────────────
 
-function ToastItem({ t, onDismiss }: { t: Toast; onDismiss: (id: string) => void }) {
-  const cfg = TOAST_CONFIG[t.type];
-  const [visible, setVisible] = useState(false);
-  const [progress, setProgress] = useState(100);
-
-  // Slide-in animation
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => setVisible(true));
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
-  // Progress bar tick
-  useEffect(() => {
-    if (!t.duration || t.duration <= 0) return;
-    const start = Date.now();
-    const tick = () => {
-      const elapsed = Date.now() - start;
-      const pct = Math.max(0, 100 - (elapsed / t.duration!) * 100);
-      setProgress(pct);
-      if (pct > 0) requestAnimationFrame(tick);
-    };
-    const raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [t.duration]);
-
-  return (
-    <div
-      dir="rtl"
-      style={{
-        opacity: visible ? 1 : 0,
-        transform: visible ? "translateX(0)" : "translateX(100%)",
-        transition: "opacity 0.3s ease, transform 0.35s cubic-bezier(0.34,1.56,0.64,1)",
-      }}
-      className={`
-        relative overflow-hidden min-w-[280px] max-w-[360px] w-full
-        rounded-2xl border backdrop-blur-xl shadow-2xl
-        bg-gradient-to-br ${cfg.bg} ${cfg.border}
-        p-3.5
-      `}
-    >
-      <div className="flex items-start gap-3">
-        <span className="text-xl mt-0.5 shrink-0" role="img" aria-label={t.type}>
-          {t.type === "loading" ? (
-            <span className="inline-block animate-spin">⏳</span>
-          ) : (
-            cfg.icon
-          )}
-        </span>
-
-        <div className="flex-1 min-w-0">
-          <p className={`font-bold text-sm leading-snug ${cfg.text}`}>{t.title}</p>
-          {t.message && (
-            <p className={`mt-0.5 text-xs opacity-80 leading-relaxed ${cfg.text}`}>{t.message}</p>
-          )}
-          {t.action && (
-            <button
-              onClick={t.action.onClick}
-              className={`mt-2 text-xs font-bold underline underline-offset-2 ${cfg.text} opacity-90 hover:opacity-100 transition-opacity`}
-            >
-              {t.action.label}
-            </button>
-          )}
-        </div>
-
-        <button
-          onClick={() => onDismiss(t.id)}
-          className={`shrink-0 mt-0.5 text-sm opacity-50 hover:opacity-100 transition-opacity ${cfg.text}`}
-          aria-label="إغلاق"
-        >
-          ✕
-        </button>
-      </div>
-
-      {/* Animated progress bar */}
-      {t.duration && t.duration > 0 && (
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white/10">
-          <div
-            className={`h-full ${cfg.progress} transition-none`}
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Container ────────────────────────────────────────────────────────────────
-
-function ToastContainer({
-  toasts,
-  onDismiss,
-}: {
-  toasts: Toast[];
-  onDismiss: (id: string) => void;
-}) {
+function ToastContainer({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: string) => void }) {
   if (toasts.length === 0) return null;
 
   return (
     <div
       aria-live="polite"
-      aria-label="الإشعارات"
-      className="fixed top-5 left-5 z-[9999] flex flex-col gap-2.5 pointer-events-none"
-      style={{ maxWidth: "90vw" }}
+      className="fixed bottom-5 left-5 z-[99999] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none"
     >
       {toasts.map((t) => (
-        <div key={t.id} className="pointer-events-auto">
-          <ToastItem t={t} onDismiss={onDismiss} />
-        </div>
+        <ToastCard key={t.id} toast={t} onDismiss={onDismiss} />
       ))}
+    </div>
+  );
+}
+
+function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string) => void }) {
+  const config = TOAST_CONFIG[toast.type];
+
+  return (
+    <div
+      className={`pointer-events-auto flex items-start gap-3 p-4 rounded-xl border shadow-xl backdrop-blur-md transition-all duration-300 transform translate-y-0 ${config.bg} ${config.border} ${config.text}`}
+      role="alert"
+    >
+      <div className="text-xl flex-shrink-0 font-bold leading-none mt-0.5">
+        {toast.type === "loading" ? (
+          <svg className="animate-spin h-5 w-5 text-indigo-600 dark:text-indigo-400" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          </svg>
+        ) : (
+          config.icon
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <h4 className="text-sm font-bold leading-snug">{toast.title}</h4>
+        {toast.message && <p className="text-xs opacity-90 mt-1 leading-relaxed break-words">{toast.message}</p>}
+      </div>
+
+      <button
+        onClick={() => onDismiss(toast.id)}
+        className="flex-shrink-0 text-xs opacity-60 hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/10"
+        aria-label="Dismiss toast"
+      >
+        ✕
+      </button>
     </div>
   );
 }
