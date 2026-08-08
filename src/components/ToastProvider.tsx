@@ -37,7 +37,8 @@ interface ToastContextValue {
   error: (title: string, message?: string) => string;
   warning: (title: string, message?: string) => string;
   info: (title: string, message?: string) => string;
-  loading: (title: string, message?: string) => string;
+  loading: (title: string, message?: string, existingId?: string) => string;
+  update: (id: string, opts: Partial<Omit<Toast, "id">>) => void;
   dismiss: (id: string) => void;
   dismissAll: () => void;
   /** Replace a loading toast once the operation completes */
@@ -105,9 +106,19 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     (title: string, message?: string) => toast({ type: "info", title, message }),
     [toast]
   );
+  const update = useCallback((id: string, opts: Partial<Omit<Toast, "id">>) => {
+    setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, ...opts } : t)));
+  }, []);
+
   const loading = useCallback(
-    (title: string, message?: string) => toast({ type: "loading", title, message, duration: 0 }),
-    [toast]
+    (title: string, message?: string, existingId?: string) => {
+      if (existingId) {
+        update(existingId, { title, message });
+        return existingId;
+      }
+      return toast({ type: "loading", title, message, duration: 0 });
+    },
+    [toast, update]
   );
 
   const resolve = useCallback(
@@ -127,7 +138,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ToastContext.Provider
-      value={{ toasts, toast, success, error, warning, info, loading, dismiss, dismissAll, resolve }}
+      value={{ toasts, toast, success, error, warning, info, loading, update, dismiss, dismissAll, resolve }}
     >
       {children}
       <ToastContainer toasts={toasts} onDismiss={dismiss} />

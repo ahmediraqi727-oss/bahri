@@ -218,10 +218,10 @@ export default function TrashPage() {
     if (selectedIds.length === 0) return;
     setIsProcessing(true);
     const total = selectedIds.length;
-    const toastId = toastLoading("جاري الاستعادة الجماعية...", `جاري معالجة 0 من ${total}... (دفعات 50 عنصر/طلب)`);
+    const toastId = toastLoading("جاري بدء عملية الاستعادة...", `جاري معالجة ${total} عنصر...`);
     try {
       const restored = await bulkRestore(selectedIds, (processed, totalCount) => {
-        toastLoading(`جاري استعادة ${processed} من ${totalCount}... (دفعات 50 عنصر/طلب)`);
+        toastLoading(`جاري استعادة ${processed} من ${totalCount}... (دفعات 50 عنصر/طلب)`, "إعادة البناء إلى الجداول الأصلية", toastId);
       });
       await Promise.all([reloadAllData(), reloadTrash()]);
       await logActivity({
@@ -262,10 +262,10 @@ export default function TrashPage() {
       }
     } else if (confirmDeleteModal === "bulk" && selectedIds.length > 0) {
       const total = selectedIds.length;
-      const toastId = toastLoading("جاري الحذف النهائي الجماعي...", `جاري الحذف 0 من ${total}... (دفعات 50 عنصر/طلب)`);
+      const toastId = toastLoading("جاري بدء عملية الحذف...", `جاري تجهيز ${total} عنصر...`);
       try {
         await bulkPermanentDelete(selectedIds, (processed, totalCount) => {
-          toastLoading(`جاري الحذف ${processed} من ${totalCount}... (دفعات 50 عنصر/طلب)`);
+          toastLoading(`جاري الحذف ${processed} من ${totalCount}... (دفعات 50 عنصر/طلب)`, "جاري معالجة قاعدة البيانات Supabase", toastId);
         });
         await reloadTrash();
         await logActivity({
@@ -274,7 +274,7 @@ export default function TrashPage() {
           entity: "سلة المهملات",
           details: `حذف نهائي جماعي لـ ${total} عنصر من سلة المهملات (دفعات 50 عنصر/طلب)`,
         });
-        resolveToast(toastId, "success", `🗑️ تم الحذف النهائي لـ ${total} عنصر بنجاح (دفعات 50 عنصر/طلب)`);
+        resolveToast(toastId, "success", `🗑️ تم الحذف النهائي لـ ${total} عنصر بنجاح!`);
         setSelectedIds([]);
       } catch (err: any) {
         resolveToast(toastId, "error", "فشل الحذف النهائي الجماعي", err?.message);
