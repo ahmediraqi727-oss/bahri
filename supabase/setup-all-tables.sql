@@ -180,6 +180,7 @@ CREATE TABLE IF NOT EXISTS settings (
     }',
     admin_permissions JSONB DEFAULT '[]',
     inventory_thresholds JSONB DEFAULT '{"excellent": 75, "medium": 40}',
+    auto_delete_days INTEGER DEFAULT 30,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

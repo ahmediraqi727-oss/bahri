@@ -57,7 +57,7 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
   const [autoDeleteDays, setAutoDeleteDaysState] = useState(30);
   const [loading, setLoading] = useState(true);
 
-  // Load saved auto-delete days setting from localStorage
+  // Load saved auto-delete days setting from localStorage & Supabase settings
   useEffect(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem(TRASH_DAYS_KEY);
@@ -66,6 +66,25 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
         if (!isNaN(parsed) && parsed > 0) setAutoDeleteDaysState(parsed);
       }
     }
+
+    // Also fetch saved value from Supabase settings if present
+    async function loadSettingsDays() {
+      try {
+        const { data } = await supabase.from("settings").select("auto_delete_days").limit(1);
+        if (data && data.length > 0 && (data[0] as any).auto_delete_days) {
+          const val = Number((data[0] as any).auto_delete_days);
+          if (val > 0) {
+            setAutoDeleteDaysState(val);
+            if (typeof window !== "undefined") {
+              localStorage.setItem(TRASH_DAYS_KEY, val.toString());
+            }
+          }
+        }
+      } catch {
+        // Fallback to localStorage
+      }
+    }
+    loadSettingsDays();
   }, []);
 
   // Manual & automatic reload handler
@@ -301,11 +320,24 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     return count;
   }, [autoDeleteDays]);
 
-  const setAutoDeleteDays = useCallback((days: number) => {
+  const setAutoDeleteDays = useCallback(async (days: number) => {
     const valid = Math.max(1, days);
     setAutoDeleteDaysState(valid);
     if (typeof window !== "undefined") {
       localStorage.setItem(TRASH_DAYS_KEY, valid.toString());
+    }
+
+    // Persist to Supabase settings table if row exists
+    try {
+      const { data } = await supabase.from("settings").select("id").limit(1);
+      if (data && data.length > 0) {
+        await supabase
+          .from("settings")
+          .update({ auto_delete_days: valid } as any)
+          .eq("id", data[0].id);
+      }
+    } catch {
+      // Fallback silently if table column not yet created
     }
   }, []);
 
