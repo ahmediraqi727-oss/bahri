@@ -1,9 +1,9 @@
 -- ==============================================================================
--- موقع أحمد بحري - إصلاح وتحديث سياسات الأمان (Supabase RLS Policies)
--- شغّل هذا الملف في Supabase SQL Editor لحل مشكلة استرجاع أو حذف السلة
+-- موقع أحمد بحري - إصلاح وتحديث سياسات الأمان (Supabase RLS Policies & Grants)
+-- شغّل هذا الملف في Supabase SQL Editor لحل مشكلة استرجاع أو حذف السلة نهائياً
 -- ==============================================================================
 
--- 1. جدول سلة المهملات (trash) - تفعيل السياسات للسماح بكافة العمليات
+-- 1. جدول سلة المهملات (trash)
 ALTER TABLE IF EXISTS public.trash ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all operations on trash" ON public.trash;
@@ -18,7 +18,7 @@ TO public, authenticated, anon
 USING (true)
 WITH CHECK (true);
 
--- 2. جدول المنتجات (products) - السماح بالحذف والاستعادة والتحديث
+-- 2. جدول المنتجات (products)
 ALTER TABLE IF EXISTS public.products ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all operations on products" ON public.products;
@@ -32,7 +32,7 @@ TO public, authenticated, anon
 USING (true)
 WITH CHECK (true);
 
--- 3. جدول الأقسام (categories) - السماح بالإدراج والتحديث والتناغم
+-- 3. جدول الأقسام (categories)
 ALTER TABLE IF EXISTS public.categories ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all operations on categories" ON public.categories;
@@ -44,7 +44,7 @@ TO public, authenticated, anon
 USING (true)
 WITH CHECK (true);
 
--- 4. جدول الموردين (suppliers) - السماح بالإدراج والتحديث والمسح
+-- 4. جدول الموردين (suppliers)
 ALTER TABLE IF EXISTS public.suppliers ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all operations on suppliers" ON public.suppliers;
@@ -79,3 +79,13 @@ FOR ALL
 TO public, authenticated, anon
 USING (true)
 WITH CHECK (true);
+
+-- ==============================================================================
+-- GRANT Table-level permissions to anon and authenticated roles
+-- ==============================================================================
+GRANT ALL ON TABLE public.trash TO authenticated, anon, public;
+GRANT ALL ON TABLE public.products TO authenticated, anon, public;
+GRANT ALL ON TABLE public.categories TO authenticated, anon, public;
+GRANT ALL ON TABLE public.suppliers TO authenticated, anon, public;
+GRANT ALL ON TABLE public.orders TO authenticated, anon, public;
+GRANT ALL ON TABLE public.customers TO authenticated, anon, public;

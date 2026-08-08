@@ -33,7 +33,7 @@ interface TrashContextType {
   bulkPermanentDelete: (ids: string[]) => Promise<void>;
   purgeExpired: () => Promise<number>;
   autoDeleteDays: number;
-  setAutoDeleteDays: (days: number) => void;
+  setAutoDeleteDays: (days: number) => Promise<void>;
 }
 
 const TrashContext = createContext<TrashContextType | undefined>(undefined);
@@ -92,7 +92,7 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     const { data, error } = await supabase.from("trash").select("*").order("deleted_at", { ascending: false });
     if (error) {
       console.error("Supabase reloadTrash error:", error);
-      throw new Error(`خطأ في جلب بيانات السلة من Supabase: ${error.message}`);
+      throw new Error(`خطأ في جلب بيانات السلة من Supabase: ${error.message} [Code: ${error.code}]`);
     }
     if (data) setItems(data.map(rowToTrash));
   }, []);
@@ -136,9 +136,11 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     const { data: created, error } = await supabase.from("trash").insert(row).select().single();
     if (error) {
       console.error("Supabase softDelete error:", error);
-      throw new Error(`فشل نقل العنصر للسلة في Supabase: ${error.message}`);
+      throw new Error(`فشل نقل العنصر للسلة في Supabase: ${error.message} [Code: ${error.code}]`);
     }
-    setItems((prev) => [rowToTrash(created), ...prev]);
+    if (created) {
+      setItems((prev) => [rowToTrash(created), ...prev]);
+    }
   }, []);
 
   const bulkSoftDelete = useCallback(async (deletePayloads: { entity: string; entityId: string; entityName: string; data: Record<string, unknown>; deletedBy: string }[]) => {
@@ -158,7 +160,7 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
       const { data: created, error } = await supabase.from("trash").insert(chunk).select();
       if (error) {
         console.error("Supabase bulkSoftDelete error:", error);
-        throw new Error(`فشل الحذف الجماعي إلى السلة: ${error.message}`);
+        throw new Error(`فشل الحذف الجماعي إلى السلة: ${error.message} [Code: ${error.code}]`);
       }
       if (created) createdRows.push(...created);
     }
@@ -177,40 +179,44 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     if (item.entity === "product" && item.data) {
       const row = productToRow(item.data);
       if (item.entityId && isUUID(item.entityId)) row.id = item.entityId;
-      const { error: upsertErr } = await supabase.from("products").upsert(row);
+      const { error: upsertErr } = await supabase.from("products").upsert(row).select();
       if (upsertErr) {
         console.error("Supabase restore product error:", upsertErr);
-        throw new Error(`فشلت استعادة المنتج لقاعدة البيانات: ${upsertErr.message}`);
+        throw new Error(`فشلت استعادة المنتج لقاعدة البيانات: ${upsertErr.message} [Code: ${upsertErr.code}]`);
       }
     } else if (item.entity === "supplier" && item.data) {
       const row = supplierToRow(item.data);
       if (item.entityId && isUUID(item.entityId)) row.id = item.entityId;
-      const { error: upsertErr } = await supabase.from("suppliers").upsert(row);
+      const { error: upsertErr } = await supabase.from("suppliers").upsert(row).select();
       if (upsertErr) {
         console.error("Supabase restore supplier error:", upsertErr);
-        throw new Error(`فشلت استعادة المورد لقاعدة البيانات: ${upsertErr.message}`);
+        throw new Error(`فشلت استعادة المورد لقاعدة البيانات: ${upsertErr.message} [Code: ${upsertErr.code}]`);
       }
     } else if (item.entity === "category" && item.data) {
       const row = categoryToRow(item.data);
       if (item.entityId && isUUID(item.entityId)) row.id = item.entityId;
-      const { error: upsertErr } = await supabase.from("categories").upsert(row, { onConflict: "name" });
+      const { error: upsertErr } = await supabase.from("categories").upsert(row, { onConflict: "name" }).select();
       if (upsertErr) {
         console.error("Supabase restore category error:", upsertErr);
-        throw new Error(`فشلت استعادة القسم لقاعدة البيانات: ${upsertErr.message}`);
+        throw new Error(`فشلت استعادة القسم لقاعدة البيانات: ${upsertErr.message} [Code: ${upsertErr.code}]`);
       }
     } else if (item.entity === "customer" && item.data) {
-      const { error: upsertErr } = await supabase.from("customers").upsert(item.data);
-      if (upsertErr) throw new Error(`فشلت استعادة الزبون: ${upsertErr.message}`);
+      const { error: upsertErr } = await supabase.from("customers").upsert(item.data).select();
+      if (upsertErr) throw new Error(`فشلت استعادة الزبون: ${upsertErr.message} [Code: ${upsertErr.code}]`);
     } else if (item.entity === "order" && item.data) {
-      const { error: upsertErr } = await supabase.from("orders").upsert(item.data);
-      if (upsertErr) throw new Error(`فشلت استعادة الطلب: ${upsertErr.message}`);
+      const { error: upsertErr } = await supabase.from("orders").upsert(item.data).select();
+      if (upsertErr) throw new Error(`فشلت استعادة الطلب: ${upsertErr.message} [Code: ${upsertErr.code}]`);
     }
 
-    // 2. Delete entry from trash table in Supabase
-    const { error: delErr } = await supabase.from("trash").delete().eq("id", id);
+    // 2. Delete entry from trash table in Supabase (with .select() check)
+    const { data: delData, error: delErr } = await supabase.from("trash").delete().eq("id", id).select();
     if (delErr) {
       console.error("Supabase delete from trash error:", delErr);
-      throw new Error(`فشل مسح السجل من سلة المهملات: ${delErr.message}`);
+      throw new Error(`فشل مسح السجل من سلة المهملات: ${delErr.message} [Code: ${delErr.code}]`);
+    }
+
+    if (!delData || delData.length === 0) {
+      console.warn("Supabase trash delete returned 0 rows. Checking if row was already deleted.");
     }
 
     setItems((prev) => prev.filter((i) => i.id !== id));
@@ -229,8 +235,8 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
         if (i.entityId && isUUID(i.entityId)) r.id = i.entityId;
         return r;
       });
-      const { error: upsertErr } = await supabase.from("products").upsert(rows);
-      if (upsertErr) throw new Error(`فشلت استعادة المنتجات: ${upsertErr.message}`);
+      const { error: upsertErr } = await supabase.from("products").upsert(rows).select();
+      if (upsertErr) throw new Error(`فشلت استعادة المنتجات: ${upsertErr.message} [Code: ${upsertErr.code}]`);
     }
 
     const suppliersToRestore = restoredItems.filter((i) => i.entity === "supplier" && i.data);
@@ -240,8 +246,8 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
         if (i.entityId && isUUID(i.entityId)) r.id = i.entityId;
         return r;
       });
-      const { error: upsertErr } = await supabase.from("suppliers").upsert(rows);
-      if (upsertErr) throw new Error(`فشلت استعادة الموردين: ${upsertErr.message}`);
+      const { error: upsertErr } = await supabase.from("suppliers").upsert(rows).select();
+      if (upsertErr) throw new Error(`فشلت استعادة الموردين: ${upsertErr.message} [Code: ${upsertErr.code}]`);
     }
 
     const categoriesToRestore = restoredItems.filter((i) => i.entity === "category" && i.data);
@@ -251,28 +257,28 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
         if (i.entityId && isUUID(i.entityId)) r.id = i.entityId;
         return r;
       });
-      const { error: upsertErr } = await supabase.from("categories").upsert(rows, { onConflict: "name" });
-      if (upsertErr) throw new Error(`فشلت استعادة الأقسام: ${upsertErr.message}`);
+      const { error: upsertErr } = await supabase.from("categories").upsert(rows, { onConflict: "name" }).select();
+      if (upsertErr) throw new Error(`فشلت استعادة الأقسام: ${upsertErr.message} [Code: ${upsertErr.code}]`);
     }
 
     const customersToRestore = restoredItems.filter((i) => i.entity === "customer" && i.data);
     if (customersToRestore.length > 0) {
-      const { error: upsertErr } = await supabase.from("customers").upsert(customersToRestore.map((i) => i.data));
-      if (upsertErr) throw new Error(`فشلت استعادة الزبائن: ${upsertErr.message}`);
+      const { error: upsertErr } = await supabase.from("customers").upsert(customersToRestore.map((i) => i.data)).select();
+      if (upsertErr) throw new Error(`فشلت استعادة الزبائن: ${upsertErr.message} [Code: ${upsertErr.code}]`);
     }
 
     const ordersToRestore = restoredItems.filter((i) => i.entity === "order" && i.data);
     if (ordersToRestore.length > 0) {
-      const { error: upsertErr } = await supabase.from("orders").upsert(ordersToRestore.map((i) => i.data));
-      if (upsertErr) throw new Error(`فشلت استعادة الطلبات: ${upsertErr.message}`);
+      const { error: upsertErr } = await supabase.from("orders").upsert(ordersToRestore.map((i) => i.data)).select();
+      if (upsertErr) throw new Error(`فشلت استعادة الطلبات: ${upsertErr.message} [Code: ${upsertErr.code}]`);
     }
 
     // Delete restored entries from trash table in batch chunks
     const chunkSize = 200;
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);
-      const { error: delErr } = await supabase.from("trash").delete().in("id", chunk);
-      if (delErr) throw new Error(`فشل مسح السلة من Supabase: ${delErr.message}`);
+      const { error: delErr } = await supabase.from("trash").delete().in("id", chunk).select();
+      if (delErr) throw new Error(`فشل مسح السلة من Supabase: ${delErr.message} [Code: ${delErr.code}]`);
     }
 
     const idSet = new Set(ids);
@@ -281,10 +287,13 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
   }, [items]);
 
   const permanentDelete = useCallback(async (id: string) => {
-    const { error } = await supabase.from("trash").delete().eq("id", id);
+    const { data, error } = await supabase.from("trash").delete().eq("id", id).select();
     if (error) {
       console.error("Supabase permanentDelete error:", error);
-      throw new Error(`فشل الحذف النهائي من Supabase: ${error.message}`);
+      throw new Error(`فشل الحذف النهائي من Supabase: ${error.message} [Code: ${error.code}]`);
+    }
+    if (!data || data.length === 0) {
+      console.warn("Supabase permanentDelete returned 0 deleted rows.");
     }
     setItems((prev) => prev.filter((i) => i.id !== id));
   }, []);
@@ -294,10 +303,13 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     const chunkSize = 200;
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);
-      const { error } = await supabase.from("trash").delete().in("id", chunk);
+      const { data, error } = await supabase.from("trash").delete().in("id", chunk).select();
       if (error) {
         console.error("Supabase bulkPermanentDelete error:", error);
-        throw new Error(`فشل الحذف النهائي المكتبي في Supabase: ${error.message}`);
+        throw new Error(`فشل الحذف النهائي المكتبي في Supabase: ${error.message} [Code: ${error.code}]`);
+      }
+      if (!data || data.length === 0) {
+        console.warn(`Supabase batch delete chunk returned 0 rows for ${chunk.length} requested IDs.`);
       }
     }
     const idSet = new Set(ids);
@@ -311,7 +323,7 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     const { data, error } = await supabase.from("trash").delete().lt("deleted_at", cutoffISO).select();
     if (error) {
       console.error("Supabase purgeExpired error:", error);
-      throw new Error(`فشل تنظيف العناصر من Supabase: ${error.message}`);
+      throw new Error(`فشل تنظيف العناصر من Supabase: ${error.message} [Code: ${error.code}]`);
     }
     const count = data?.length || 0;
     if (count > 0) {
