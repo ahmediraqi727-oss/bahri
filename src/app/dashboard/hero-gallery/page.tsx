@@ -30,6 +30,7 @@ export default function HeroGalleryPage() {
   const [dragPanStart, setDragPanStart] = useState({ x: 0, y: 0 });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const [unsavedChanges, setUnsavedChanges] = useState(false);
 
   useEffect(() => {
@@ -256,20 +257,38 @@ export default function HeroGalleryPage() {
 
               {!rawImage ? (
                 <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="h-40 border-2 border-dashed border-blue-300 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-950/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-2xl flex flex-col items-center justify-center text-blue-600 dark:text-blue-400 transition-all group"
+                    >
+                      <span className="text-4xl mb-2 group-hover:scale-110 transition-transform">📷</span>
+                      <span className="text-sm font-bold">التقاط صورة بالكاميرا</span>
+                      <span className="text-[11px] opacity-75 mt-0.5">تصوير مباشر</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="h-40 border-2 border-dashed border-emerald-300 dark:border-emerald-800/60 bg-emerald-50/50 dark:bg-emerald-950/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 rounded-2xl flex flex-col items-center justify-center text-emerald-600 dark:text-emerald-400 transition-all group"
+                    >
+                      <span className="text-4xl mb-2 group-hover:scale-110 transition-transform">📁</span>
+                      <span className="text-sm font-bold">اختر من ملفات الجهاز</span>
+                      <span className="text-[11px] opacity-75 mt-0.5">معرض الصور المستندات</span>
+                    </button>
+                  </div>
+
                   <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full h-48 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-2xl flex flex-col items-center justify-center text-gray-400 hover:text-blue-500 hover:border-blue-500 transition-all"
-                  >
-                    <span className="text-5xl mb-2">📁</span>
-                    <span className="text-sm font-medium">اختر صورة من الجهاز</span>
-                  </button>
+                  <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileSelect} className="hidden" />
+
                   {getImageForSlot(editingSlot) && (
                     <button
                       onClick={() => handleDeleteImage(editingSlot)}
-                      className="w-full py-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 font-medium hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                      className="w-full py-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 font-medium hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors flex items-center justify-center gap-2"
                     >
-                      🗑️ حذف الصورة
+                      <span>🗑️</span>
+                      <span>حذف الصورة الحالية</span>
                     </button>
                   )}
                 </div>

@@ -33,7 +33,8 @@ function updateNotesWithCategory(notes: string | undefined, categoryName: string
 
 export default function ProductModal({ isOpen, onClose, product }: ProductModalProps) {
   const { suppliers, categories, products, addProduct, updateProduct, addSupplier, addCategory } = useData();
-  const imageRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const comboRef = useRef<HTMLDivElement>(null);
 
   const [name, setName] = useState("");
@@ -272,27 +273,67 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
             </div>
           )}
 
-          {/* Image */}
-          <div className="flex justify-center">
-            <div
-              className="w-32 h-32 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 overflow-hidden cursor-pointer hover:border-[var(--primary)] transition-colors relative group"
-              onClick={() => imageRef.current?.click()}
-            >
+          {/* Image Upload with Dual Options */}
+          <div className="flex flex-col items-center gap-3 bg-gray-50 dark:bg-gray-800/40 p-4 rounded-2xl border border-gray-200 dark:border-gray-700/60">
+            <label className="text-xs font-bold text-gray-700 dark:text-gray-300">صورة المنتج</label>
+            <div className="w-32 h-32 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-600 overflow-hidden relative group bg-white dark:bg-gray-900 flex items-center justify-center">
               {image ? (
                 <>
                   <img src={image} alt="Product" className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs">
-                    تغيير
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-1">
+                    <button
+                      type="button"
+                      onClick={() => cameraRef.current?.click()}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-[11px] font-bold"
+                    >
+                      📷 كاميرا
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => galleryRef.current?.click()}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded text-[11px] font-bold"
+                    >
+                      📁 معرض
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setImage("")}
+                      className="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-[11px] font-bold"
+                    >
+                      🗑️
+                    </button>
                   </div>
                 </>
               ) : (
-                <div className="flex flex-col items-center justify-center h-full text-gray-400">
-                  <span className="text-3xl">📷</span>
-                  <span className="text-xs mt-1">صورة المنتج</span>
+                <div className="flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 gap-1 text-center p-2">
+                  <span className="text-3xl">🖼️</span>
+                  <span className="text-[11px] font-bold">لم تدرج صورة</span>
                 </div>
               )}
             </div>
-            <input ref={imageRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+
+            {/* Dual Buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => cameraRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm"
+              >
+                <span>📷</span>
+                <span>التقاط بالكاميرا</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => galleryRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm"
+              >
+                <span>📁</span>
+                <span>اختر من المعرض</span>
+              </button>
+            </div>
+
+            <input ref={galleryRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+            <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={handleImageUpload} className="hidden" />
           </div>
 
           {/* Name & Auto-Suggest */}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/lib/supabase-client";
 
@@ -11,6 +11,8 @@ interface ProfileEditModalProps {
 
 export default function ProfileEditModal({ isOpen, onClose }: ProfileEditModalProps) {
   const { user, session } = useAuth();
+  const avatarGalleryRef = useRef<HTMLInputElement>(null);
+  const avatarCameraRef = useRef<HTMLInputElement>(null);
 
   // Basic Info Form State
   const [fullName, setFullName] = useState("");
@@ -360,23 +362,42 @@ export default function ProfileEditModal({ isOpen, onClose }: ProfileEditModalPr
                     {fullName?.charAt(0) || user.email?.charAt(0)?.toUpperCase() || "👤"}
                   </div>
                 )}
-
-                <label className="absolute inset-0 bg-black/40 rounded-2xl flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity text-white text-xs font-bold">
-                  تغيير
-                  <input type="file" accept="image/*" onChange={handleAvatarFileChange} className="hidden" />
-                </label>
               </div>
 
-              <div className="flex-1 space-y-2 text-center sm:text-right">
-                <label className="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-sm">
-                  {avatarUploading ? "جاري رفع الصورة..." : "📁 رفع صورة شخصية جديدة"}
-                  <input type="file" accept="image/*" onChange={handleAvatarFileChange} className="hidden" disabled={avatarUploading} />
-                </label>
+              <div className="flex-1 space-y-2 text-center sm:text-right w-full">
+                <div className="flex items-center justify-center sm:justify-start gap-2">
+                  <button
+                    type="button"
+                    onClick={() => avatarCameraRef.current?.click()}
+                    disabled={avatarUploading}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm"
+                  >
+                    <span>📷</span>
+                    <span>التقاط بالكاميرا</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => avatarGalleryRef.current?.click()}
+                    disabled={avatarUploading}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm"
+                  >
+                    <span>📁</span>
+                    <span>اختر من المعرض</span>
+                  </button>
+                </div>
+                {avatarUploading && (
+                  <p className="text-xs text-blue-600 dark:text-blue-400 font-bold animate-pulse">
+                    ⏳ جاري رفع ومعالجة الصورة...
+                  </p>
+                )}
                 <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                  يدعم صيغ JPG، PNG و WebP (يتم الحفظ فوري في Supabase Storage)
+                  يدعم صيغ JPG، PNG و WebP (التقاط مباشر أو من الملفات)
                 </p>
               </div>
             </div>
+
+            <input ref={avatarGalleryRef} type="file" accept="image/*" onChange={handleAvatarFileChange} className="hidden" />
+            <input ref={avatarCameraRef} type="file" accept="image/*" capture="environment" onChange={handleAvatarFileChange} className="hidden" />
 
             {/* Inputs Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
