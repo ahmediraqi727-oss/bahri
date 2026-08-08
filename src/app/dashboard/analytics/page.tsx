@@ -49,7 +49,7 @@ export default function AnalyticsPage() {
   const marginPct = profitData.revenue > 0 ? Math.round((profitData.profit / profitData.revenue) * 100) : 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full max-w-full" dir="rtl">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">الإحصاءات والتقارير</h1>

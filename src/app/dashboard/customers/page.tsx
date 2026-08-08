@@ -8,6 +8,7 @@ import { useSales } from "@/lib/sales-context";
 import { useActivityLog } from "@/lib/activity-log";
 import { CustomerRecord } from "@/lib/types";
 import { rowToCustomer } from "@/lib/visitor-tracker";
+import DataTableWrapper from "@/components/DataTableWrapper";
 
 type FilterTab = "all" | "known" | "anonymous" | "registered" | "blocked" | "suspicious";
 
@@ -366,7 +367,7 @@ export default function CustomersPage() {
         </div>
       ) : (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
+          <DataTableWrapper>
             <table className="w-full text-right text-sm">
               <thead>
                 <tr className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 text-xs font-extrabold text-gray-500 dark:text-gray-400 uppercase">
@@ -540,7 +541,7 @@ export default function CustomersPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </DataTableWrapper>
         </div>
       )}
 

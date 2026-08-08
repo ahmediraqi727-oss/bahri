@@ -5,6 +5,7 @@ import { useData } from "@/lib/data-context";
 import { useSettings } from "@/lib/settings-context";
 import { useActivityLog } from "@/lib/activity-log";
 import { useNotifications } from "@/lib/notifications";
+import DataTableWrapper from "@/components/DataTableWrapper";
 import SupplierContactModal from "@/components/SupplierContactModal";
 import { Product, Supplier } from "@/lib/types";
 
@@ -116,7 +117,7 @@ export default function InventoryPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full max-w-full" dir="rtl">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">إدارة المخزون الذكية</h1>
@@ -159,7 +160,7 @@ export default function InventoryPage() {
             <p>{filterLevel !== "all" ? "لا توجد منتجات في هذا المستوى" : "لا توجد منتجات في المخزون"}</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <DataTableWrapper>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
@@ -229,7 +230,7 @@ export default function InventoryPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </DataTableWrapper>
         )}
       </div>
 

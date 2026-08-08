@@ -74,7 +74,7 @@ export default function RolesPage() {
   const categories = getAllPermissionCategories();
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-4xl w-full" dir="rtl">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">إدارة صلاحيات الإداري</h1>

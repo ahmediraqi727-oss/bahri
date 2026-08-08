@@ -47,7 +47,7 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="space-y-6 p-2 sm:p-4 max-w-7xl mx-auto" dir="rtl">
+    <div className="space-y-6 p-2 sm:p-4 w-full max-w-7xl mx-auto" dir="rtl">
       {/* Header Banner */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
         <img src="/logo.jpg" alt="شعار أحمد بحري" className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-cover shadow-lg" />

@@ -169,3 +169,25 @@ table td img, table th img {
   object-fit: cover !important;
 }
 
+/* 7. Global Page Root Overflow Prevention */
+/* Prevent any direct child of <main> from causing horizontal overflow */
+main > div,
+main > section {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+/* 8. Responsive Sidebar Layout Protection */
+aside {
+  flex-shrink: 0;
+}
+
+/* 9. Sticky table column z-index for RTL layouts */
+[dir="rtl"] table thead th[class*="sticky"],
+[dir="rtl"] table tbody td[class*="sticky"] {
+  isolation: isolate;
+}
+
+

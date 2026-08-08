@@ -7,6 +7,7 @@ import { useActivityLog } from "@/lib/activity-log";
 import { useSales } from "@/lib/sales-context";
 import { useSettings } from "@/lib/settings-context";
 import { UserRole } from "@/lib/types";
+import DataTableWrapper from "@/components/DataTableWrapper";
 
 interface UserAccount {
   id: string;
@@ -178,7 +179,7 @@ export default function AccountsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full max-w-full" dir="rtl">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">إدارة الحسابات</h1>
@@ -231,7 +232,7 @@ export default function AccountsPage() {
         </div>
       ) : (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="overflow-x-auto">
+          <DataTableWrapper>
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
@@ -297,7 +298,7 @@ export default function AccountsPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </DataTableWrapper>
           {accounts.length === 0 && (
             <div className="text-center py-12">
               <span className="text-4xl block mb-3">👤</span>

@@ -545,7 +545,7 @@ export default function InvoicesPage() {
 
   return (
     <PermissionGate permission="orders.view">
-      <div className="space-y-6" dir="rtl">
+      <div className="space-y-6 w-full max-w-full" dir="rtl">
         {/* Top Title Bar */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>

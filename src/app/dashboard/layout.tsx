@@ -38,13 +38,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div
-      className={`flex min-h-screen ${settings.darkMode ? "dark" : ""}`}
+      className={`flex min-h-screen overflow-x-hidden ${settings.darkMode ? "dark" : ""}`}
       style={{ fontFamily: settings.fontFamily }}
     >
       <Sidebar />
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 min-w-0 flex flex-col overflow-x-hidden">
         <Header />
-        <main className="flex-1 p-6 bg-gray-50 dark:bg-gray-950 overflow-y-auto">
+        <main className="flex-1 p-4 sm:p-6 bg-gray-50 dark:bg-gray-950 overflow-y-auto overflow-x-hidden w-full max-w-full">
           {children}
         </main>
       </div>
