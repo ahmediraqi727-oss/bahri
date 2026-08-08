@@ -216,19 +216,16 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     }
 
     // 2. Delete entry from trash table in Supabase
-    const { data: delData, error: delErr } = await supabase.from("trash").delete().eq("id", id).select();
+    const { error: delErr } = await supabase.from("trash").delete().eq("id", id);
     if (delErr) {
       console.error("Supabase delete from trash error:", delErr);
       throw new Error(`فشل مسح السجل من سلة المهملات: ${delErr.message} [Code: ${delErr.code}]`);
     }
 
-    if (!delData || delData.length === 0) {
-      console.warn("Supabase trash delete returned 0 rows.");
-    }
-
     setItems((prev) => prev.filter((i) => i.id !== id));
+    await reloadTrash();
     return item;
-  }, [items]);
+  }, [items, reloadTrash]);
 
   const bulkRestore = useCallback(async (
     ids: string[],
@@ -292,7 +289,7 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     let processed = 0;
     for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
       const chunk = ids.slice(i, i + CHUNK_SIZE);
-      const { error: delErr } = await supabase.from("trash").delete().in("id", chunk).select();
+      const { error: delErr } = await supabase.from("trash").delete().in("id", chunk);
       if (delErr) throw new Error(`فشل مسح السلة من Supabase: ${delErr.message} [Code: ${delErr.code}]`);
       processed += chunk.length;
       if (onProgress) onProgress(processed, ids.length);
@@ -300,49 +297,120 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
 
     const idSet = new Set(ids);
     setItems((prev) => prev.filter((i) => !idSet.has(i.id)));
+    await reloadTrash();
     return restoredItems;
-  }, [items]);
+  }, [items, reloadTrash]);
 
   const permanentDelete = useCallback(async (id: string) => {
-    const { data, error } = await supabase.from("trash").delete().eq("id", id).select();
+    const item = items.find((i) => i.id === id);
+    if (item) {
+      if (item.entity === "product" && item.entityId && isUUID(item.entityId)) {
+        const { error: pErr } = await supabase.from("products").delete().eq("id", item.entityId);
+        if (pErr) console.warn("Notice deleting product entity:", pErr.message);
+      } else if (item.entity === "supplier" && item.entityId && isUUID(item.entityId)) {
+        const { error: sErr } = await supabase.from("suppliers").delete().eq("id", item.entityId);
+        if (sErr) console.warn("Notice deleting supplier entity:", sErr.message);
+      } else if (item.entity === "category" && item.entityId && isUUID(item.entityId)) {
+        const { error: cErr } = await supabase.from("categories").delete().eq("id", item.entityId);
+        if (cErr) console.warn("Notice deleting category entity:", cErr.message);
+      } else if (item.entity === "customer" && item.entityId && isUUID(item.entityId)) {
+        const { error: custErr } = await supabase.from("customers").delete().eq("id", item.entityId);
+        if (custErr) console.warn("Notice deleting customer entity:", custErr.message);
+      } else if (item.entity === "order" && item.entityId && isUUID(item.entityId)) {
+        const { error: oErr } = await supabase.from("orders").delete().eq("id", item.entityId);
+        if (oErr) console.warn("Notice deleting order entity:", oErr.message);
+      }
+    }
+
+    const { error } = await supabase.from("trash").delete().eq("id", id);
     if (error) {
       console.error("Supabase permanentDelete error:", error);
       throw new Error(`فشل الحذف النهائي من Supabase: ${error.message} [Code: ${error.code}]`);
     }
-    if (!data || data.length === 0) {
-      console.warn("Supabase permanentDelete returned 0 deleted rows.");
-    }
+
     setItems((prev) => prev.filter((i) => i.id !== id));
-  }, []);
+    await reloadTrash();
+  }, [items, reloadTrash]);
 
-  const bulkPermanentDelete = useCallback(async (
-    ids: string[],
-    onProgress?: (processed: number, total: number) => void
-  ) => {
-    if (!ids || ids.length === 0) return;
+  const bulkPermanentDelete = useCallback(
+    async (
+      ids: string[],
+      onProgress?: (processed: number, total: number) => void
+    ) => {
+      if (!ids || ids.length === 0) return;
 
-    let processed = 0;
-    const total = ids.length;
+      let processed = 0;
+      const total = ids.length;
 
-    for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
-      const chunk = ids.slice(i, i + CHUNK_SIZE);
-      const { data, error } = await supabase.from("trash").delete().in("id", chunk).select();
-      if (error) {
-        console.error("Supabase bulkPermanentDelete error:", error);
-        throw new Error(`فشل الحذف النهائي المكتبي في Supabase: ${error.message} [Code: ${error.code}]`);
+      for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+        const chunk = ids.slice(i, i + CHUNK_SIZE);
+        const itemsInChunk = items.filter((item) => chunk.includes(item.id));
+
+        // 1. Delete original entity records from products table if any
+        const productEntityIds = itemsInChunk
+          .filter((item) => item.entity === "product" && item.entityId && isUUID(item.entityId))
+          .map((item) => item.entityId);
+        if (productEntityIds.length > 0) {
+          const { error: prodError } = await supabase.from("products").delete().in("id", productEntityIds);
+          if (prodError) {
+            console.warn("تنبيه حذف المنتجات من Supabase:", prodError.message);
+          }
+        }
+
+        const supplierEntityIds = itemsInChunk
+          .filter((item) => item.entity === "supplier" && item.entityId && isUUID(item.entityId))
+          .map((item) => item.entityId);
+        if (supplierEntityIds.length > 0) {
+          const { error: supError } = await supabase.from("suppliers").delete().in("id", supplierEntityIds);
+          if (supError) console.warn("تنبيه حذف الموردين:", supError.message);
+        }
+
+        const categoryEntityIds = itemsInChunk
+          .filter((item) => item.entity === "category" && item.entityId && isUUID(item.entityId))
+          .map((item) => item.entityId);
+        if (categoryEntityIds.length > 0) {
+          const { error: catError } = await supabase.from("categories").delete().in("id", categoryEntityIds);
+          if (catError) console.warn("تنبيه حذف الأقسام:", catError.message);
+        }
+
+        const customerEntityIds = itemsInChunk
+          .filter((item) => item.entity === "customer" && item.entityId && isUUID(item.entityId))
+          .map((item) => item.entityId);
+        if (customerEntityIds.length > 0) {
+          const { error: custError } = await supabase.from("customers").delete().in("id", customerEntityIds);
+          if (custError) console.warn("تنبيه حذف الزبائن:", custError.message);
+        }
+
+        const orderEntityIds = itemsInChunk
+          .filter((item) => item.entity === "order" && item.entityId && isUUID(item.entityId))
+          .map((item) => item.entityId);
+        if (orderEntityIds.length > 0) {
+          const { error: ordError } = await supabase.from("orders").delete().in("id", orderEntityIds);
+          if (ordError) console.warn("تنبيه حذف الطلبات:", ordError.message);
+        }
+
+        // 2. Delete entries from trash table in Supabase
+        const { error: trashError } = await supabase.from("trash").delete().in("id", chunk);
+        if (trashError) {
+          console.error("خطأ حذف سجلات السلة من Supabase:", trashError);
+          throw new Error(`فشل الحذف من سلة المهملات: ${trashError.message} [Code: ${trashError.code}]`);
+        }
+
+        processed += chunk.length;
+        if (onProgress) {
+          onProgress(processed, total);
+        }
       }
-      if (!data || data.length === 0) {
-        console.warn(`Supabase batch delete chunk returned 0 rows for ${chunk.length} requested IDs.`);
-      }
-      processed += chunk.length;
-      if (onProgress) {
-        onProgress(processed, total);
-      }
-    }
 
-    const idSet = new Set(ids);
-    setItems((prev) => prev.filter((i) => !idSet.has(i.id)));
-  }, []);
+      // 3. Update local state
+      const idSet = new Set(ids);
+      setItems((prev) => prev.filter((item) => !idSet.has(item.id)));
+
+      // 4. Revalidate data from server for 100% sync
+      await reloadTrash();
+    },
+    [items, reloadTrash]
+  );
 
   const purgeExpired = useCallback(async (): Promise<number> => {
     const cutoff = new Date();
