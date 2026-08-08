@@ -48,12 +48,12 @@ const COLUMN_ALIASES: Record<keyof DetectedColumns, string[]> = {
   ],
   costPrice: [
     "costprice", "cost_price", "cost", "buyingprice", "buying_price",
-    "سعر التكلفة", "التكلفة", "تكلفة", "سعر الشراء",
+    "سعر التكلفة", "التكلفة", "تكلفة", "الكلفة", "كلفة", "سعر الكلفة", "سعر الشراء",
   ],
   retailPrice: [
     "retailprice", "retail_price", "retail", "price", "sellingprice",
     "selling_price", "unit_price",
-    "سعر المفرد", "المفرد", "السعر", "سعر البيع", "سعر",
+    "سعر المفرد", "المفرد", "مفرد", "السعر", "سعر البيع", "سعر",
   ],
   wholesalePrice: [
     "wholesaleprice", "wholesale_price", "wholesale",
@@ -65,7 +65,7 @@ const COLUMN_ALIASES: Record<keyof DetectedColumns, string[]> = {
   ],
   category: [
     "category", "category_name", "categoryname", "section", "group",
-    "القسم", "قسم", "الفئة", "فئة", "التصنيف", "تصنيف", "المجموعة",
+    "القسم", "قسم", "الفئة", "فئة", "التصنيف", "تصنيف", "النوع", "نوع", "المجموعة",
   ],
   supplier: [
     "supplier", "supplierid", "supplier_id", "supplier_name", "vendor",

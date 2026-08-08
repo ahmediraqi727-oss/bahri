@@ -67,24 +67,52 @@ export default function ImportExportBar() {
   ): Promise<Partial<Product>[]> => {
     const mapped: Partial<Product>[] = [];
     for (const row of rows) {
-      const nameVal = findVal(row, ["name", "اسم المنتج", "الاسم", "اسم", "منتج", "product"]);
+      const nameVal = findVal(row, ["name", "product_name", "productname", "اسم المنتج", "اسم", "الاسم", "منتج", "عنوان", "product"]);
       if (!nameVal) continue;
       const nameStr = String(nameVal).trim();
       if (!nameStr) continue;
 
-      let costPrice = parseFloat(String(findVal(row, ["costprice", "cost_price", "cost", "سعر التكلفة", "التكلفة", "تكلفة"]) || 0)) || 0;
+      // Extract raw price candidate values
+      const rawCost = findVal(row, ["costprice", "cost_price", "cost", "buyingprice", "buying_price", "سعر التكلفة", "التكلفة", "تكلفة", "الكلفة", "كلفة", "سعر الكلفة", "سعر الشراء"]);
+      const rawWholesale = findVal(row, ["wholesaleprice", "wholesale_price", "wholesale", "سعر الجملة", "الجملة", "جملة"]);
+      const rawRetail = findVal(row, ["retailprice", "retail_price", "retail", "price", "sellingprice", "selling_price", "unit_price", "سعر المفرد", "المفرد", "مفرد", "السعر", "سعر البيع", "سعر"]);
       const profitMargin = parseFloat(String(findVal(row, ["profitmargin", "profit_margin", "profit", "margin", "هامش الربح", "الربح", "نسبة الربح"]) || 0)) || 0;
-      let wholesalePrice = parseFloat(String(findVal(row, ["wholesaleprice", "wholesale_price", "wholesale", "سعر الجملة", "الجملة", "جملة"]) || 0)) || 0;
-      let retailPrice = parseFloat(String(findVal(row, ["retailprice", "retail_price", "retail", "price", "سعر المفرد", "المفرد", "السعر", "سعر البيع"]) || 0)) || 0;
 
-      if (retailPrice === 0 && costPrice > 0 && profitMargin > 0) {
-        retailPrice = calculateRetailPrice(costPrice, profitMargin);
+      const rawCostNum = parseFloat(String(rawCost || 0)) || 0;
+      const rawWholesaleNum = parseFloat(String(rawWholesale || 0)) || 0;
+      const rawRetailNum = parseFloat(String(rawRetail || 0)) || 0;
+
+      // ─── Price Triplet Ascending Sorting Algorithm ───────────────────────
+      // Sort discovered positive prices so cost <= wholesale <= retail
+      const validPrices = [rawCostNum, rawWholesaleNum, rawRetailNum].filter((p) => p > 0);
+
+      let costPrice = 0;
+      let wholesalePrice = 0;
+      let retailPrice = 0;
+
+      if (validPrices.length >= 3) {
+        validPrices.sort((a, b) => a - b);
+        costPrice = validPrices[0];        // Lowest = Cost
+        wholesalePrice = validPrices[1];   // Middle = Wholesale
+        retailPrice = validPrices[2];      // Highest = Retail
+      } else if (validPrices.length === 2) {
+        validPrices.sort((a, b) => a - b);
+        costPrice = validPrices[0];
+        wholesalePrice = validPrices[0];
+        retailPrice = validPrices[1];
+      } else if (validPrices.length === 1) {
+        costPrice = validPrices[0];
+        if (profitMargin > 0) {
+          retailPrice = calculateRetailPrice(costPrice, profitMargin);
+          wholesalePrice = Math.round(costPrice + (retailPrice - costPrice) * 0.5);
+        } else {
+          wholesalePrice = Math.round(costPrice * 1.15);
+          retailPrice = Math.round(costPrice * 1.30);
+        }
       }
-      if (costPrice === 0 && retailPrice > 0) costPrice = retailPrice;
-      if (wholesalePrice === 0) wholesalePrice = retailPrice > 0 ? retailPrice : costPrice;
 
-      const stock = parseInt(String(findVal(row, ["stock", "quantity", "qty", "count", "الكمية", "المخزون", "العدد"]) || 0)) || 0;
-      const supplierVal = findVal(row, ["supplier", "supplierid", "supplier_id", "المورد", "اسم المورد", "مورد"]);
+      const stock = parseInt(String(findVal(row, ["stock", "quantity", "qty", "count", "inventory", "available", "الكمية", "المخزون", "العدد", "الرصيد", "متاح"]) || 0)) || 0;
+      const supplierVal = findVal(row, ["supplier", "supplierid", "supplier_id", "supplier_name", "vendor", "المورد", "اسم المورد", "مورد", "المزود"]);
       const supplierPhone = String(findVal(row, ["معلومات اتصال المورد", "هاتف المورد", "رقم المورد", "تلفون المورد"]) || "");
       let supplierId = "";
 
@@ -110,10 +138,10 @@ export default function ImportExportBar() {
         }
       }
 
-      const desc = String(findVal(row, ["notes", "note", "description", "ملاحظات", "تفاصيل", "الوصف", "الوصف التفصيلي"]) || "");
-      const category = String(findVal(row, ["category", "category_name", "القسم", "قسم", "الفئة", "فئة", "التصنيف"]) || "");
-      const notes = category && desc ? `الفئة: ${category} | ${desc}` : category || desc;
-      const image = String(findVal(row, ["image", "img", "photo", "pic", "الصورة", "صورة", "رابط الصورة", "رابط صورة المنتج", "صورة المنتج", "product_image", "productimage"]) || "");
+      const desc = String(findVal(row, ["notes", "note", "description", "desc", "details", "ملاحظات", "وصف", "الوصف", "تفاصيل", "الوصف التفصيلي"]) || "");
+      const category = String(findVal(row, ["category", "category_name", "categoryname", "section", "group", "القسم", "قسم", "الفئة", "فئة", "التصنيف", "تصنيف", "النوع", "نوع", "المجموعة"]) || "").trim();
+      const notes = category && desc ? `الفئة: ${category} | ${desc}` : category ? `الفئة: ${category}` : desc;
+      const image = String(findVal(row, ["image", "img", "photo", "pic", "picture", "thumbnail", "product_image", "productimage", "image_url", "الصورة", "صورة", "رابط الصورة", "رابط صورة المنتج", "صورة المنتج"]) || "");
 
       mapped.push({ name: nameStr, image, costPrice, wholesalePrice, profitMargin, retailPrice, stock, supplierId, notes });
     }
