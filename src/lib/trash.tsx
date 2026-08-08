@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { supabase } from "./supabase-client";
+import { productToRow, supplierToRow, categoryToRow, isUUID } from "./data-context";
 
 export interface TrashItem {
   id: string;
@@ -100,16 +101,81 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
 
   const restore = useCallback(async (id: string): Promise<TrashItem | null> => {
     const item = items.find((i) => i.id === id);
+    if (!item) return null;
+
+    // 1. Re-insert item back to original Supabase table
+    if (item.entity === "product" && item.data) {
+      const row = productToRow(item.data);
+      if (item.entityId && isUUID(item.entityId)) row.id = item.entityId;
+      await supabase.from("products").upsert(row);
+    } else if (item.entity === "supplier" && item.data) {
+      const row = supplierToRow(item.data);
+      if (item.entityId && isUUID(item.entityId)) row.id = item.entityId;
+      await supabase.from("suppliers").upsert(row);
+    } else if (item.entity === "category" && item.data) {
+      const row = categoryToRow(item.data);
+      if (item.entityId && isUUID(item.entityId)) row.id = item.entityId;
+      await supabase.from("categories").upsert(row, { onConflict: "name" });
+    } else if (item.entity === "customer" && item.data) {
+      await supabase.from("customers").upsert(item.data);
+    } else if (item.entity === "order" && item.data) {
+      await supabase.from("orders").upsert(item.data);
+    }
+
+    // 2. Delete entry from trash table in Supabase
     const { error } = await supabase.from("trash").delete().eq("id", id);
     if (error) throw error;
+
     setItems((prev) => prev.filter((i) => i.id !== id));
-    return item || null;
+    return item;
   }, [items]);
 
   const bulkRestore = useCallback(async (ids: string[]): Promise<TrashItem[]> => {
     if (!ids || ids.length === 0) return [];
     const restoredItems = items.filter((i) => ids.includes(i.id));
 
+    // Batch re-insert restored items back to target tables in Supabase
+    const productsToRestore = restoredItems.filter((i) => i.entity === "product" && i.data);
+    if (productsToRestore.length > 0) {
+      const rows = productsToRestore.map((i) => {
+        const r = productToRow(i.data);
+        if (i.entityId && isUUID(i.entityId)) r.id = i.entityId;
+        return r;
+      });
+      await supabase.from("products").upsert(rows);
+    }
+
+    const suppliersToRestore = restoredItems.filter((i) => i.entity === "supplier" && i.data);
+    if (suppliersToRestore.length > 0) {
+      const rows = suppliersToRestore.map((i) => {
+        const r = supplierToRow(i.data);
+        if (i.entityId && isUUID(i.entityId)) r.id = i.entityId;
+        return r;
+      });
+      await supabase.from("suppliers").upsert(rows);
+    }
+
+    const categoriesToRestore = restoredItems.filter((i) => i.entity === "category" && i.data);
+    if (categoriesToRestore.length > 0) {
+      const rows = categoriesToRestore.map((i) => {
+        const r = categoryToRow(i.data);
+        if (i.entityId && isUUID(i.entityId)) r.id = i.entityId;
+        return r;
+      });
+      await supabase.from("categories").upsert(rows, { onConflict: "name" });
+    }
+
+    const customersToRestore = restoredItems.filter((i) => i.entity === "customer" && i.data);
+    if (customersToRestore.length > 0) {
+      await supabase.from("customers").upsert(customersToRestore.map((i) => i.data));
+    }
+
+    const ordersToRestore = restoredItems.filter((i) => i.entity === "order" && i.data);
+    if (ordersToRestore.length > 0) {
+      await supabase.from("orders").upsert(ordersToRestore.map((i) => i.data));
+    }
+
+    // Delete restored entries from trash table in batch chunks
     const chunkSize = 200;
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);

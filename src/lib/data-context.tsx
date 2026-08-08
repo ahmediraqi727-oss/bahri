@@ -69,7 +69,7 @@ function rowToProduct(row: Record<string, unknown>): Product {
   };
 }
 
-function productToRow(product: Record<string, unknown>): Record<string, unknown> {
+export function productToRow(product: Record<string, unknown>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if ("name" in product) row.name = product.name;
   if ("image" in product) row.image = product.image || "";
@@ -98,7 +98,7 @@ function rowToSupplier(row: Record<string, unknown>): Supplier {
   };
 }
 
-function supplierToRow(supplier: Record<string, unknown>): Record<string, unknown> {
+export function supplierToRow(supplier: Record<string, unknown>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if ("name" in supplier) row.name = supplier.name;
   if ("phone" in supplier) row.phone = supplier.phone || "";
@@ -122,7 +122,7 @@ function rowToCategory(row: Record<string, unknown>): CategoryItem {
   };
 }
 
-function categoryToRow(cat: Record<string, unknown>): Record<string, unknown> {
+export function categoryToRow(cat: Record<string, unknown>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if ("name" in cat) row.name = cat.name;
   if ("image" in cat) row.image = cat.image || "";
