@@ -16,6 +16,36 @@ import { useLang, Lang } from "@/lib/lang-context";
 import { hasPermission } from "@/lib/permissions";
 import { getAdminPermissionsConfig } from "@/components/PermissionGate";
 
+interface StoreLocation {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  phone: string;
+  google_maps_url: string;
+}
+
+interface TeamMember {
+  id: string;
+  full_name: string;
+  job_title: string;
+  bio: string;
+  avatar_url: string;
+  display_order: number;
+}
+
+interface Post {
+  id: string;
+  title: string;
+  body: string;
+  post_type: "educational" | "promotional";
+  display_position: string;
+  media_url: string | null;
+  media_type: "image" | "video";
+  views_count: number;
+  created_at: string;
+}
+
 export default function Home() {
   const { settings, toggleDarkMode, toggleEyeProtection } = useSettings();
   const { products, suppliers } = useData();
@@ -44,6 +74,9 @@ export default function Home() {
   const [contactSent, setContactSent] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [heroGallery, setHeroGallery] = useState<{ position: number; image_url: string }[]>([]);
+  const [storeLocation, setStoreLocation] = useState<StoreLocation | null>(null);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [homePosts, setHomePosts] = useState<Post[]>([]);
   
   const menuRef = useRef<HTMLDivElement>(null);
   const categoriesRef = useRef<HTMLDivElement>(null);
@@ -171,6 +204,27 @@ export default function Home() {
         if (data) setHeroGallery(data);
       });
   }, []);
+
+  useEffect(() => {
+    supabase.from("store_locations").select("*").eq("is_active", true).limit(1).single()
+      .then(({ data }) => { if (data) setStoreLocation(data); });
+    supabase.from("team_members").select("*").eq("is_visible", true).order("display_order").limit(12)
+      .then(({ data }) => { if (data) setTeamMembers(data); });
+    supabase.from("posts").select("*").eq("is_published", true).order("created_at", { ascending: false }).limit(20)
+      .then(({ data }) => { if (data) setHomePosts(data); });
+  }, []);
+
+  const openMap = () => {
+    const url = storeLocation?.google_maps_url || "https://maps.google.com/?q=أحمد+بحري+متجر";
+    // Detect Capacitor native environment
+    const isCapacitor = typeof window !== "undefined" && !!(window as typeof window & { Capacitor?: { isNativePlatform: () => boolean } }).Capacitor?.isNativePlatform?.();
+    if (isCapacitor && storeLocation) {
+      // Deep link to native Maps app
+      window.location.href = `geo:${storeLocation.google_maps_url.includes("q=") ? storeLocation.google_maps_url.split("q=")[1] : "33.3128,44.3615"}`;
+    } else {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  };
 
   const handleAdd = (product: typeof products[0]) => {
     addItem({
@@ -411,6 +465,30 @@ export default function Home() {
                         </Link>
                       )}
 
+                      {/* Team Members Management (Managers/Admins Only) */}
+                      {user && (user.role === "manager" || user.role === "admin") && (
+                        <Link
+                          href="/dashboard/team"
+                          onClick={() => setMenuOpen(false)}
+                          className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                        >
+                          <span className="text-xl">👥</span>
+                          <span className="text-sm font-bold text-gray-700 dark:text-gray-200">إدارة أعضاء الفريق</span>
+                        </Link>
+                      )}
+
+                      {/* Posts Management (Managers/Admins Only) */}
+                      {user && (user.role === "manager" || user.role === "admin") && (
+                        <Link
+                          href="/dashboard/posts"
+                          onClick={() => setMenuOpen(false)}
+                          className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                        >
+                          <span className="text-xl">📢</span>
+                          <span className="text-sm font-bold text-gray-700 dark:text-gray-200">إدارة المنشورات</span>
+                        </Link>
+                      )}
+
                       {/* Admin Permissions Management (Visible EXCLUSIVELY to Super Admin / Manager OR Admins with delegated permissions.manage) */}
                       {user && !user.isGuest && !user.id.startsWith("guest-") && (user.role === "manager" || hasPermission(user.role, "permissions.manage", getAdminPermissionsConfig())) && (
                         <Link
@@ -451,6 +529,30 @@ export default function Home() {
                       {/* ------------------------------------------------------------------ */}
                       {/* BRANCH 3: Session & UI Settings                                    */}
                       {/* ------------------------------------------------------------------ */}
+
+                      {/* Map Location Button (Always Visible) */}
+                      <button
+                        onClick={() => { openMap(); setMenuOpen(false); }}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors text-right"
+                      >
+                        <span className="text-xl">📍</span>
+                        <div className="flex-1 text-right">
+                          <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">موقعنا على الخريطة</span>
+                          {storeLocation?.city && (
+                            <p className="text-xs text-gray-400 mt-0.5">{storeLocation.city} — {storeLocation.address}</p>
+                          )}
+                        </div>
+                      </button>
+
+                      {/* Posts Page Link (Always Visible) */}
+                      <Link
+                        href="/posts"
+                        onClick={() => setMenuOpen(false)}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-purple-50 dark:hover:bg-purple-950/30 transition-colors"
+                      >
+                        <span className="text-xl">📢</span>
+                        <span className="text-sm font-bold text-purple-700 dark:text-purple-400">المنشورات والمقاطع</span>
+                      </Link>
 
                       {/* Logout (Only visible if user is logged in as user or guest) */}
                       {user && (
@@ -695,6 +797,95 @@ export default function Home() {
           </div>
         )}
       </section>
+
+      {/* ─── Posts: home_bottom position ─── */}
+      {homePosts.filter((p) => p.display_position === "home_bottom").length > 0 && (
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" dir="rtl">
+          <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+            <h2 className="text-xl font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
+              <span>📢</span> منشورات وإعلانات
+            </h2>
+            <Link href="/posts" className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline">
+              عرض الكل ←
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {homePosts.filter((p) => p.display_position === "home_bottom").slice(0, 3).map((p) => (
+              <Link key={p.id} href="/posts" className="group bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden hover:shadow-lg transition-shadow block">
+                {p.media_url && (
+                  <div className="aspect-video overflow-hidden bg-gray-100 dark:bg-gray-800">
+                    {p.media_type === "video" ? (
+                      <video src={p.media_url} className="w-full h-full object-cover" />
+                    ) : (
+                      <img src={p.media_url} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    )}
+                  </div>
+                )}
+                <div className="p-4">
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${p.post_type === "promotional" ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300" : "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"}`}>
+                    {p.post_type === "promotional" ? "📣 ترويجي" : "📚 تعليمي"}
+                  </span>
+                  <h3 className="font-extrabold text-gray-900 dark:text-white mt-2 text-sm line-clamp-2">{p.title}</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{p.body}</p>
+                  <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">👁️ {p.views_count} مشاهدة</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ─── Team Members Footer Section ─── */}
+      {teamMembers.length > 0 && (
+        <section className="border-t border-gray-200 dark:border-gray-800 bg-gradient-to-br from-gray-50 to-blue-50/30 dark:from-gray-900 dark:to-blue-950/20 py-12 px-4 overflow-x-hidden" dir="rtl">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl font-extrabold text-gray-900 dark:text-white">👥 فريق عملنا</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">تعرف على الفريق المتميز وراء متجر أحمد بحري</p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-6">
+              {teamMembers.map((m) => (
+                <div
+                  key={m.id}
+                  className="flex flex-col items-center text-center bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm hover:shadow-md transition-shadow w-36 sm:w-44"
+                >
+                  {m.avatar_url ? (
+                    <img src={m.avatar_url} alt={m.full_name} className="w-16 h-16 rounded-2xl object-cover border-2 border-blue-200 dark:border-blue-800 mb-3" />
+                  ) : (
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-extrabold text-2xl mb-3">
+                      {m.full_name.charAt(0)}
+                    </div>
+                  )}
+                  <h3 className="font-extrabold text-gray-900 dark:text-white text-sm">{m.full_name}</h3>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 font-bold mt-0.5">{m.job_title}</p>
+                  {m.bio && <p className="text-[11px] text-gray-400 mt-1 line-clamp-2">{m.bio}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ─── Store Location Banner ─── */}
+      {storeLocation && (
+        <div className="bg-emerald-600 dark:bg-emerald-700 text-white py-4 px-4" dir="rtl">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-right">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">📍</span>
+              <div>
+                <p className="font-extrabold text-sm">{storeLocation.name}</p>
+                <p className="text-xs text-emerald-100">{storeLocation.city} — {storeLocation.address}</p>
+              </div>
+            </div>
+            <button
+              onClick={openMap}
+              className="px-5 py-2 bg-white text-emerald-700 font-extrabold text-sm rounded-xl shadow-md hover:scale-[1.02] transition-transform flex items-center gap-2"
+            >
+              <span>🗺️</span> افتح الخريطة
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Customizable Dynamic Footer */}
       <footer
