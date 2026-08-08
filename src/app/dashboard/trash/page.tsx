@@ -88,6 +88,7 @@ export default function TrashPage() {
     purgeExpired,
     autoDeleteDays,
     setAutoDeleteDays,
+    reloadTrash,
   } = useTrash();
   const { reloadAllData } = useData();
   const { logActivity } = useActivityLog();
@@ -198,7 +199,7 @@ export default function TrashPage() {
     try {
       const restored = await restore(item.id);
       if (restored) {
-        await reloadAllData();
+        await Promise.all([reloadAllData(), reloadTrash()]);
         await logActivity({
           user: "manager",
           action: "restore",
@@ -219,7 +220,7 @@ export default function TrashPage() {
     const toastId = toastLoading("جاري الاستعادة الجماعية...", `معالجة ${selectedIds.length} عنصر في Supabase`);
     try {
       const restored = await bulkRestore(selectedIds);
-      await reloadAllData();
+      await Promise.all([reloadAllData(), reloadTrash()]);
       await logActivity({
         user: "manager",
         action: "restore",
@@ -243,6 +244,7 @@ export default function TrashPage() {
       const toastId = toastLoading("جاري الحذف النهائي...", `حذف "${targetSingleItem.entityName}" من Supabase`);
       try {
         await permanentDelete(targetSingleItem.id);
+        await reloadTrash();
         await logActivity({
           user: "manager",
           action: "delete",
@@ -259,6 +261,7 @@ export default function TrashPage() {
       const toastId = toastLoading("جاري الحذف النهائي الجماعي...", `حذف ${selectedIds.length} عنصر من Supabase`);
       try {
         await bulkPermanentDelete(selectedIds);
+        await reloadTrash();
         await logActivity({
           user: "manager",
           action: "delete",
