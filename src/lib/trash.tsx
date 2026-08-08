@@ -179,11 +179,13 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const restore = useCallback(async (id: string): Promise<TrashItem | null> => {
-    const item = items.find((i) => i.id === id);
+    const { data: freshRow } = await supabase.from("trash").select("*").eq("id", id).maybeSingle();
+    const item = freshRow ? rowToTrash(freshRow) : items.find((i) => i.id === id);
     if (!item) return null;
 
     const eType = (item.entity || (item as any).type || "product").toLowerCase();
-    const targetEntityId = item.entityId || item.id;
+    const dataId = item.data?.id as string | undefined;
+    const targetEntityId = item.entityId && item.entityId !== item.id ? item.entityId : (dataId || item.entityId || item.id);
 
     // 1. Re-insert item back to original Supabase table
     if (eType === "product" && item.data) {
@@ -226,6 +228,7 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     }
 
     setItems((prev) => prev.filter((i) => i.id !== id));
+    await new Promise((resolve) => setTimeout(resolve, 150));
     await reloadTrash();
     return item;
   }, [items, reloadTrash]);
@@ -235,7 +238,10 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     onProgress?: (processed: number, total: number) => void
   ): Promise<TrashItem[]> => {
     if (!ids || ids.length === 0) return [];
-    const restoredItems = items.filter((i) => ids.includes(i.id));
+    
+    // Fetch fresh rows from Supabase for all requested IDs to bypass any stale closures
+    const { data: freshRows } = await supabase.from("trash").select("*").in("id", ids);
+    const restoredItems = freshRows && freshRows.length > 0 ? freshRows.map(rowToTrash) : items.filter((i) => ids.includes(i.id));
 
     const getItemsByEntityType = (entityType: string) => {
       return restoredItems.filter((i) => {
@@ -250,7 +256,8 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
       const chunk = productsToRestore.slice(i, i + CHUNK_SIZE);
       const rows = chunk.map((item) => {
         const r = productToRow(item.data);
-        const targetId = item.entityId || item.id;
+        const dataId = item.data?.id as string | undefined;
+        const targetId = item.entityId && item.entityId !== item.id ? item.entityId : (dataId || item.entityId || item.id);
         if (targetId && isUUID(targetId)) r.id = targetId;
         return r;
       });
@@ -263,7 +270,8 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
       const chunk = suppliersToRestore.slice(i, i + CHUNK_SIZE);
       const rows = chunk.map((item) => {
         const r = supplierToRow(item.data);
-        const targetId = item.entityId || item.id;
+        const dataId = item.data?.id as string | undefined;
+        const targetId = item.entityId && item.entityId !== item.id ? item.entityId : (dataId || item.entityId || item.id);
         if (targetId && isUUID(targetId)) r.id = targetId;
         return r;
       });
@@ -276,7 +284,8 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
       const chunk = categoriesToRestore.slice(i, i + CHUNK_SIZE);
       const rows = chunk.map((item) => {
         const r = categoryToRow(item.data);
-        const targetId = item.entityId || item.id;
+        const dataId = item.data?.id as string | undefined;
+        const targetId = item.entityId && item.entityId !== item.id ? item.entityId : (dataId || item.entityId || item.id);
         if (targetId && isUUID(targetId)) r.id = targetId;
         return r;
       });
@@ -310,15 +319,20 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
 
     const idSet = new Set(ids);
     setItems((prev) => prev.filter((i) => !idSet.has(i.id)));
+    await new Promise((resolve) => setTimeout(resolve, 150));
     await reloadTrash();
     return restoredItems;
   }, [items, reloadTrash]);
 
   const permanentDelete = useCallback(async (id: string) => {
-    const item = items.find((i) => i.id === id);
+    // 1. Fetch fresh row directly from Supabase trash table to eliminate stale state closures
+    const { data: freshRow } = await supabase.from("trash").select("*").eq("id", id).maybeSingle();
+    const item = freshRow ? rowToTrash(freshRow) : items.find((i) => i.id === id);
+
     if (item) {
       const eType = (item.entity || (item as any).type || "").toLowerCase();
-      const targetId = item.entityId || item.id;
+      const dataId = item.data?.id as string | undefined;
+      const targetId = item.entityId && item.entityId !== item.id ? item.entityId : (dataId || item.entityId || item.id);
 
       if (targetId && isUUID(targetId)) {
         if (eType === "product") {
@@ -347,6 +361,7 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
     }
 
     setItems((prev) => prev.filter((i) => i.id !== id));
+    await new Promise((resolve) => setTimeout(resolve, 150));
     await reloadTrash();
   }, [items, reloadTrash]);
 
@@ -362,23 +377,37 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
 
       for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
         const chunk = ids.slice(i, i + CHUNK_SIZE);
-        const itemsInChunk = items.filter((item) => chunk.includes(item.id));
 
-        // Helper to extract valid UUID entity IDs for target tables (fallback: item.entityId || item.id)
+        // 1. Fetch fresh chunk rows directly from Supabase trash table to eliminate stale state closures
+        const { data: freshChunkRows, error: fetchErr } = await supabase
+          .from("trash")
+          .select("*")
+          .in("id", chunk);
+
+        if (fetchErr) {
+          console.error("خطأ جلب سجلات السلة المحدثة:", fetchErr);
+        }
+
+        const rowsToProcess = freshChunkRows && freshChunkRows.length > 0
+          ? freshChunkRows.map(rowToTrash)
+          : items.filter((item) => chunk.includes(item.id));
+
+        // 2. Dual ID Mapping & Multi-table Deletion (item.entityId, item.data.id, item.id)
         const getEntityIds = (entityType: string) => {
-          return itemsInChunk
+          return rowsToProcess
             .filter((item) => {
               const eType = (item.entity || (item as any).type || "").toLowerCase();
               return eType === entityType;
             })
             .map((item) => {
-              const targetId = item.entityId || item.id;
-              return isUUID(targetId) ? targetId : null;
+              const dataId = item.data?.id as string | undefined;
+              const candidate = item.entityId && item.entityId !== item.id ? item.entityId : (dataId || item.entityId || item.id);
+              return candidate && isUUID(candidate) ? candidate : null;
             })
             .filter((id): id is string => Boolean(id));
         };
 
-        // 1. Delete original entity records from target tables (throw Error on failure to prevent silent deletion drops)
+        // Products
         const productEntityIds = getEntityIds("product");
         if (productEntityIds.length > 0) {
           const { error: prodError } = await supabase.from("products").delete().in("id", productEntityIds);
@@ -388,6 +417,7 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
+        // Suppliers
         const supplierEntityIds = getEntityIds("supplier");
         if (supplierEntityIds.length > 0) {
           const { error: supError } = await supabase.from("suppliers").delete().in("id", supplierEntityIds);
@@ -397,6 +427,7 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
+        // Categories
         const categoryEntityIds = getEntityIds("category");
         if (categoryEntityIds.length > 0) {
           const { error: catError } = await supabase.from("categories").delete().in("id", categoryEntityIds);
@@ -406,6 +437,7 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
+        // Customers
         const customerEntityIds = getEntityIds("customer");
         if (customerEntityIds.length > 0) {
           const { error: custError } = await supabase.from("customers").delete().in("id", customerEntityIds);
@@ -415,6 +447,7 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
+        // Orders
         const orderEntityIds = getEntityIds("order");
         if (orderEntityIds.length > 0) {
           const { error: ordError } = await supabase.from("orders").delete().in("id", orderEntityIds);
@@ -424,7 +457,7 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        // 2. Delete entries from trash table in Supabase
+        // 3. Delete from trash table in Supabase
         const { error: trashError } = await supabase.from("trash").delete().in("id", chunk);
         if (trashError) {
           console.error("خطأ حذف سجلات السلة من Supabase:", trashError);
@@ -437,11 +470,12 @@ export function TrashProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // 3. Update local state
+      // 4. Optimistic state update
       const idSet = new Set(ids);
       setItems((prev) => prev.filter((item) => !idSet.has(item.id)));
 
-      // 4. Revalidate data from server for 100% sync
+      // 5. Brief propagation delay before server revalidation
+      await new Promise((resolve) => setTimeout(resolve, 150));
       await reloadTrash();
     },
     [items, reloadTrash]
