@@ -70,7 +70,12 @@ function rowToProduct(row: Record<string, unknown>): Product {
 }
 
 export function productToRow(product: Record<string, unknown>): Record<string, unknown> {
-  const row: Record<string, unknown> = {};
+  const row: Record<string, unknown> = {
+    is_active: true,
+    is_published: true,
+    status: "active",
+    is_deleted: false,
+  };
   if ("name" in product) row.name = product.name;
   if ("image" in product) row.image = product.image || "";
   if ("costPrice" in product) row.cost_price = Number(product.costPrice) || 0;
@@ -81,6 +86,10 @@ export function productToRow(product: Record<string, unknown>): Record<string, u
   if ("supplierId" in product) {
     const sid = String(product.supplierId || "").trim();
     row.supplier_id = isUUID(sid) ? sid : null;
+  }
+  if ("category_id" in product && product.category_id) {
+    const cid = String(product.category_id).trim();
+    if (isUUID(cid)) row.category_id = cid;
   }
   if ("notes" in product) row.notes = product.notes || "";
   return row;

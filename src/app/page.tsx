@@ -48,7 +48,7 @@ interface Post {
 
 export default function Home() {
   const { settings, toggleDarkMode, toggleEyeProtection } = useSettings();
-  const { products, suppliers } = useData();
+  const { products, suppliers, categories } = useData();
   const { addItem, itemCount } = useCart();
   const { user, signOut, loading: authLoading } = useAuth();
   const { t, lang, setLang } = useLang();
@@ -83,23 +83,23 @@ export default function Home() {
 
   const isManager = user?.role === "manager" || user?.role === "admin";
 
-  const allAvailableProducts = useMemo(() => products.filter((p) => p.stock > 0), [products]);
+  const allAvailableProducts = useMemo(() => products, [products]);
 
-  // Extract all categories dynamically from product notes / category fields
+  // Extract all categories dynamically from categories context and product notes
   const categoriesList = useMemo(() => {
     const set = new Set<string>();
+    categories.forEach((c) => {
+      if (c.name) set.add(c.name.trim());
+    });
     products.forEach((p) => {
       if (!p.notes) return;
       if (p.notes.includes("الفئة:")) {
         const cat = p.notes.split("الفئة:")[1]?.split("|")[0]?.trim();
         if (cat) set.add(cat);
-      } else {
-        const parts = p.notes.split(/[\n|,]/);
-        if (parts[0] && parts[0].length <= 35) set.add(parts[0].trim());
       }
     });
     return Array.from(set).filter(Boolean);
-  }, [products]);
+  }, [products, categories]);
 
   const textFilteredProducts = useMemo(() => {
     let result = allAvailableProducts;
