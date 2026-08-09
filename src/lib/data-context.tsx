@@ -446,7 +446,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         updatedRow = upsertData;
       } else if (upsertError) {
         console.warn("Primary category upsert error, trying image_url fallback:", upsertError.message);
-        const altUpsert = { ...upsertRow, image_url: upsertRow.image };
+        const altUpsert: Record<string, unknown> = { ...upsertRow, image_url: upsertRow.image };
         delete altUpsert.image;
         const { data: altUpsertData } = await supabase
           .from("categories")
