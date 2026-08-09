@@ -45,10 +45,11 @@ export default function MissingDataModal({
   const [showBulkStockPrompt, setShowBulkStockPrompt] = useState<boolean>(false);
 
   useEffect(() => {
-    setItems(incompleteItems);
-    // By default, select all incomplete rows
-    setSelectedRowIndexes(new Set(incompleteItems.map((i) => i.rowIndex)));
-  }, [incompleteItems]);
+    if (isOpen) {
+      setItems(incompleteItems);
+      setSelectedRowIndexes(new Set(incompleteItems.map((i) => i.rowIndex)));
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

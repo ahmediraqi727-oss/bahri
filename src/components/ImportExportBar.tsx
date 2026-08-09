@@ -85,6 +85,11 @@ export default function ImportExportBar() {
     const incompleteItems: IncompleteImportItem[] = [];
 
     for (let idx = 0; idx < rows.length; idx++) {
+      // Yield to browser event loop every 50 items to prevent UI freezing on large files
+      if (idx > 0 && idx % 50 === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
       const row = rows[idx];
       const rowIndex = idx + 2; // Excel/CSV row number (header is row 1)
 
@@ -137,7 +142,6 @@ export default function ImportExportBar() {
       const stock = hasStockValue ? parseInt(String(rawStockVal)) || 0 : 0;
 
       const supplierVal = findVal(row, ["supplier", "supplierid", "supplier_id", "supplier_name", "vendor", "المورد", "اسم المورد", "مورد", "المزود"]);
-      const supplierPhone = String(findVal(row, ["معلومات اتصال المورد", "هاتف المورد", "رقم المورد", "تلفون المورد"]) || "");
       let supplierId = "";
 
       if (supplierVal) {
@@ -145,20 +149,6 @@ export default function ImportExportBar() {
         const lowerSup = rawSup.toLowerCase();
         if (supplierMap.has(lowerSup)) {
           supplierId = supplierMap.get(lowerSup)!;
-        } else if (rawSup.length > 0) {
-          try {
-            const newSup = await addSupplier({
-              name: rawSup,
-              phone: supplierPhone,
-              email: "",
-              address: "",
-              notes: "أُضيف تلقائياً أثناء استيراد الملفات",
-            });
-            supplierId = newSup.id;
-            supplierMap.set(lowerSup, newSup.id);
-          } catch {
-            supplierId = "";
-          }
         }
       }
 
@@ -181,7 +171,7 @@ export default function ImportExportBar() {
       if (nameMissing || retailMissing || costMissing || stockMissing) {
         incompleteItems.push({
           rowIndex,
-          rawRow: row,
+          rawRow: {},
           name: nameStr,
           costPrice,
           wholesalePrice,
