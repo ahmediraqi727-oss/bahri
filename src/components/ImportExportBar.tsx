@@ -79,7 +79,8 @@ export default function ImportExportBar() {
   // ─── Parse rows from workbook into mapped product objects (Valid vs Incomplete) ───
   const parseRowsToProducts = async (
     rows: Record<string, any>[],
-    supplierMap: Map<string, string>
+    supplierMap: Map<string, string>,
+    hasStockHeader: boolean = true
   ): Promise<{ validProducts: Partial<Product>[]; incompleteItems: IncompleteImportItem[] }> => {
     const validProducts: Partial<Product>[] = [];
     const incompleteItems: IncompleteImportItem[] = [];
@@ -97,7 +98,7 @@ export default function ImportExportBar() {
       const nameStr = nameVal ? String(nameVal).trim() : "";
 
       // Extract raw price candidate values using clean parsePrice
-      const rawCostVal = findVal(row, ["costprice", "cost_price", "cost", "buyingprice", "buying_price", "التكلفة / الكلفة", "سعر التكلفة", "التكلفة", "تكلفة", "الكلفة", "كلفة", "سعر الكلفة", "سعر الشراء"]);
+      const rawCostVal = findVal(row, ["costprice", "cost_price", "cost", "buyingprice", "buying_price", "التكلفة / الكلفة", "سعر التكلفة", "التكلفة (الجملة)", "تكلفة (الجملة)", "التكلفة", "تكلفة", "الكلفة", "كلفة", "سعر الكلفة", "سعر الشراء"]);
       const rawWholesaleVal = findVal(row, ["wholesaleprice", "wholesale_price", "wholesale", "سعر الجملة", "الجملة", "جملة"]);
       const rawRetailVal = findVal(row, ["retailprice", "retail_price", "retail", "price", "sellingprice", "selling_price", "unit_price", "سعر المفرد", "المفرد", "مفرد", "السعر", "سعر البيع", "سعر"]);
       const profitMargin = parsePrice(findVal(row, ["profitmargin", "profit_margin", "profit", "margin", "هامش الربح", "الربح", "نسبة الربح"]));
@@ -139,7 +140,8 @@ export default function ImportExportBar() {
 
       const rawStockVal = findVal(row, ["stock", "quantity", "qty", "count", "inventory", "available", "الكمية", "المخزون", "العدد", "الرصيد", "متاح"]);
       const hasStockValue = rawStockVal !== undefined && rawStockVal !== "";
-      const stock = hasStockValue ? parseInt(String(rawStockVal)) || 0 : 0;
+      // If the file has no stock header, default to 10 as safe stock
+      const stock = hasStockValue ? parseInt(String(rawStockVal)) || 0 : (hasStockHeader ? 0 : 10);
 
       const supplierVal = findVal(row, ["supplier", "supplierid", "supplier_id", "supplier_name", "vendor", "المورد", "اسم المورد", "مورد", "المزود"]);
       let supplierId = "";
@@ -161,7 +163,7 @@ export default function ImportExportBar() {
       const nameMissing = !nameStr || nameStr.length === 0;
       const retailMissing = retailPrice <= 0 || isNaN(retailPrice);
       const costMissing = costPrice <= 0 || isNaN(costPrice);
-      const stockMissing = !hasStockValue || isNaN(stock);
+      const stockMissing = hasStockHeader ? (!hasStockValue || isNaN(stock)) : false;
 
       // If entirely empty row, skip completely
       if (nameMissing && retailMissing && costMissing && stockMissing && !desc && !image) {
@@ -303,7 +305,18 @@ export default function ImportExportBar() {
           supplierMap.set(s.name.trim().toLowerCase(), s.id);
         });
 
-        const { validProducts, incompleteItems } = await parseRowsToProducts(rows, supplierMap);
+        const hasStockHeader = Boolean(validation.detectedColumns?.stock);
+        const { validProducts, incompleteItems } = await parseRowsToProducts(rows, supplierMap, hasStockHeader);
+
+        // ── Self-Diagnostics Logger (Prints diagnostic report for Excel files) ──
+        console.log("🔍 [Import Diagnostics] File:", file.name);
+        console.log("🔍 [Import Diagnostics] Headers Detected:", headerRow);
+        console.log("🔍 [Import Diagnostics] Detected Columns:", validation.detectedColumns);
+        console.log("🔍 [Import Diagnostics] Sample First 5 Rows:", rows.slice(0, 5));
+        console.log("🔍 [Import Diagnostics] Parsed Result:", {
+          validCount: validProducts.length,
+          incompleteCount: incompleteItems.length,
+        });
 
         if (validProducts.length === 0 && incompleteItems.length === 0) {
           toastError(
