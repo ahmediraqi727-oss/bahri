@@ -786,7 +786,7 @@ export default function ProductsPage() {
                   <th className="p-2 text-center font-bold text-blue-600 dark:text-blue-400">المفرد</th>
                   {isAdminOrManager && <th className="p-2 text-center font-bold text-gray-700 dark:text-gray-300">الكمية</th>}
                   {isAdminOrManager && <th className="p-1.5 font-bold text-gray-700 dark:text-gray-300 text-center max-w-[75px] leading-tight">المورد</th>}
-                  {isAdminOrManager && <th className="p-2.5 text-center font-bold text-gray-700 dark:text-gray-300 whitespace-nowrap sticky left-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-md border-r border-gray-200 dark:border-gray-700">إجراءات</th>}
+                  {isAdminOrManager && <th className="p-2 text-center font-bold text-gray-700 dark:text-gray-300 w-24 sm:w-28 whitespace-nowrap sticky left-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-md border-r border-gray-200 dark:border-gray-700">إجراءات</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -885,24 +885,28 @@ export default function ProductsPage() {
                       )}
 
                       {isAdminOrManager && (
-                        <td className={`p-2 whitespace-nowrap sticky left-0 z-10 transition-colors ${rowBg} shadow-md border-r border-gray-200 dark:border-gray-700`}>
-                          <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
-                            <button
-                              onClick={() => { setEditingProduct(product); setModalOpen(true); }}
-                              className="px-2 py-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded text-[11px] font-bold border border-blue-200 dark:border-blue-800 inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
-                              title="تعديل"
-                            >
-                              <span>✏️</span>
-                              <span>تعديل</span>
-                            </button>
-                            <button
-                              onClick={() => setDeleteConfirm(product.id)}
-                              className="px-2 py-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded text-[11px] font-bold border border-red-200 dark:border-red-800 inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
-                              title="حذف"
-                            >
-                              <span>🗑️</span>
-                              <span>حذف</span>
-                            </button>
+                        <td className={`p-1.5 sm:p-2 w-24 sm:w-28 whitespace-nowrap sticky left-0 z-10 transition-colors ${rowBg} shadow-md border-r border-gray-200 dark:border-gray-700`}>
+                          <div className="flex items-center justify-center gap-1 sm:gap-1.5 whitespace-nowrap">
+                            {canEdit && (
+                              <button
+                                onClick={() => { setEditingProduct(product); setModalOpen(true); }}
+                                className="px-2 py-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg text-[11px] font-bold border border-blue-200 dark:border-blue-800 inline-flex items-center justify-center gap-1 transition-all active:scale-95 shrink-0"
+                                title="تعديل المنتج"
+                              >
+                                <span>✏️</span>
+                                <span className="hidden md:inline">تعديل</span>
+                              </button>
+                            )}
+                            {canDelete && (
+                              <button
+                                onClick={() => setDeleteConfirm(product.id)}
+                                className="px-2 py-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg text-[11px] font-bold border border-red-200 dark:border-red-800 inline-flex items-center justify-center gap-1 transition-all active:scale-95 shrink-0"
+                                title="حذف المنتج"
+                              >
+                                <span>🗑️</span>
+                                <span className="hidden md:inline">حذف</span>
+                              </button>
+                            )}
                           </div>
                         </td>
                       )}
