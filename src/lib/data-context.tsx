@@ -679,10 +679,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               .upsert(jChunk, { onConflict: "product_id,category_id", ignoreDuplicates: true });
 
             if (jErr) {
-              await supabase
-                .from("product_categories")
-                .insert(jChunk)
-                .catch(() => null);
+              try {
+                await supabase
+                  .from("product_categories")
+                  .insert(jChunk);
+              } catch {
+                // ignore duplicate error if insert fails
+              }
             }
           }
         } catch (jError) {
