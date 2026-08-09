@@ -98,7 +98,17 @@ export default function CategoriesManager() {
 
   // Active Category object if editing
   const activeCategory = useMemo(() => {
-    return allAvailableCategories.find((c) => c.id === selectedCategoryId || c.name === selectedCategoryId);
+    if (!selectedCategoryId) return undefined;
+    const extractedCleanName = selectedCategoryId.startsWith("extracted-")
+      ? selectedCategoryId.replace(/^extracted-/, "").trim().toLowerCase()
+      : selectedCategoryId.trim().toLowerCase();
+
+    return allAvailableCategories.find(
+      (c) =>
+        c.id === selectedCategoryId ||
+        c.name.toLowerCase() === selectedCategoryId.toLowerCase() ||
+        c.name.toLowerCase() === extractedCleanName
+    );
   }, [allAvailableCategories, selectedCategoryId]);
 
   // Handle click outside for combobox dropdown
@@ -210,16 +220,21 @@ export default function CategoriesManager() {
           isActive: true,
         });
         setSelectedCategoryId(catObj.id);
-      } else if (activeCategory) {
-        await updateCategory(activeCategory.id, {
+      } else {
+        const targetId = activeCategory ? activeCategory.id : selectedCategoryId;
+        catObj = await updateCategory(targetId, {
           name: catName.trim(),
           image: catImage,
           priority: catPriority,
           keywords: catKeywords.trim(),
         });
-        catObj = { ...activeCategory, name: catName.trim(), image: catImage, priority: catPriority, keywords: catKeywords.trim() };
-      } else {
-        return;
+        if (catObj && catObj.id) {
+          setSelectedCategoryId(catObj.id);
+        }
+      }
+
+      if (catObj && catObj.image) {
+        setCatImage(catObj.image);
       }
 
       // Update product tags in notes for associated products

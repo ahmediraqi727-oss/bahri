@@ -365,25 +365,46 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setSuppliers((prev) => prev.filter((s) => s.id !== id));
   }, []);
 
-  const addCategory = useCallback(async (cat: Omit<CategoryItem, "id">) => {
+  const addCategory = useCallback(async (cat: Omit<CategoryItem, "id">): Promise<CategoryItem> => {
     const row = categoryToRow(cat);
+    let createdRow: Record<string, unknown> | null = null;
+
     const { data: created, error } = await supabase
       .from("categories")
       .upsert({ ...row, name: cat.name }, { onConflict: "name" })
       .select()
       .maybeSingle();
 
-    if (error || !created) {
+    if (!error && created) {
+      createdRow = created;
+    } else if (error) {
+      console.warn("Primary addCategory error, attempting fallback with image_url column:", error.message);
+      const altRow = { ...row, name: cat.name, image_url: cat.image };
+      delete altRow.image;
+      const { data: altCreated } = await supabase
+        .from("categories")
+        .upsert(altRow, { onConflict: "name" })
+        .select()
+        .maybeSingle();
+      if (altCreated) createdRow = altCreated;
+    }
+
+    if (!createdRow) {
       const localCat: CategoryItem = { id: Date.now().toString(), ...cat };
-      setCategories((prev) => [...prev, localCat].sort((a, b) => (a.priority || 0) - (b.priority || 0)));
+      setCategories((prev) => [...prev.filter((c) => c.name.toLowerCase() !== localCat.name.toLowerCase()), localCat].sort((a, b) => (a.priority || 0) - (b.priority || 0)));
       return localCat;
     }
-    const newCat = rowToCategory(created);
-    setCategories((prev) => [...prev, newCat].sort((a, b) => (a.priority || 0) - (b.priority || 0)));
+
+    const newCat = rowToCategory(createdRow);
+    setCategories((prev) => {
+      const filtered = prev.filter((c) => c.name.toLowerCase() !== newCat.name.toLowerCase());
+      return [...filtered, newCat].sort((a, b) => (a.priority || 0) - (b.priority || 0));
+    });
+
     return newCat;
   }, []);
 
-  const updateCategory = useCallback(async (id: string, updates: Partial<CategoryItem>) => {
+  const updateCategory = useCallback(async (id: string, updates: Partial<CategoryItem>): Promise<CategoryItem> => {
     const row = categoryToRow(updates);
     let updatedRow: Record<string, unknown> | null = null;
 
@@ -391,6 +412,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const { data, error } = await supabase.from("categories").update(row).eq("id", id).select().maybeSingle();
       if (!error && data) {
         updatedRow = data;
+      } else if (error) {
+        console.warn("Primary updateCategory error, trying image_url column fallback:", error.message);
+        const altRow = { ...row };
+        if ("image" in altRow) {
+          altRow.image_url = altRow.image;
+          delete altRow.image;
+        }
+        const { data: altData } = await supabase.from("categories").update(altRow).eq("id", id).select().maybeSingle();
+        if (altData) updatedRow = altData;
       }
     }
 
@@ -405,31 +435,46 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         is_active: updates.isActive !== false,
         keywords: updates.keywords || "",
       };
-      const { data: upsertData } = await supabase
+
+      const { data: upsertData, error: upsertError } = await supabase
         .from("categories")
         .upsert(upsertRow, { onConflict: "name" })
         .select()
         .maybeSingle();
 
-      if (upsertData) {
+      if (!upsertError && upsertData) {
         updatedRow = upsertData;
+      } else if (upsertError) {
+        console.warn("Primary category upsert error, trying image_url fallback:", upsertError.message);
+        const altUpsert = { ...upsertRow, image_url: upsertRow.image };
+        delete altUpsert.image;
+        const { data: altUpsertData } = await supabase
+          .from("categories")
+          .upsert(altUpsert, { onConflict: "name" })
+          .select()
+          .maybeSingle();
+        if (altUpsertData) updatedRow = altUpsertData;
       }
     }
 
+    let finalCat: CategoryItem;
     if (updatedRow) {
-      const cat = rowToCategory(updatedRow);
-      setCategories((prev) =>
-        prev
-          .map((c) => (c.id === id || c.name.toLowerCase() === cat.name.toLowerCase() ? cat : c))
-          .sort((a, b) => (a.priority || 0) - (b.priority || 0))
-      );
+      finalCat = rowToCategory(updatedRow);
     } else {
-      setCategories((prev) =>
-        prev
-          .map((c) => (c.id === id ? { ...c, ...updates } : c))
-          .sort((a, b) => (a.priority || 0) - (b.priority || 0))
-      );
+      finalCat = { id, name: updates.name || "", image: updates.image || "", priority: updates.priority || 1, isActive: updates.isActive !== false, keywords: updates.keywords || "" };
     }
+
+    setCategories((prev) => {
+      const existingIdx = prev.findIndex((c) => c.id === id || c.name.toLowerCase() === finalCat.name.toLowerCase());
+      if (existingIdx >= 0) {
+        const next = [...prev];
+        next[existingIdx] = { ...next[existingIdx], ...finalCat };
+        return next.sort((a, b) => (a.priority || 0) - (b.priority || 0));
+      }
+      return [...prev, finalCat].sort((a, b) => (a.priority || 0) - (b.priority || 0));
+    });
+
+    return finalCat;
   }, []);
 
   const deleteCategory = useCallback(async (id: string) => {
