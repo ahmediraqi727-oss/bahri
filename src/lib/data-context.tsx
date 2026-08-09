@@ -604,7 +604,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // 3. Map products to rows and include mapped category_id
+      // 3. Map products to rows and collect Many-to-Many category relationships
+      const productCategoryPairs: { productName: string; categoryId: string }[] = [];
+
       const rows = items.map((item) => {
         const row = productToRow(item);
 
@@ -614,27 +616,40 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           const mappedCatId = categoryIdMap.get(catNameClean);
           if (mappedCatId) {
             row.category_id = mappedCatId;
+            productCategoryPairs.push({
+              productName: item.name.trim(),
+              categoryId: mappedCatId,
+            });
           }
         }
         return row;
       });
 
-      // 4. Send product rows in batch chunks (CHUNK_SIZE = 50) using upsert
+      // 4. Send product rows in batch chunks (CHUNK_SIZE = 50) using upsert by name
       const CHUNK_SIZE = 50;
       let processed = 0;
       const total = rows.length;
+      const createdProductMap = new Map<string, string>(); // Map (cleanName -> product_id)
 
       for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
         const chunk = rows.slice(i, i + CHUNK_SIZE);
 
-        const { error } = await supabase
+        const { data: insertedProducts, error } = await supabase
           .from("products")
           .upsert(chunk, { onConflict: "name" })
-          .select("id");
+          .select("id, name");
 
         if (error) {
           console.error("خطأ Supabase أثناء إدخال الدفعة:", error);
           throw new Error(`فشل حفظ المنتجات في Supabase: ${error.message} [Code: ${error.code}]`);
+        }
+
+        if (insertedProducts) {
+          insertedProducts.forEach((p) => {
+            if (p.id && p.name) {
+              createdProductMap.set(p.name.trim().toLowerCase(), p.id);
+            }
+          });
         }
 
         processed += chunk.length;
@@ -643,7 +658,39 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // 5. Server revalidation
+      // 5. Populate Many-to-Many product-category relationships in 'product_categories'
+      const junctionRowsToInsert: { product_id: string; category_id: string }[] = [];
+      productCategoryPairs.forEach((pair) => {
+        const productId = createdProductMap.get(pair.productName.toLowerCase());
+        if (productId && pair.categoryId) {
+          junctionRowsToInsert.push({
+            product_id: productId,
+            category_id: pair.categoryId,
+          });
+        }
+      });
+
+      if (junctionRowsToInsert.length > 0) {
+        try {
+          for (let j = 0; j < junctionRowsToInsert.length; j += CHUNK_SIZE) {
+            const jChunk = junctionRowsToInsert.slice(j, j + CHUNK_SIZE);
+            const { error: jErr } = await supabase
+              .from("product_categories")
+              .upsert(jChunk, { onConflict: "product_id,category_id", ignoreDuplicates: true });
+
+            if (jErr) {
+              await supabase
+                .from("product_categories")
+                .insert(jChunk)
+                .catch(() => null);
+            }
+          }
+        } catch (jError) {
+          console.warn("إشعار تحديث الجدول الوسيط (product_categories):", jError);
+        }
+      }
+
+      // 6. Server revalidation
       await reloadAllData();
       return items.length;
     },
