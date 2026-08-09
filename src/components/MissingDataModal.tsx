@@ -44,10 +44,14 @@ export default function MissingDataModal({
   const [bulkStockInput, setBulkStockInput] = useState<string>("");
   const [showBulkStockPrompt, setShowBulkStockPrompt] = useState<boolean>(false);
 
+  // Sync state safely ONLY when modal opens
   useEffect(() => {
     if (isOpen) {
-      setItems(incompleteItems);
-      setSelectedRowIndexes(new Set(incompleteItems.map((i) => i.rowIndex)));
+      const safeItems = Array.isArray(incompleteItems) ? incompleteItems : [];
+      setItems(safeItems);
+      setSelectedRowIndexes(new Set(safeItems.map((i) => i.rowIndex)));
+      setBulkStockInput("");
+      setShowBulkStockPrompt(false);
     }
   }, [isOpen]);
 
@@ -84,6 +88,7 @@ export default function MissingDataModal({
     val: any
   ) => {
     setItems((prev) => {
+      if (index < 0 || index >= prev.length) return prev;
       const next = [...prev];
       const target = { ...next[index] };
       (target as any)[field] = val;
@@ -107,6 +112,7 @@ export default function MissingDataModal({
   };
 
   const handleRemoveItem = (index: number) => {
+    if (index < 0 || index >= items.length) return;
     const targetRowIndex = items[index].rowIndex;
     setItems((prev) => prev.filter((_, i) => i !== index));
     setSelectedRowIndexes((prev) => {
@@ -131,12 +137,12 @@ export default function MissingDataModal({
           return item;
         }
 
-        let name = item.name.trim();
+        let name = item.name ? item.name.trim() : "";
         if (!name) name = `منتج غير معنون #${item.rowIndex}`;
 
-        let retail = item.retailPrice;
-        let cost = item.costPrice;
-        let wholesale = item.wholesalePrice;
+        let retail = item.retailPrice || 0;
+        let cost = item.costPrice || 0;
+        let wholesale = item.wholesalePrice || 0;
         let stock = item.stock;
 
         if (stock <= 0 || isNaN(stock)) stock = 10;
