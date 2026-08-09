@@ -90,122 +90,8 @@ export default function DateFilterPanel({
   // Selection
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // Bulk action
-  const [bulkActionOpen, setBulkActionOpen] = useState(false);
-  const [bulkCategory, setBulkCategory] = useState("");
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
   // Panel collapse
   const [collapsed, setCollapsed] = useState(false);
-
-  // ── Filtered products ──────────────────────────────────────────────────────
-  const filteredProducts = useMemo(
-    () =>
-      filterProductsByDate(products, filter).sort((a, b) => {
-        const da = a.createdAt || "";
-        const db = b.createdAt || "";
-        return sortDir === "desc" ? db.localeCompare(da) : da.localeCompare(db);
-      }),
-    [products, filter, sortDir]
-  );
-
-  const grouped = useMemo(() => groupByDate(filteredProducts), [filteredProducts]);
-
-  // ── Stats ──────────────────────────────────────────────────────────────────
-  const stats = useMemo(() => {
-    const totalStock = filteredProducts.reduce((s, p) => s + p.stock, 0);
-    const totalValue = filteredProducts.reduce((s, p) => s + p.retailPrice * p.stock, 0);
-    return { count: filteredProducts.length, totalStock, totalValue };
-  }, [filteredProducts]);
-
-  // ── Preset handler ─────────────────────────────────────────────────────────
-  const applyPreset = useCallback(
-    (preset: DatePreset) => {
-      setActivePreset(preset);
-      if (preset === "custom") {
-        if (customFrom && customTo) {
-          setFilter({ preset: "custom", from: customFrom, to: customTo });
-        }
-      } else {
-        setFilter({ preset });
-      }
-      setSelectedIds([]);
-    },
-    [customFrom, customTo]
-  );
-
-  const applyCustomRange = () => {
-    if (!customFrom || !customTo) return;
-    setFilter({ preset: "custom", from: customFrom, to: customTo });
-    setActivePreset("custom");
-    setSelectedIds([]);
-  };
-
-  const clearFilter = () => {
-    setFilter(null);
-    setActivePreset(null);
-    setSelectedIds([]);
-    onSelectionChange([]);
-  };
-
-  // ── Selection handlers ─────────────────────────────────────────────────────
-  const isAllSelected =
-    filteredProducts.length > 0 &&
-    filteredProducts.every((p) => selectedIds.includes(p.id));
-
-  const toggleSelectAll = () => {
-    const next = isAllSelected ? [] : filteredProducts.map((p) => p.id);
-    setSelectedIds(next);
-    onSelectionChange(next);
-  };
-
-  const toggleSelectOne = (id: string) => {
-    const next = selectedIds.includes(id)
-      ? selectedIds.filter((x) => x !== id)
-      : [...selectedIds, id];
-    setSelectedIds(next);
-    onSelectionChange(next);
-  };
-
-  const selectByDate = (date: string) => {
-    const dateProducts = grouped.get(date) || [];
-    const dateIds = dateProducts.map((p) => p.id);
-    const allSelected = dateIds.every((id) => selectedIds.includes(id));
-    const next = allSelected
-      ? selectedIds.filter((id) => !dateIds.includes(id))
-      : [...new Set([...selectedIds, ...dateIds])];
-    setSelectedIds(next);
-    onSelectionChange(next);
-  };
-
-  // ── Bulk actions ───────────────────────────────────────────────────────────
-  const handleBulkCategory = async () => {
-    if (!bulkCategory || selectedIds.length === 0) return;
-    setIsSubmitting(true);
-    try {
-      await onBulkAction("category", selectedIds, { category: bulkCategory });
-      setBulkActionOpen(false);
-      setBulkCategory("");
-      setSelectedIds([]);
-      onSelectionChange([]);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleBulkDelete = async () => {
-    if (selectedIds.length === 0) return;
-    setIsSubmitting(true);
-    try {
-      await onBulkAction("delete", selectedIds);
-      setDeleteConfirmOpen(false);
-      setSelectedIds([]);
-      onSelectionChange([]);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   // ── Date range label ───────────────────────────────────────────────────────
   const activeDateRangeLabel = useMemo(() => {
@@ -345,35 +231,7 @@ export default function DateFilterPanel({
             </div>
           )}
 
-          {/* ── Bulk Action Toolbar (when items selected) ─────────────────── */}
-          {selectedIds.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 p-3 bg-violet-50 dark:bg-violet-900/20 rounded-xl border border-violet-200 dark:border-violet-700 animate-fade-in">
-              <span className="text-xs font-bold text-violet-700 dark:text-violet-300">
-                {selectedIds.length} منتج محدد:
-              </span>
 
-              <button
-                onClick={() => setBulkActionOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition-all"
-              >
-                📁 نقل إلى قسم
-              </button>
-
-              <button
-                onClick={() => setDeleteConfirmOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all"
-              >
-                🗑️ حذف المحدد
-              </button>
-
-              <button
-                onClick={() => { setSelectedIds([]); onSelectionChange([]); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-xs font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-all"
-              >
-                ✕ إلغاء التحديد
-              </button>
-            </div>
-          )}
 
           {/* ── Products grouped by date ──────────────────────────────────── */}
           {filter && (
@@ -519,86 +377,7 @@ export default function DateFilterPanel({
         </div>
       )}
 
-      {/* ── Bulk Category Modal ─────────────────────────────────────────────── */}
-      {bulkActionOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" dir="rtl">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-md p-6">
-            <h3 className="text-base font-extrabold text-gray-800 dark:text-gray-100 mb-1">
-              📁 نقل المنتجات المحددة إلى قسم
-            </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-              سيتم نقل <strong>{selectedIds.length} منتج</strong> إلى القسم المختار
-            </p>
 
-            <select
-              value={bulkCategory}
-              onChange={(e) => setBulkCategory(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-100 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            >
-              <option value="">— اختر القسم —</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.name}>{c.name}</option>
-              ))}
-            </select>
-
-            <div className="flex gap-2">
-              <button
-                onClick={handleBulkCategory}
-                disabled={!bulkCategory || isSubmitting}
-                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm disabled:opacity-50 transition-all"
-              >
-                {isSubmitting ? "جاري النقل..." : "✅ تأكيد النقل"}
-              </button>
-              <button
-                onClick={() => setBulkActionOpen(false)}
-                className="px-4 py-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Delete Confirmation Modal ──────────────────────────────────────── */}
-      {deleteConfirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" dir="rtl">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-red-200 dark:border-red-800 w-full max-w-md p-6">
-            <div className="flex items-center gap-3 mb-3">
-              <span className="text-3xl">⚠️</span>
-              <div>
-                <h3 className="text-base font-extrabold text-red-700 dark:text-red-400">تأكيد الحذف الجماعي</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">هذا الإجراء لا يمكن التراجع عنه</p>
-              </div>
-            </div>
-
-            <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800 mb-4">
-              <p className="text-sm font-semibold text-red-700 dark:text-red-300">
-                سيتم حذف <strong>{selectedIds.length} منتج</strong> نهائياً من قاعدة البيانات.
-              </p>
-              <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                يُنصح بأخذ نسخة احتياطية قبل الحذف الجماعي.
-              </p>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={handleBulkDelete}
-                disabled={isSubmitting}
-                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm disabled:opacity-50 transition-all"
-              >
-                {isSubmitting ? "جاري الحذف..." : "🗑️ نعم، احذف المحدد"}
-              </button>
-              <button
-                onClick={() => setDeleteConfirmOpen(false)}
-                className="px-4 py-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
