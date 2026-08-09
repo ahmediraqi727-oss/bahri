@@ -363,18 +363,18 @@ export default function AccountsPage() {
                   <div className="flex items-center gap-2 pt-1 border-t border-gray-100 dark:border-gray-800">
                     <button
                       onClick={(e) => { e.stopPropagation(); handleUpgradeClick(account); }}
-                      className="flex-1 py-2.5 px-3 text-xs font-bold text-white rounded-xl shadow-sm hover:opacity-90 transition-all min-h-[40px] flex items-center justify-center gap-1.5"
+                      className="flex-1 py-2.5 px-3 text-xs font-bold text-white rounded-xl shadow-sm hover:opacity-90 transition-all min-h-[40px] flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0"
                       style={{ backgroundColor: ROLE_COLORS[account.role] === "#16a34a" ? "#2563eb" : ROLE_COLORS[account.role] === "#2563eb" ? "#dc2626" : "#7c3aed" }}
                     >
-                      <span>{account.role === "customer" ? "⬆ رفع صلاحيات" : account.role === "admin" ? "⬆ ترقية" : "👑 مدير"}</span>
+                      <span className="whitespace-nowrap">{account.role === "customer" ? "⬆ رفع صلاحيات" : account.role === "admin" ? "⬆ ترقية" : "👑 مدير"}</span>
                     </button>
 
                     <button
                       onClick={(e) => { e.stopPropagation(); setSelectedAccount(account); setShowDetail(true); }}
-                      className="flex-1 py-2.5 px-3 text-xs font-bold text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-xl border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 transition-all min-h-[40px]"
+                      className="flex-1 py-2.5 px-3 text-xs font-bold text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-xl border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 transition-all min-h-[40px] whitespace-nowrap shrink-0"
                     >
                       <span>👁️</span>
-                      <span>معاينة التفاصيل</span>
+                      <span className="whitespace-nowrap">معاينة التفاصيل</span>
                     </button>
                   </div>
                 </div>

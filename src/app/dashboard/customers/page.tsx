@@ -674,27 +674,27 @@ export default function CustomersPage() {
                         setSelectedCustomer(c);
                         setShowDetailModal(true);
                       }}
-                      className="flex-1 py-2 px-3 text-xs font-bold text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-xl border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 transition-all min-h-[40px]"
+                      className="flex-1 py-2 px-3 text-xs font-bold text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-xl border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 transition-all min-h-[40px] whitespace-nowrap shrink-0"
                     >
                       <span>👁️</span>
-                      <span>التفاصيل</span>
+                      <span className="whitespace-nowrap">التفاصيل</span>
                     </button>
 
                     <button
                       onClick={() => handleToggleBlock(c)}
-                      className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 transition-all min-h-[40px] ${
+                      className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 transition-all min-h-[40px] whitespace-nowrap shrink-0 ${
                         c.isBlocked
                           ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
                           : "bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300 border-amber-200 dark:border-amber-800"
                       }`}
                     >
                       <span>{c.isBlocked ? "🔓" : "🚫"}</span>
-                      <span>{c.isBlocked ? "إلغاء الحظر" : "حظر"}</span>
+                      <span className="whitespace-nowrap">{c.isBlocked ? "إلغاء الحظر" : "حظر"}</span>
                     </button>
 
                     <button
                       onClick={() => handleDeleteSingle(c)}
-                      className="p-2 text-xs font-bold text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/60 rounded-xl border border-red-200 dark:border-red-800 flex items-center justify-center transition-all min-h-[40px] w-10"
+                      className="p-2 text-xs font-bold text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/60 rounded-xl border border-red-200 dark:border-red-800 flex items-center justify-center transition-all min-h-[40px] w-10 whitespace-nowrap shrink-0"
                       title="حذف السجل"
                     >
                       <span>🗑️</span>

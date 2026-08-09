@@ -830,10 +830,10 @@ export default function TrashPage() {
                     <div className="flex items-center gap-2 pt-1 border-t border-gray-100 dark:border-gray-800">
                       <button
                         onClick={() => handleRestoreSingle(item)}
-                        className="flex-1 py-2 px-3 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-xl border border-emerald-300 dark:border-emerald-700 flex items-center justify-center gap-1.5 transition-all active:scale-95 min-h-[40px]"
+                        className="flex-1 py-2 px-3 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-xl border border-emerald-300 dark:border-emerald-700 flex items-center justify-center gap-1.5 transition-all active:scale-95 min-h-[40px] whitespace-nowrap shrink-0"
                       >
                         <span>♻️</span>
-                        <span>استعادة</span>
+                        <span className="whitespace-nowrap">استعادة</span>
                       </button>
 
                       <button
@@ -841,10 +841,10 @@ export default function TrashPage() {
                           setTargetSingleItem(item);
                           setConfirmDeleteModal("single");
                         }}
-                        className="flex-1 py-2 px-3 text-xs font-bold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-xl border border-red-300 dark:border-red-700 flex items-center justify-center gap-1.5 transition-all active:scale-95 min-h-[40px]"
+                        className="flex-1 py-2 px-3 text-xs font-bold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-xl border border-red-300 dark:border-red-700 flex items-center justify-center gap-1.5 transition-all active:scale-95 min-h-[40px] whitespace-nowrap shrink-0"
                       >
                         <span>🗑️</span>
-                        <span>حذف نهائي</span>
+                        <span className="whitespace-nowrap">حذف نهائي</span>
                       </button>
                     </div>
                   </div>

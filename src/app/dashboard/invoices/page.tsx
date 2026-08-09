@@ -766,20 +766,20 @@ export default function InvoicesPage() {
                     {/* Header */}
                     <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/40 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <span className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/40 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800 whitespace-nowrap shrink-0">
                           {serialStr}
                         </span>
                       </div>
-                      <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}>
+                      <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border whitespace-nowrap shrink-0 ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}>
                         {STATUS_LABELS[inv.status]}
                       </span>
                     </div>
 
                     {/* Customer Info */}
                     <div className="space-y-0.5">
-                      <h3 className="font-bold text-gray-900 dark:text-white text-sm flex items-center gap-1.5">
+                      <h3 className="font-bold text-gray-900 dark:text-white text-sm flex items-center gap-1.5 truncate">
                         <span>👤</span>
-                        <span>{inv.customerName}</span>
+                        <span className="truncate">{inv.customerName}</span>
                       </h3>
                       <p className="text-xs text-gray-500 dark:text-gray-400 font-mono flex items-center gap-1.5" dir="ltr">
                         <span>📞</span>
@@ -798,28 +798,28 @@ export default function InvoicesPage() {
 
                       <div>
                         <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">عدد المنتجات</span>
-                        <span className="font-bold text-gray-900 dark:text-white">
+                        <span className="font-bold text-gray-900 dark:text-white whitespace-nowrap">
                           {inv.items.length} منتجات
                         </span>
                       </div>
 
                       <div>
                         <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">تكلفة التوصيل</span>
-                        <span className="font-semibold text-blue-600 dark:text-blue-400">
+                        <span className="font-semibold text-blue-600 dark:text-blue-400 whitespace-nowrap">
                           {inv.deliveryFee ? `${inv.deliveryFee.toLocaleString()} د.ع` : "مجاني"}
                         </span>
                       </div>
 
                       <div>
                         <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">تاريخ الإصدار</span>
-                        <span className="font-semibold text-gray-700 dark:text-gray-300">
+                        <span className="font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">
                           {new Date(inv.createdAt).toLocaleDateString("ar-EG")}
                         </span>
                       </div>
 
                       <div className="col-span-2 pt-1 border-t border-gray-200/60 dark:border-gray-700/60 flex items-center justify-between">
                         <span className="text-xs font-bold text-gray-700 dark:text-gray-300">الإجمالي النهائي:</span>
-                        <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
+                        <span className="text-base font-black text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
                           {inv.total.toLocaleString()} د.ع
                         </span>
                       </div>
@@ -831,10 +831,10 @@ export default function InvoicesPage() {
                         e.stopPropagation();
                         openInvoiceModal(inv);
                       }}
-                      className="w-full py-2.5 px-4 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm active:scale-95 transition-all min-h-[40px] flex items-center justify-center gap-2"
+                      className="w-full py-2.5 px-4 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm active:scale-95 transition-all min-h-[40px] flex items-center justify-center gap-2 whitespace-nowrap shrink-0"
                     >
                       <span>👁️</span>
-                      <span>معاينة وطباعة الفاتورة</span>
+                      <span className="whitespace-nowrap">معاينة وطباعة الفاتورة</span>
                     </button>
                   </div>
                 );

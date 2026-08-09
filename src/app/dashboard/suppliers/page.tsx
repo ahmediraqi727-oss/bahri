@@ -99,32 +99,93 @@ export default function SuppliersPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.length === 0 ? (
-          <div className="col-span-full p-12 text-center text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700">
+          <div className="col-span-full p-12 text-center text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800">
             <span className="text-4xl block mb-3">🚚</span>
-            <p>{searchQuery ? "لا توجد نتائج" : "لا يوجد موردين بعد"}</p>
+            <p>{searchQuery ? "لا توجد نتائج تطابق البحث" : "لا يوجد موردين بعد"}</p>
           </div>
         ) : (
           filtered.map((supplier) => (
-            <div key={supplier.id} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-5 hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <h3 className="font-bold text-gray-900 dark:text-white">{supplier.name}</h3>
-                  <p className="text-xs text-gray-400 mt-1">{getProductCount(supplier.id)} منتج</p>
-                </div>
-                {canEdit && (
-                  <div className="flex gap-1">
-                    <button onClick={() => openModal(supplier)} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg text-xs">تعديل</button>
-                    {canDelete && (
-                      <button onClick={() => setDeleteConfirm(supplier.id)} className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-xs">حذف</button>
-                    )}
+            <div key={supplier.id} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 shadow-sm hover:shadow-md transition-all space-y-3 flex flex-col justify-between">
+              <div className="space-y-3">
+                {/* Header */}
+                <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-lg flex-shrink-0">
+                      🚚
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-gray-900 dark:text-white text-sm truncate" title={supplier.name}>
+                        {supplier.name}
+                      </h3>
+                      <p className="text-[11px] text-gray-400 truncate">مورد معتمد</p>
+                    </div>
                   </div>
-                )}
+
+                  <span className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-xs whitespace-nowrap flex-shrink-0">
+                    📦 {getProductCount(supplier.id)} منتج
+                  </span>
+                </div>
+
+                {/* Body Details */}
+                <div className="space-y-1.5 text-xs bg-gray-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-100 dark:border-gray-800/80">
+                  {supplier.phone ? (
+                    <div className="flex items-center justify-between text-gray-700 dark:text-gray-300">
+                      <span className="text-gray-500 dark:text-gray-400 font-medium">الهاتف:</span>
+                      <span dir="ltr" className="font-mono font-bold">{supplier.phone}</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between text-gray-400">
+                      <span>الهاتف:</span>
+                      <span>غير مدخل</span>
+                    </div>
+                  )}
+
+                  {supplier.email && (
+                    <div className="flex items-center justify-between text-gray-700 dark:text-gray-300">
+                      <span className="text-gray-500 dark:text-gray-400 font-medium">البريد:</span>
+                      <span className="truncate max-w-[170px]" dir="ltr">{supplier.email}</span>
+                    </div>
+                  )}
+
+                  {supplier.address && (
+                    <div className="flex items-center justify-between text-gray-700 dark:text-gray-300">
+                      <span className="text-gray-500 dark:text-gray-400 font-medium">العنوان:</span>
+                      <span className="truncate max-w-[170px]">{supplier.address}</span>
+                    </div>
+                  )}
+
+                  {supplier.notes && (
+                    <div className="pt-1 border-t border-gray-200/60 dark:border-gray-700/60">
+                      <span className="text-[11px] text-gray-400 block">ملاحظات:</span>
+                      <p className="text-gray-600 dark:text-gray-300 truncate">{supplier.notes}</p>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="space-y-1.5 text-sm">
-                {supplier.phone && <p className="text-gray-600 dark:text-gray-400">📞 {supplier.phone}</p>}
-                {supplier.email && <p className="text-gray-600 dark:text-gray-400">✉️ {supplier.email}</p>}
-                {supplier.address && <p className="text-gray-600 dark:text-gray-400">📍 {supplier.address}</p>}
-              </div>
+
+              {/* Footer Actions */}
+              {(canEdit || canDelete) && (
+                <div className="flex items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                  {canEdit && (
+                    <button
+                      onClick={() => openModal(supplier)}
+                      className="flex-1 py-2 px-3 text-xs font-bold whitespace-nowrap text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-xl border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 transition-all active:scale-95 min-h-[40px]"
+                    >
+                      <span>✏️</span>
+                      <span className="whitespace-nowrap">تعديل</span>
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      onClick={() => setDeleteConfirm(supplier.id)}
+                      className="flex-1 py-2 px-3 text-xs font-bold whitespace-nowrap text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-xl border border-red-200 dark:border-red-800 flex items-center justify-center gap-1.5 transition-all active:scale-95 min-h-[40px]"
+                    >
+                      <span>🗑️</span>
+                      <span className="whitespace-nowrap">حذف</span>
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           ))
         )}

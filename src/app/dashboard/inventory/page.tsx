@@ -249,33 +249,42 @@ export default function InventoryPage() {
                     key={product.id}
                     className={`bg-white dark:bg-gray-900 rounded-2xl border ${style.border} p-4 shadow-sm space-y-3 transition-all`}
                   >
-                    {/* Header */}
-                    <div className="flex items-start justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        {product.image ? (
-                          <img
-                            src={product.image}
-                            alt=""
-                            className="w-11 h-11 rounded-xl object-cover flex-shrink-0 border border-gray-200 dark:border-gray-700 shadow-sm"
-                          />
-                        ) : (
-                          <div className="w-11 h-11 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 text-lg flex-shrink-0 border border-gray-200 dark:border-gray-700">
-                            📦
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <h3 className="font-bold text-gray-900 dark:text-white text-sm truncate" title={product.name}>
-                            {product.name}
-                          </h3>
-                          <span className="text-xs text-gray-500 dark:text-gray-400 block truncate">
-                            المورد: {supplier ? supplier.name : "—"}
+                    {/* Header: Title & Status */}
+                    <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
+                      <h3 className="font-extrabold text-gray-900 dark:text-white text-sm truncate" title={product.name}>
+                        {product.name}
+                      </h3>
+
+                      <span className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap flex-shrink-0 ${style.badge}`}>
+                        {style.label}
+                      </span>
+                    </div>
+
+                    {/* Featured Image & Basic Supplier Row */}
+                    <div className="flex items-center gap-3.5 bg-gray-50/70 dark:bg-gray-800/40 p-3 rounded-xl border border-gray-100 dark:border-gray-800/60">
+                      {product.image ? (
+                        <img
+                          src={product.image}
+                          alt={product.name}
+                          className="w-16 h-16 rounded-xl object-cover flex-shrink-0 border border-gray-200 dark:border-gray-700 shadow-sm"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded-xl bg-white dark:bg-gray-800 flex items-center justify-center text-gray-400 text-2xl flex-shrink-0 border border-gray-200 dark:border-gray-700 shadow-sm">
+                          📦
+                        </div>
+                      )}
+
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <p className="text-xs font-bold text-gray-800 dark:text-gray-200 line-clamp-1">{product.name}</p>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                          المورد: {supplier ? supplier.name : "—"}
+                        </p>
+                        <div className="flex items-center gap-2 pt-0.5">
+                          <span className="text-xs font-black text-blue-600 dark:text-blue-400 whitespace-nowrap">
+                            {product.retailPrice.toLocaleString()} د.ع
                           </span>
                         </div>
                       </div>
-
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap flex-shrink-0 ${style.badge}`}>
-                        {style.label}
-                      </span>
                     </div>
 
                     {/* Stock Progress & Edit */}
@@ -293,28 +302,28 @@ export default function InventoryPage() {
                     <div className="grid grid-cols-2 gap-2 text-xs bg-gray-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-100 dark:border-gray-800/80">
                       <div>
                         <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">سعر المفرد</span>
-                        <span className="font-black text-blue-600 dark:text-blue-400 text-sm">
+                        <span className="font-black text-blue-600 dark:text-blue-400 text-sm whitespace-nowrap">
                           {product.retailPrice.toLocaleString()} د.ع
                         </span>
                       </div>
 
                       <div>
                         <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">سعر التكلفة</span>
-                        <span className="font-semibold text-gray-800 dark:text-gray-200">
+                        <span className="font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">
                           {product.costPrice.toLocaleString()} د.ع
                         </span>
                       </div>
 
                       <div>
                         <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">سعر الجملة</span>
-                        <span className="font-semibold text-gray-800 dark:text-gray-200">
+                        <span className="font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">
                           {product.wholesalePrice.toLocaleString()} د.ع
                         </span>
                       </div>
 
                       <div>
                         <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">إجمالي القيمة</span>
-                        <span className="font-extrabold text-emerald-600 dark:text-emerald-400">
+                        <span className="font-extrabold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
                           {(product.retailPrice * product.stock).toLocaleString()} د.ع
                         </span>
                       </div>
@@ -324,11 +333,11 @@ export default function InventoryPage() {
                     {supplier && (level === "low" || level === "empty") && (
                       <button
                         onClick={() => setContactModal({ supplier: supplier!, product })}
-                        className="w-full py-2.5 px-4 text-xs font-bold text-white rounded-xl shadow-sm hover:opacity-90 transition-all min-h-[40px] flex items-center justify-center gap-2"
+                        className="w-full py-2.5 px-4 text-xs font-bold text-white rounded-xl shadow-sm hover:opacity-90 transition-all min-h-[40px] flex items-center justify-center gap-2 whitespace-nowrap active:scale-95 shrink-0"
                         style={{ backgroundColor: level === "empty" ? "#ef4444" : "#f59e0b" }}
                       >
                         <span>📨</span>
-                        <span>مراسلة المورد لتسجيل طلبية تزويد</span>
+                        <span className="whitespace-nowrap">مراسلة المورد لتسجيل طلبية تزويد</span>
                       </button>
                     )}
                   </div>

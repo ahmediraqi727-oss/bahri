@@ -927,6 +927,7 @@ export default function ProductsPage() {
                 const isSelected = selectedIds.includes(product.id);
                 const match = product.notes ? product.notes.match(/الفئة:\s*([^|,\n]+)/) : null;
                 const catName = match && match[1] ? match[1].trim() : null;
+                const isAvailable = product.stock > 0;
 
                 return (
                   <div
@@ -937,9 +938,9 @@ export default function ProductsPage() {
                         : "border-gray-200 dark:border-gray-800"
                     } p-4 shadow-sm space-y-3 transition-all`}
                   >
-                    {/* Header */}
-                    <div className="flex items-start justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
-                      <div className="flex items-center gap-3 min-w-0">
+                    {/* Header: Title & Status */}
+                    <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
                         {isAdminOrManager && (
                           <input
                             type="checkbox"
@@ -948,62 +949,67 @@ export default function ProductsPage() {
                             className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer flex-shrink-0"
                           />
                         )}
-                        {product.image ? (
-                          <img
-                            src={product.image}
-                            alt=""
-                            className="w-11 h-11 rounded-xl object-cover flex-shrink-0 border border-gray-200 dark:border-gray-700 shadow-sm"
-                          />
-                        ) : (
-                          <div className="w-11 h-11 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 text-lg flex-shrink-0 border border-gray-200 dark:border-gray-700">
-                            📦
-                          </div>
+                        <h3 className="font-extrabold text-gray-900 dark:text-white text-sm truncate" title={product.name}>
+                          {product.name}
+                        </h3>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {catName && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-[11px] whitespace-nowrap">
+                            {catName}
+                          </span>
                         )}
-                        <div className="min-w-0">
-                          <h3 className="font-bold text-gray-900 dark:text-white text-sm truncate" title={product.name}>
-                            {product.name}
-                          </h3>
-                          {product.notes && (
-                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]">
-                              {product.notes}
-                            </p>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-bold whitespace-nowrap ${
+                          isAvailable
+                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
+                            : "bg-red-50 text-red-700 dark:bg-red-900/40 dark:text-red-300 border border-red-200 dark:border-red-800"
+                        }`}>
+                          {isAvailable ? "✅ متوفر" : "🚨 منفذ"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Featured Image & Basic Info Row */}
+                    <div className="flex items-center gap-3.5 bg-gray-50/70 dark:bg-gray-800/40 p-3 rounded-xl border border-gray-100 dark:border-gray-800/60">
+                      {product.image ? (
+                        <img
+                          src={product.image}
+                          alt={product.name}
+                          className="w-16 h-16 rounded-xl object-cover flex-shrink-0 border border-gray-200 dark:border-gray-700 shadow-sm"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded-xl bg-white dark:bg-gray-800 flex items-center justify-center text-gray-400 text-2xl flex-shrink-0 border border-gray-200 dark:border-gray-700 shadow-sm">
+                          📦
+                        </div>
+                      )}
+
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <p className="text-xs font-bold text-gray-800 dark:text-gray-200 line-clamp-1">{product.name}</p>
+                        {product.notes && (
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-1">
+                            {product.notes}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-2 pt-0.5">
+                          <span className="text-xs font-black text-blue-600 dark:text-blue-400 whitespace-nowrap">
+                            {product.retailPrice.toLocaleString()} د.ع
+                          </span>
+                          {isAdminOrManager && (
+                            <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 whitespace-nowrap border-r pr-2 border-gray-200 dark:border-gray-700">
+                              الكمية: {product.stock}
+                            </span>
                           )}
                         </div>
                       </div>
-
-                      {catName && (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-xs whitespace-nowrap flex-shrink-0">
-                          {catName}
-                        </span>
-                      )}
                     </div>
 
-                    {/* Details Grid */}
-                    <div className="grid grid-cols-2 gap-2 text-xs bg-gray-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-100 dark:border-gray-800/80">
-                      <div>
-                        <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">سعر المفرد</span>
-                        <span className="font-black text-blue-600 dark:text-blue-400 text-sm">
-                          {product.retailPrice.toLocaleString()} د.ع
-                        </span>
-                      </div>
-
-                      {isAdminOrManager && (
+                    {/* Financial Details Grid */}
+                    {isAdminOrManager && (
+                      <div className="grid grid-cols-2 gap-2 text-xs bg-gray-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-100 dark:border-gray-800/80">
                         <div>
-                          <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">الكمية المتوفرة</span>
-                          <span className="font-bold text-gray-900 dark:text-white">
-                            {canEdit ? (
-                              <InlineNumber value={product.stock} onSave={(v) => handleInlineEdit(product.id, "stock", v)} isInteger />
-                            ) : (
-                              `${product.stock} قطعة`
-                            )}
-                          </span>
-                        </div>
-                      )}
-
-                      {isAdminOrManager && (
-                        <div>
-                          <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">التكلفة</span>
-                          <span className="font-semibold text-gray-800 dark:text-gray-200">
+                          <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">سعر التكلفة</span>
+                          <span className="font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">
                             {canEdit ? (
                               <InlineNumber value={product.costPrice} onSave={(v) => handleInlineEdit(product.id, "costPrice", v)} />
                             ) : (
@@ -1011,12 +1017,10 @@ export default function ProductsPage() {
                             )}
                           </span>
                         </div>
-                      )}
 
-                      {isAdminOrManager && (
                         <div>
                           <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">سعر الجملة</span>
-                          <span className="font-semibold text-gray-800 dark:text-gray-200">
+                          <span className="font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap">
                             {canEdit ? (
                               <InlineNumber value={product.wholesalePrice} onSave={(v) => handleInlineEdit(product.id, "wholesalePrice", v)} />
                             ) : (
@@ -1024,26 +1028,22 @@ export default function ProductsPage() {
                             )}
                           </span>
                         </div>
-                      )}
 
-                      {isAdminOrManager && (
                         <div>
                           <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">نسبة الربح</span>
-                          <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                          <span className="font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
                             {product.profitMargin || 0}%
                           </span>
                         </div>
-                      )}
 
-                      {isAdminOrManager && (
                         <div>
-                          <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">المورد</span>
+                          <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">المورد المعتمَد</span>
                           <span className="font-semibold text-gray-700 dark:text-gray-300 truncate block">
                             {getSupplierName(product.supplierId)}
                           </span>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
 
                     {/* Footer Actions */}
                     {isAdminOrManager && (canEdit || canDelete) && (
@@ -1051,19 +1051,19 @@ export default function ProductsPage() {
                         {canEdit && (
                           <button
                             onClick={() => { setEditingProduct(product); setModalOpen(true); }}
-                            className="flex-1 py-2 px-3 text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-xl border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 transition-all active:scale-95 min-h-[40px]"
+                            className="flex-1 py-2 px-3 text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-xl border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 transition-all active:scale-95 min-h-[40px] whitespace-nowrap shrink-0"
                           >
                             <span>✏️</span>
-                            <span>تعديل</span>
+                            <span className="whitespace-nowrap">تعديل المنتج</span>
                           </button>
                         )}
                         {canDelete && (
                           <button
                             onClick={() => setDeleteConfirm(product.id)}
-                            className="flex-1 py-2 px-3 text-xs font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-xl border border-red-200 dark:border-red-800 flex items-center justify-center gap-1.5 transition-all active:scale-95 min-h-[40px]"
+                            className="flex-1 py-2 px-3 text-xs font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-xl border border-red-200 dark:border-red-800 flex items-center justify-center gap-1.5 transition-all active:scale-95 min-h-[40px] whitespace-nowrap shrink-0"
                           >
                             <span>🗑️</span>
-                            <span>حذف</span>
+                            <span className="whitespace-nowrap">حذف</span>
                           </button>
                         )}
                       </div>

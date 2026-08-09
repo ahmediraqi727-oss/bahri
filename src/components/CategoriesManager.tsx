@@ -396,20 +396,20 @@ export default function CategoriesManager() {
             return (
               <div
                 key={c.id}
-                className={`p-2.5 rounded-xl border transition-all duration-300 shadow-xs space-y-2 flex flex-col justify-between max-w-[220px] sm:max-w-[200px] w-full mx-auto ${borderStyle}`}
+                className={`p-3 rounded-2xl border transition-all duration-300 shadow-sm space-y-2.5 flex flex-col justify-between w-full mx-auto ${borderStyle}`}
               >
-                <div>
-                  <div className="flex items-center justify-between gap-1.5 border-b border-gray-100 dark:border-gray-700 pb-1.5">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-1.5 border-b border-gray-100 dark:border-gray-700 pb-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-8 h-8 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0 border border-gray-200 dark:border-gray-700">
+                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0 border border-gray-200 dark:border-gray-700 shadow-sm">
                         {displayImg ? (
                           <img src={displayImg} alt={c.name} loading="lazy" className="w-full h-full object-cover" />
                         ) : (
-                          <span className="text-sm">📁</span>
+                          <span className="text-base">📁</span>
                         )}
                       </div>
                       <div className="min-w-0">
-                        <h4 className="font-black text-xs text-gray-900 dark:text-white truncate leading-tight" title={c.name}>{c.name}</h4>
+                        <h4 className="font-extrabold text-xs text-gray-900 dark:text-white truncate leading-tight" title={c.name}>{c.name}</h4>
                         <p className="text-[10px] text-gray-400">أولوية: {c.priority}</p>
                       </div>
                     </div>
@@ -417,34 +417,35 @@ export default function CategoriesManager() {
                   </div>
 
                   {/* Compact Analytics Stats Grid */}
-                  <div className="grid grid-cols-2 gap-1 pt-1.5">
+                  <div className="grid grid-cols-2 gap-1 pt-1">
                     <div className="p-1 rounded-lg bg-gray-50 dark:bg-gray-900/60 border border-gray-100 dark:border-gray-700 text-center">
-                      <span className="block text-[10px] font-bold text-gray-500 dark:text-gray-400">إجمالي</span>
-                      <span className="text-xs font-black text-blue-600 dark:text-blue-400 block leading-tight">{totalCount}</span>
+                      <span className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 whitespace-nowrap">إجمالي</span>
+                      <span className="text-xs font-black text-blue-600 dark:text-blue-400 block leading-tight whitespace-nowrap">{totalCount} منتج</span>
                     </div>
 
                     <div className="p-1 rounded-lg bg-gray-50 dark:bg-gray-900/60 border border-gray-100 dark:border-gray-700 text-center">
-                      <span className="block text-[10px] font-bold text-gray-500 dark:text-gray-400">زوار</span>
-                      <span className="text-xs font-black text-indigo-600 dark:text-indigo-400 block leading-tight">👁️{viewsCount}</span>
+                      <span className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 whitespace-nowrap">زوار</span>
+                      <span className="text-xs font-black text-indigo-600 dark:text-indigo-400 block leading-tight whitespace-nowrap">👁️{viewsCount}</span>
                     </div>
 
                     <div className="p-1 rounded-lg bg-amber-50/50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-center">
-                      <span className="block text-[10px] font-bold text-amber-700 dark:text-amber-300">وشيك</span>
-                      <span className="text-xs font-black text-amber-600 dark:text-amber-400 block leading-tight">{lowStockCount}</span>
+                      <span className="block text-[10px] font-bold text-amber-700 dark:text-amber-300 whitespace-nowrap">وشيك</span>
+                      <span className="text-xs font-black text-amber-600 dark:text-amber-400 block leading-tight whitespace-nowrap">{lowStockCount}</span>
                     </div>
 
                     <div className="p-1 rounded-lg bg-red-50/50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-center">
-                      <span className="block text-[10px] font-bold text-red-700 dark:text-red-300">منفذ</span>
-                      <span className="text-xs font-black text-red-600 dark:text-red-400 block leading-tight">{outOfStockCount}</span>
+                      <span className="block text-[10px] font-bold text-red-700 dark:text-red-300 whitespace-nowrap">منفذ</span>
+                      <span className="text-xs font-black text-red-600 dark:text-red-400 block leading-tight whitespace-nowrap">{outOfStockCount}</span>
                     </div>
                   </div>
                 </div>
 
                 <button
                   onClick={() => handleSelectCategoryToEdit(c.id)}
-                  className="w-full py-1 bg-gray-100 dark:bg-gray-700 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-gray-700 dark:text-gray-200 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 shadow-xs mt-1.5"
+                  className="w-full min-h-[38px] py-1.5 px-3 bg-gray-100 dark:bg-gray-700 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-gray-700 dark:text-gray-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs whitespace-nowrap active:scale-95 shrink-0"
                 >
-                  <span>✏️ تعديل</span>
+                  <span>✏️</span>
+                  <span className="whitespace-nowrap">تعديل القسم</span>
                 </button>
               </div>
             );
