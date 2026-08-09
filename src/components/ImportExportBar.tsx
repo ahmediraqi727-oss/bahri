@@ -174,7 +174,9 @@ export default function ImportExportBar() {
           }))
         : mappedRows;
 
-      const count = await importProducts(finalRows as any);
+      const count = await importProducts(finalRows as any, (processed, total) => {
+        toastLoading(`جاري استيراد ${processed} من ${total} منتج... (دفعات 50 عنصر/طلب)`, `حفظ البيانات في Supabase`, toastId);
+      });
       await logActivity({
         user: settings.currentRole,
         action: "import",

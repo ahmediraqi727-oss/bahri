@@ -41,7 +41,7 @@ interface DataContextType {
   autoSyncCategoriesFromProducts: () => Promise<CategoryItem[]>;
   persistAllCategoriesAndProducts: (catsToSave: CategoryItem[], prodsToSave: Product[]) => Promise<boolean>;
   reloadAllData: () => Promise<void>;
-  importProducts: (items: Omit<Product, "id" | "createdAt" | "updatedAt">[]) => Promise<number>;
+  importProducts: (items: Omit<Product, "id" | "createdAt" | "updatedAt">[], onProgress?: (processed: number, total: number) => void) => Promise<number>;
   exportAllData: () => { products: Product[]; suppliers: Supplier[]; categories: CategoryItem[]; exportedAt: string };
   importAllData: (data: { products?: Product[]; suppliers?: Supplier[]; categories?: CategoryItem[] }) => Promise<void>;
 }
@@ -493,65 +493,108 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, [reloadAllData]);
 
-  const importProducts = useCallback(async (rawItems: Omit<Product, "id" | "createdAt" | "updatedAt">[]) => {
-    if (!rawItems || rawItems.length === 0) return 0;
+  const importProducts = useCallback(
+    async (
+      rawItems: Omit<Product, "id" | "createdAt" | "updatedAt">[],
+      onProgress?: (processed: number, total: number) => void
+    ) => {
+      if (!rawItems || rawItems.length === 0) return 0;
 
-    // 1. Deduplicate incoming product items in JS using Map by name
-    const uniqueItemsMap = new Map<string, Omit<Product, "id" | "createdAt" | "updatedAt">>();
-    rawItems.forEach((item) => {
-      if (item.name) {
-        const cleanName = item.name.trim();
-        if (cleanName) {
-          uniqueItemsMap.set(cleanName.toLowerCase(), { ...item, name: cleanName });
+      // 1. Deduplicate array in memory while keeping latest row per name
+      const uniqueItemsMap = new Map<string, Omit<Product, "id" | "createdAt" | "updatedAt">>();
+      rawItems.forEach((item) => {
+        if (item.name) {
+          const cleanName = item.name.trim();
+          if (cleanName) {
+            uniqueItemsMap.set(cleanName.toLowerCase(), { ...item, name: cleanName });
+          }
+        }
+      });
+      const items = Array.from(uniqueItemsMap.values());
+
+      // 2. Collect and upsert categories and extract their IDs (category_id)
+      const categoryNames = new Set<string>();
+      items.forEach((item) => {
+        const match = (item.notes || "").match(/الفئة:\s*([^|]+)/);
+        if (match && match[1]) {
+          const catName = match[1].trim();
+          if (catName && !["عام", "غير محدد", "غير مصنف"].includes(catName)) {
+            categoryNames.add(catName);
+          }
+        }
+      });
+
+      const categoryIdMap = new Map<string, string>(); // Map (name -> UUID)
+
+      if (categoryNames.size > 0) {
+        const catRows = Array.from(categoryNames).map((cName, idx) => ({
+          name: cName,
+          priority: idx + 1,
+          display_order: idx + 1,
+          sort_order: idx + 1,
+          is_active: true,
+          keywords: cName,
+        }));
+
+        const { data: catData, error: catErr } = await supabase
+          .from("categories")
+          .upsert(catRows, { onConflict: "name" })
+          .select("id, name");
+
+        if (!catErr && catData) {
+          catData.forEach((c) => {
+            if (c.id && c.name) {
+              categoryIdMap.set(c.name.trim().toLowerCase(), c.id);
+            }
+          });
         }
       }
-    });
-    const items = Array.from(uniqueItemsMap.values());
 
-    // 2. Automatically extract and upsert all distinct categories present in items
-    const categoryNames = new Set<string>();
-    items.forEach((item) => {
-      const match = (item.notes || "").match(/الفئة:\s*([^|]+)/);
-      if (match && match[1]) {
-        const catName = match[1].trim();
-        if (catName && catName !== "عام" && catName !== "غير محدد" && catName !== "غير مصنف") {
-          categoryNames.add(catName);
+      // 3. Map products to rows and include mapped category_id
+      const rows = items.map((item) => {
+        const row = productToRow(item);
+
+        const match = (item.notes || "").match(/الفئة:\s*([^|]+)/);
+        if (match && match[1]) {
+          const catNameClean = match[1].trim().toLowerCase();
+          const mappedCatId = categoryIdMap.get(catNameClean);
+          if (mappedCatId) {
+            row.category_id = mappedCatId;
+          }
+        }
+        return row;
+      });
+
+      // 4. Send product rows in batch chunks (CHUNK_SIZE = 50) using upsert
+      const CHUNK_SIZE = 50;
+      let processed = 0;
+      const total = rows.length;
+
+      for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+        const chunk = rows.slice(i, i + CHUNK_SIZE);
+
+        const { error } = await supabase
+          .from("products")
+          .upsert(chunk, { onConflict: "name" })
+          .select("id");
+
+        if (error) {
+          console.error("خطأ Supabase أثناء إدخال الدفعة:", error);
+          throw new Error(`فشل حفظ المنتجات في Supabase: ${error.message} [Code: ${error.code}]`);
+        }
+
+        processed += chunk.length;
+        if (onProgress) {
+          onProgress(processed, total);
         }
       }
-    });
 
-    if (categoryNames.size > 0) {
-      const catRows = Array.from(categoryNames).map((cName, idx) => ({
-        name: cName,
-        image: "",
-        priority: idx + 1,
-        display_order: idx + 1,
-        sort_order: idx + 1,
-        is_active: true,
-        keywords: cName,
-      }));
-
-      const { error: catErr } = await supabase.from("categories").upsert(catRows, { onConflict: "name" });
-      if (catErr) {
-        console.warn("Category auto-upsert warning during import:", catErr.message);
-      }
-    }
-
-    // 3. Upsert clean products into Supabase with onConflict: "name"
-    const rows = items.map((item) => productToRow(item));
-    const { error } = await supabase
-      .from("products")
-      .upsert(rows, { onConflict: "name" })
-      .select();
-
-    if (error) {
-      console.error("Supabase importProducts error:", error);
-      throw new Error(`فشل حفظ المنتجات في Supabase: ${error.message} [Code: ${error.code}]`);
-    }
-
-    await reloadAllData();
-    return items.length;
-  }, [reloadAllData]);
+      // 5. Server revalidation
+      await reloadAllData();
+      return items.length;
+    },
+    [reloadAllData]
+  );
 
   const exportAllData = useCallback(() => {
     return { products, suppliers, categories, exportedAt: new Date().toISOString() };
