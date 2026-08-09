@@ -8,6 +8,7 @@ import { useActivityLog } from "@/lib/activity-log";
 import { calculateRetailPrice, Product, CategoryItem, Supplier } from "@/lib/types";
 import { supabase } from "@/lib/supabase-client";
 import DuplicateResolutionModal, { DuplicateActionChoice } from "./DuplicateResolutionModal";
+import MissingDataModal, { IncompleteImportItem } from "./MissingDataModal";
 import { validateImportColumns } from "@/lib/import-validator";
 import { useToast } from "@/components/ToastProvider";
 import { isUUID } from "@/lib/data-context";
@@ -24,6 +25,12 @@ export default function ImportExportBar() {
   const { success, error: toastError, warning, loading: toastLoading, resolve: resolveToast } = useToast();
   const importRef = useRef<HTMLInputElement>(null);
   const backupRef = useRef<HTMLInputElement>(null);
+
+  // ── Missing Data Audit Modal State ──
+  const [missingDataModalOpen, setMissingDataModalOpen] = useState(false);
+  const [pendingValidProducts, setPendingValidProducts] = useState<Partial<Product>[]>([]);
+  const [pendingIncompleteItems, setPendingIncompleteItems] = useState<IncompleteImportItem[]>([]);
+  const [pendingValidation, setPendingValidation] = useState<any>(null);
 
   // ── Category Assignment Modal (shown when file has no category column) ──
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
@@ -69,17 +76,20 @@ export default function ImportExportBar() {
     return isNaN(num) ? 0 : num;
   };
 
-  // ─── Parse rows from workbook into mapped product objects ─────────────────
+  // ─── Parse rows from workbook into mapped product objects (Valid vs Incomplete) ───
   const parseRowsToProducts = async (
     rows: Record<string, any>[],
     supplierMap: Map<string, string>
-  ): Promise<Partial<Product>[]> => {
-    const mapped: Partial<Product>[] = [];
-    for (const row of rows) {
+  ): Promise<{ validProducts: Partial<Product>[]; incompleteItems: IncompleteImportItem[] }> => {
+    const validProducts: Partial<Product>[] = [];
+    const incompleteItems: IncompleteImportItem[] = [];
+
+    for (let idx = 0; idx < rows.length; idx++) {
+      const row = rows[idx];
+      const rowIndex = idx + 2; // Excel/CSV row number (header is row 1)
+
       const nameVal = findVal(row, ["name", "product_name", "productname", "اسم المنتج", "اسم", "الاسم", "منتج", "عنوان", "product"]);
-      if (!nameVal) continue;
-      const nameStr = String(nameVal).trim();
-      if (!nameStr) continue;
+      const nameStr = nameVal ? String(nameVal).trim() : "";
 
       // Extract raw price candidate values using clean parsePrice
       const rawCostVal = findVal(row, ["costprice", "cost_price", "cost", "buyingprice", "buying_price", "التكلفة / الكلفة", "سعر التكلفة", "التكلفة", "تكلفة", "الكلفة", "كلفة", "سعر الكلفة", "سعر الشراء"]);
@@ -122,7 +132,10 @@ export default function ImportExportBar() {
         }
       }
 
-      const stock = parseInt(String(findVal(row, ["stock", "quantity", "qty", "count", "inventory", "available", "الكمية", "المخزون", "العدد", "الرصيد", "متاح"]) || 0)) || 0;
+      const rawStockVal = findVal(row, ["stock", "quantity", "qty", "count", "inventory", "available", "الكمية", "المخزون", "العدد", "الرصيد", "متاح"]);
+      const hasStockValue = rawStockVal !== undefined && rawStockVal !== "";
+      const stock = hasStockValue ? parseInt(String(rawStockVal)) || 0 : 0;
+
       const supplierVal = findVal(row, ["supplier", "supplierid", "supplier_id", "supplier_name", "vendor", "المورد", "اسم المورد", "مورد", "المزود"]);
       const supplierPhone = String(findVal(row, ["معلومات اتصال المورد", "هاتف المورد", "رقم المورد", "تلفون المورد"]) || "");
       let supplierId = "";
@@ -154,9 +167,41 @@ export default function ImportExportBar() {
       const notes = category && desc ? `الفئة: ${category} | ${desc}` : category ? `الفئة: ${category}` : desc;
       const image = String(findVal(row, ["image", "img", "photo", "pic", "picture", "thumbnail", "product_image", "productimage", "image_url", "الصورة", "صورة", "رابط الصورة", "رابط صورة المنتج", "صورة المنتج"]) || "");
 
-      mapped.push({ name: nameStr, image, costPrice, wholesalePrice, profitMargin, retailPrice, stock, supplierId, notes });
+      // ─── Evaluate missing fields for pre-import validation check ───
+      const nameMissing = !nameStr || nameStr.length === 0;
+      const retailMissing = retailPrice <= 0 || isNaN(retailPrice);
+      const costMissing = costPrice <= 0 || isNaN(costPrice);
+      const stockMissing = !hasStockValue || isNaN(stock);
+
+      // If entirely empty row, skip completely
+      if (nameMissing && retailMissing && costMissing && stockMissing && !desc && !image) {
+        continue;
+      }
+
+      if (nameMissing || retailMissing || costMissing || stockMissing) {
+        incompleteItems.push({
+          rowIndex,
+          rawRow: row,
+          name: nameStr,
+          costPrice,
+          wholesalePrice,
+          retailPrice,
+          stock,
+          supplierId,
+          notes,
+          image,
+          missingFields: {
+            name: nameMissing,
+            retailPrice: retailMissing,
+            costPrice: costMissing,
+            stock: stockMissing,
+          },
+        });
+      } else {
+        validProducts.push({ name: nameStr, image, costPrice, wholesalePrice, profitMargin, retailPrice, stock, supplierId, notes });
+      }
     }
-    return mapped;
+    return { validProducts, incompleteItems };
   };
 
   // ─── Finalize import: push rows to Supabase ───────────────────────────────
@@ -185,13 +230,39 @@ export default function ImportExportBar() {
       });
       resolveToast(toastId, "success", `✅ تم استيراد ${count} منتج بنجاح!`, overrideCategory ? `القسم المعيّن: ${overrideCategory}` : undefined);
       setCategoryModalOpen(false);
+      setMissingDataModalOpen(false);
       setPendingMappedRows([]);
+      setPendingValidProducts([]);
+      setPendingIncompleteItems([]);
       setPendingFileName("");
     } catch (err: any) {
       console.error("Import error:", err);
       resolveToast(toastId, "error", "فشل الاستيراد", err?.message || "حدث خطأ غير متوقع");
     } finally {
       setIsImporting(false);
+    }
+  };
+
+  // ─── Confirm resolution from MissingDataModal ─────────────────────────────
+  const handleConfirmMissingData = async (correctedProducts: Partial<Product>[], importOnlyValid: boolean) => {
+    setMissingDataModalOpen(false);
+    const combinedRows = importOnlyValid
+      ? pendingValidProducts
+      : [...pendingValidProducts, ...correctedProducts];
+
+    if (combinedRows.length === 0) {
+      warning("لم يتم تحديد أي منتجات", "لم يتم اختيار أي منتجات مكتملة للاستيراد.");
+      return;
+    }
+
+    if (pendingValidation?.requiresCategoryAction) {
+      setPendingMappedRows(combinedRows);
+      setAssignedCategory("");
+      setNewCategoryName("");
+      setCategoryTab("existing");
+      setCategoryModalOpen(true);
+    } else {
+      await finalizeImport(combinedRows, pendingFileName);
     }
   };
 
@@ -242,19 +313,29 @@ export default function ImportExportBar() {
           supplierMap.set(s.name.trim().toLowerCase(), s.id);
         });
 
-        const mapped = await parseRowsToProducts(rows, supplierMap);
+        const { validProducts, incompleteItems } = await parseRowsToProducts(rows, supplierMap);
 
-        if (mapped.length === 0) {
+        if (validProducts.length === 0 && incompleteItems.length === 0) {
           toastError(
             "تعذّر قراءة المنتجات",
-            "يرجى التأكد من أن عمود الاسم يحتوي على كلمة 'الاسم' أو 'name'."
+            "الملف فارغ أو لا يحتوي على صفوف بيانات صالحة."
           );
           return;
         }
 
-        // ── 3. If no category column → show assignment modal ──────────────
+        // ── 3. Check for missing data rows (Pre-Import Audit Check) ───────
+        if (incompleteItems.length > 0) {
+          setPendingValidProducts(validProducts);
+          setPendingIncompleteItems(incompleteItems);
+          setPendingFileName(file.name);
+          setPendingValidation(validation);
+          setMissingDataModalOpen(true);
+          return; // Wait for user modal action
+        }
+
+        // ── 4. If no category column → show assignment modal ──────────────
         if (validation.requiresCategoryAction) {
-          setPendingMappedRows(mapped);
+          setPendingMappedRows(validProducts);
           setPendingFileName(file.name);
           setAssignedCategory("");
           setNewCategoryName("");
@@ -263,8 +344,8 @@ export default function ImportExportBar() {
           return; // wait for user modal action
         }
 
-        // ── 4. All good — import directly ─────────────────────────────────
-        await finalizeImport(mapped, file.name);
+        // ── 5. All good — import directly ─────────────────────────────────
+        await finalizeImport(validProducts, file.name);
       } catch (err: any) {
         console.error("Error importing products:", err);
         toastError("خطأ أثناء استيراد الملف", err?.message || "حدث خطأ غير متوقع");
@@ -697,6 +778,16 @@ export default function ImportExportBar() {
           </div>
         </div>
       )}
+
+      {/* ── Missing Data Pre-Import Validation Audit Modal ── */}
+      <MissingDataModal
+        isOpen={missingDataModalOpen}
+        onClose={() => setMissingDataModalOpen(false)}
+        fileName={pendingFileName}
+        validCount={pendingValidProducts.length}
+        incompleteItems={pendingIncompleteItems}
+        onConfirmImport={handleConfirmMissingData}
+      />
     </div>
   );
 }
