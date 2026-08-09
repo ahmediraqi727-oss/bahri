@@ -379,7 +379,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       createdRow = created;
     } else if (error) {
       console.warn("Primary addCategory error, attempting fallback with image_url column:", error.message);
-      const altRow = { ...row, name: cat.name, image_url: cat.image };
+      const altRow: Record<string, unknown> = { ...row, name: cat.name, image_url: cat.image };
       delete altRow.image;
       const { data: altCreated } = await supabase
         .from("categories")
@@ -414,7 +414,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         updatedRow = data;
       } else if (error) {
         console.warn("Primary updateCategory error, trying image_url column fallback:", error.message);
-        const altRow = { ...row };
+        const altRow: Record<string, unknown> = { ...row };
         if ("image" in altRow) {
           altRow.image_url = altRow.image;
           delete altRow.image;
