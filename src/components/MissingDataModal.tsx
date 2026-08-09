@@ -5,7 +5,7 @@ import { Product } from "@/lib/types";
 import { useToast } from "@/components/ToastProvider";
 
 export interface IncompleteImportItem {
-  rowIndex: number;
+  rowIndex: number; // 1-based index in Excel/CSV
   rawRow: Record<string, any>;
   name: string;
   costPrice: number;
@@ -27,8 +27,8 @@ interface MissingDataModalProps {
   isOpen: boolean;
   onClose: () => void;
   fileName: string;
-  validCount: number;
-  incompleteItems: IncompleteImportItem[];
+  validCount?: number;
+  incompleteItems?: IncompleteImportItem[];
   onConfirmImport: (correctedProducts: Partial<Product>[], importOnlyValid: boolean) => void;
 }
 
@@ -63,10 +63,10 @@ export default function MissingDataModal({
               notes: typeof i?.notes === "string" ? i.notes : "",
               image: typeof i?.image === "string" ? i.image : "",
               missingFields: {
-                name: Boolean(i?.missingFields?.name ?? (!i?.name || !i.name.trim())),
-                retailPrice: Boolean(i?.missingFields?.retailPrice ?? (!i?.retailPrice || i.retailPrice <= 0)),
-                costPrice: Boolean(i?.missingFields?.costPrice ?? (!i?.costPrice || i.costPrice <= 0)),
-                stock: Boolean(i?.missingFields?.stock ?? (i?.stock === undefined || i?.stock < 0)),
+                name: Boolean(i?.missingFields?.name ?? (!i?.name || !String(i.name).trim())),
+                retailPrice: Boolean(i?.missingFields?.retailPrice ?? (!i?.retailPrice || Number(i.retailPrice) <= 0)),
+                costPrice: Boolean(i?.missingFields?.costPrice ?? (!i?.costPrice || Number(i.costPrice) <= 0)),
+                stock: Boolean(i?.missingFields?.stock ?? (i?.stock === undefined || Number(i.stock) < 0)),
               },
             }))
           : [];
@@ -80,7 +80,7 @@ export default function MissingDataModal({
       console.error("Error initializing MissingDataModal:", err);
       toastError("خطأ في قراءة البيانات", "حدث خطأ غير متوقع أثناء تهيئة نافذة تدقيق البيانات.");
     }
-  }, [isOpen, incompleteItems]);
+  }, [isOpen, incompleteItems, toastError]);
 
   if (!isOpen) return null;
 
@@ -126,32 +126,34 @@ export default function MissingDataModal({
     }
   };
 
-  const handleFieldChange = (
-    index: number,
+  // تعديل الحقل بناءً على rowIndex حصراً لتفادي أي تضارب
+  const handleFieldByRowIndex = (
+    rowIndex: number,
     field: keyof Omit<IncompleteImportItem, "missingFields" | "rawRow" | "rowIndex">,
     val: any
   ) => {
     try {
       setItems((prev) => {
-        if (!Array.isArray(prev) || index < 0 || index >= prev.length) return prev;
-        const next = [...prev];
-        const target = { ...next[index] };
-        (target as any)[field] = val;
+        if (!Array.isArray(prev)) return prev;
+        return prev.map((item) => {
+          if (item.rowIndex !== rowIndex) return item;
+          const target = { ...item };
+          (target as any)[field] = val;
 
-        const nameMissing = !target.name || !String(target.name).trim();
-        const retailMissing = !target.retailPrice || Number(target.retailPrice) <= 0 || isNaN(Number(target.retailPrice));
-        const costMissing = !target.costPrice || Number(target.costPrice) <= 0 || isNaN(Number(target.costPrice));
-        const stockMissing = target.stock === undefined || target.stock === null || Number(target.stock) < 0 || isNaN(Number(target.stock));
+          const nameMissing = !target.name || !String(target.name).trim();
+          const retailMissing = !target.retailPrice || Number(target.retailPrice) <= 0 || isNaN(Number(target.retailPrice));
+          const costMissing = !target.costPrice || Number(target.costPrice) <= 0 || isNaN(Number(target.costPrice));
+          const stockMissing = target.stock === undefined || target.stock === null || Number(target.stock) < 0 || isNaN(Number(target.stock));
 
-        target.missingFields = {
-          name: nameMissing,
-          retailPrice: retailMissing,
-          costPrice: costMissing,
-          stock: stockMissing,
-        };
+          target.missingFields = {
+            name: nameMissing,
+            retailPrice: retailMissing,
+            costPrice: costMissing,
+            stock: stockMissing,
+          };
 
-        next[index] = target;
-        return next;
+          return target;
+        });
       });
     } catch (err) {
       console.error("Error updating field:", err);
@@ -159,18 +161,15 @@ export default function MissingDataModal({
     }
   };
 
-  const handleRemoveItem = (index: number) => {
+  // استبعاد الصف بناءً على rowIndex حصراً
+  const handleRemoveByRowIndex = (rowIndex: number) => {
     try {
-      if (!Array.isArray(items) || index < 0 || index >= items.length) return;
-      const targetRowIndex = items[index]?.rowIndex;
-      setItems((prev) => prev.filter((_, i) => i !== index));
-      if (typeof targetRowIndex === "number") {
-        setSelectedRowIndexes((prev) => {
-          const next = new Set(prev);
-          next.delete(targetRowIndex);
-          return next;
-        });
-      }
+      setItems((prev) => prev.filter((item) => item.rowIndex !== rowIndex));
+      setSelectedRowIndexes((prev) => {
+        const next = new Set(prev);
+        next.delete(rowIndex);
+        return next;
+      });
     } catch (err) {
       console.error("Error removing item:", err);
     }
@@ -472,9 +471,9 @@ export default function MissingDataModal({
               <p className="text-xs">يمكنك الآن الضغط على "حفظ ومتابعة الاستيراد" أدناه.</p>
             </div>
           ) : (
-            items.map((item, idx) => {
+            items.map((item) => {
               if (!item) return null;
-              const rowIndex = typeof item.rowIndex === "number" ? item.rowIndex : idx + 2;
+              const rowIndex = item.rowIndex;
               const isSelected = selectedRowIndexes.has(rowIndex);
               const isFullyValid =
                 !item.missingFields?.name &&
@@ -519,7 +518,7 @@ export default function MissingDataModal({
                     </div>
 
                     <button
-                      onClick={() => handleRemoveItem(idx)}
+                      onClick={() => handleRemoveByRowIndex(rowIndex)}
                       className="text-xs font-bold text-red-500 hover:text-red-700 dark:hover:text-red-300 hover:underline flex items-center gap-1 whitespace-nowrap shrink-0"
                       title="استبعاد هذا الصف"
                     >
@@ -542,7 +541,7 @@ export default function MissingDataModal({
                         type="text"
                         placeholder="أدخل اسم المنتج..."
                         value={item.name ?? ""}
-                        onChange={(e) => handleFieldChange(idx, "name", e.target.value)}
+                        onChange={(e) => handleFieldByRowIndex(rowIndex, "name", e.target.value)}
                         className={`w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white font-bold outline-none focus:ring-2 ${
                           item.missingFields?.name
                             ? "border-red-400 focus:ring-red-400 bg-red-50/30 dark:bg-red-950/20"
@@ -564,7 +563,7 @@ export default function MissingDataModal({
                         min="0"
                         placeholder="مثال: 15000"
                         value={item.retailPrice ?? ""}
-                        onChange={(e) => handleFieldChange(idx, "retailPrice", parseFloat(e.target.value) || 0)}
+                        onChange={(e) => handleFieldByRowIndex(rowIndex, "retailPrice", parseFloat(e.target.value) || 0)}
                         className={`w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white font-bold outline-none focus:ring-2 ${
                           item.missingFields?.retailPrice
                             ? "border-red-400 focus:ring-red-400 bg-red-50/30 dark:bg-red-950/20"
@@ -586,7 +585,7 @@ export default function MissingDataModal({
                         min="0"
                         placeholder="مثال: 10000"
                         value={item.costPrice ?? ""}
-                        onChange={(e) => handleFieldChange(idx, "costPrice", parseFloat(e.target.value) || 0)}
+                        onChange={(e) => handleFieldByRowIndex(rowIndex, "costPrice", parseFloat(e.target.value) || 0)}
                         className={`w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white font-bold outline-none focus:ring-2 ${
                           item.missingFields?.costPrice
                             ? "border-red-400 focus:ring-red-400 bg-red-50/30 dark:bg-red-950/20"
@@ -608,7 +607,7 @@ export default function MissingDataModal({
                         min="0"
                         placeholder="مثال: 10"
                         value={item.stock !== undefined && item.stock !== null ? item.stock : ""}
-                        onChange={(e) => handleFieldChange(idx, "stock", parseInt(e.target.value) || 0)}
+                        onChange={(e) => handleFieldByRowIndex(rowIndex, "stock", parseInt(e.target.value) || 0)}
                         className={`w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white font-bold outline-none focus:ring-2 ${
                           item.missingFields?.stock
                             ? "border-red-400 focus:ring-red-400 bg-red-50/30 dark:bg-red-950/20"
