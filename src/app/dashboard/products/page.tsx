@@ -62,7 +62,8 @@ export default function ProductsPage() {
   const [bulkCategory, setBulkCategory] = useState("");
   const [bulkSupplierId, setBulkSupplierId] = useState("");
   const [bulkMargin, setBulkMargin] = useState<number>(20);
-  const [bulkPriceMode, setBulkPriceMode] = useState<"fixed" | "add_amount" | "add_percent">("fixed");
+  const [bulkPriceTargetField, setBulkPriceTargetField] = useState<"retailPrice" | "costPrice" | "wholesalePrice">("retailPrice");
+  const [bulkPriceMode, setBulkPriceMode] = useState<"fixed" | "add_amount" | "sub_amount" | "add_percent" | "sub_percent">("fixed");
   const [bulkPriceVal, setBulkPriceVal] = useState<number>(0);
   const [bulkStockMode, setBulkStockMode] = useState<"fixed" | "add" | "subtract">("fixed");
   const [bulkStockVal, setBulkStockVal] = useState<number>(0);
@@ -228,7 +229,14 @@ export default function ProductsPage() {
   };
 
   const handleBulkPriceSave = async () => {
-    if ((bulkPriceVal <= 0 && bulkPriceMode === "fixed") || selectedIds.length === 0) return;
+    if (selectedIds.length === 0) return;
+
+    const parsedVal = parseFloat(bulkPriceVal.toString());
+    if (isNaN(parsedVal) || parsedVal < 0) {
+      toastError("خطأ في الإدخال", "يرجى إدخال قيمة رقمية صحيحة وموجبة");
+      return;
+    }
+
     setSubmittingBulk(true);
     try {
       const selectedSet = new Set(selectedIds);
@@ -236,26 +244,78 @@ export default function ProductsPage() {
 
       await Promise.all(
         targetProducts.map((p) => {
-          let newPrice = p.retailPrice;
+          const currentBaseVal =
+            bulkPriceTargetField === "costPrice"
+              ? p.costPrice
+              : bulkPriceTargetField === "wholesalePrice"
+              ? p.wholesalePrice
+              : p.retailPrice;
+
+          let calculatedVal = currentBaseVal;
           if (bulkPriceMode === "fixed") {
-            newPrice = bulkPriceVal;
+            calculatedVal = parsedVal;
           } else if (bulkPriceMode === "add_amount") {
-            newPrice = p.retailPrice + bulkPriceVal;
+            calculatedVal = currentBaseVal + parsedVal;
+          } else if (bulkPriceMode === "sub_amount") {
+            calculatedVal = Math.max(0, currentBaseVal - parsedVal);
           } else if (bulkPriceMode === "add_percent") {
-            newPrice = Math.round(p.retailPrice + (p.retailPrice * bulkPriceVal) / 100);
+            calculatedVal = Math.round(currentBaseVal + (currentBaseVal * parsedVal) / 100);
+          } else if (bulkPriceMode === "sub_percent") {
+            calculatedVal = Math.max(0, Math.round(currentBaseVal - (currentBaseVal * parsedVal) / 100));
           }
-          return updateProduct(p.id, { retailPrice: Math.max(0, newPrice) });
+
+          calculatedVal = Math.max(0, calculatedVal);
+
+          const updates: Partial<Product> = {
+            [bulkPriceTargetField]: calculatedVal,
+          };
+
+          // Accounting Synchronization & Profit Margin Recalculation
+          if (bulkPriceTargetField === "costPrice") {
+            const currentMargin = p.profitMargin || 0;
+            if (currentMargin > 0) {
+              updates.retailPrice = calculateRetailPrice(calculatedVal, currentMargin);
+            } else if (p.retailPrice > 0 && calculatedVal > 0) {
+              updates.profitMargin = Math.round(((p.retailPrice - calculatedVal) / calculatedVal) * 100);
+            }
+          } else if (bulkPriceTargetField === "retailPrice") {
+            if (p.costPrice > 0) {
+              updates.profitMargin = Math.round(((calculatedVal - p.costPrice) / p.costPrice) * 100);
+            }
+          }
+
+          return updateProduct(p.id, updates);
         })
       );
+
+      const fieldLabel =
+        bulkPriceTargetField === "costPrice"
+          ? "سعر التكلفة"
+          : bulkPriceTargetField === "wholesalePrice"
+          ? "سعر الجملة"
+          : "سعر المفرد/البيع";
+
+      const modeLabel =
+        bulkPriceMode === "fixed"
+          ? "تعيين ثابت"
+          : bulkPriceMode === "add_amount"
+          ? "إضافة مبلغ"
+          : bulkPriceMode === "sub_amount"
+          ? "خصم مبلغ"
+          : bulkPriceMode === "add_percent"
+          ? "إضافة نسبة %"
+          : "خصم نسبة %";
 
       await logActivity({
         user: settings.currentRole,
         action: "update",
         entity: "منتجات",
-        details: `تعديل سعر المفرد لـ ${selectedIds.length} منتج`,
+        details: `تعديل أسعار ${selectedIds.length} منتج [الحقل: ${fieldLabel} | العملية: ${modeLabel} بقيمة ${parsedVal}]`,
       });
-      toastSuccess(`🎉 تم تحديث الأسعار لـ ${selectedIds.length} منتج بنجاح!`);
+
+      toastSuccess(`🎉 تم تحديث ${fieldLabel} لـ ${selectedIds.length} منتج بنجاح وإعادة المزامنة المحاسبية!`);
       setBulkModal(null);
+      setBulkPriceVal(0);
       setSelectedIds([]);
     } catch (err: any) {
       toastError("خطأ في التعديل", err?.message || "حدث خطأ أثناء تعديل الأسعار");
@@ -982,42 +1042,91 @@ export default function ProductsPage() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" dir="rtl">
           <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 max-w-md w-full border border-gray-200 dark:border-gray-700 shadow-2xl text-right space-y-4">
             <div className="flex justify-between items-center border-b border-gray-200 dark:border-gray-700 pb-3">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">💰 تعديل السعر / القيمة المضافة لـ ({selectedIds.length}) منتج</h3>
-              <button onClick={() => setBulkModal(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <span>💰</span>
+                <span>تعديل السعر والقيمة المضافة لـ ({selectedIds.length}) منتج</span>
+              </h3>
+              <button onClick={() => setBulkModal(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
             </div>
-            <div className="space-y-3">
-              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300">طريقة تعديل سعر المفرد:</label>
-              <select
-                value={bulkPriceMode}
-                onChange={(e: any) => setBulkPriceMode(e.target.value)}
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm outline-none"
-              >
-                <option value="fixed">تحديد سعر مفرد ثابت لجميع المنتجات</option>
-                <option value="add_amount">إضافة مبلغ ثابت على السعر الحالي (د.ع)</option>
-                <option value="add_percent">إضافة نسبة مئوية على السعر الحالي (%)</option>
-              </select>
 
+            <div className="space-y-4">
+              {/* 1. Target Price Type Selection */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
-                  {bulkPriceMode === "fixed" ? "السعر الثابت الجديدة (د.ع):" : bulkPriceMode === "add_amount" ? "المبلغ المضاف (د.ع):" : "النسبة المضافة (%):"}
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                  1. اختر نوع السعر المستهدف بالتعديل:
+                </label>
+                <select
+                  value={bulkPriceTargetField}
+                  onChange={(e: any) => setBulkPriceTargetField(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-emerald-500 font-bold"
+                >
+                  <option value="retailPrice">💰 سعر المفرد / البيع النهائي (Retail Price)</option>
+                  <option value="costPrice">🏷️ سعر التكلفة (Cost Price)</option>
+                  <option value="wholesalePrice">📦 سعر الجملة (Wholesale Price)</option>
+                </select>
+              </div>
+
+              {/* 2. Calculation Mode Selection */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                  2. اختر طريقة التعديل الحسابية:
+                </label>
+                <select
+                  value={bulkPriceMode}
+                  onChange={(e: any) => setBulkPriceMode(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+                >
+                  <option value="fixed">🎯 تعيين سعر ثابت لجميع المنتجات</option>
+                  <option value="add_amount">➕ إضافة مبلغ ثابت على السعر الحالي (+ د.ع)</option>
+                  <option value="sub_amount">➖ خصم مبلغ ثابت من السعر الحالي (- د.ع)</option>
+                  <option value="add_percent">📈 إضافة نسبة مئوية على السعر الحالي (+ %)</option>
+                  <option value="sub_percent">📉 خصم نسبة مئوية من السعر الحالي (- %)</option>
+                </select>
+              </div>
+
+              {/* 3. Number Input */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                  3. {bulkPriceMode === "fixed" ? "السعر الثابت الجديد (د.ع):" : bulkPriceMode === "add_amount" ? "المبلغ المضاف (د.ع):" : bulkPriceMode === "sub_amount" ? "المبلغ المخصوم (د.ع):" : bulkPriceMode === "add_percent" ? "النسبة المضافة (%):" : "النسبة المخصومة (%):"}
                 </label>
                 <input
                   type="number"
+                  min="0"
+                  step="any"
                   value={bulkPriceVal}
-                  onChange={(e) => setBulkPriceVal(parseFloat(e.target.value) || 0)}
-                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                  onChange={(e) => setBulkPriceVal(Math.max(0, parseFloat(e.target.value) || 0))}
+                  placeholder="أدخل القيمة الرقمية..."
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-emerald-500 font-bold"
                 />
+              </div>
+
+              {/* Accounting Synchronization Notice */}
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 space-y-1">
+                <p className="font-bold flex items-center gap-1">
+                  <span>⚖️</span>
+                  <span>المزامنة المحاسبية الفورية:</span>
+                </p>
+                <p>
+                  {bulkPriceTargetField === "costPrice" && "عند تعديل سعر التكلفة، سيتم تلقائياً تحديث سعر البيع النهائي بناءً على نسبة الربح المحددة لمنع التضارب."}
+                  {bulkPriceTargetField === "retailPrice" && "عند تعديل سعر البيع، سيتم تلقائياً إعادة حساب نسبة الربح % مقارنة بسعر التكلفة لكل منتج."}
+                  {bulkPriceTargetField === "wholesalePrice" && "سيتم تحديث سعر الجملة لجميع المنتجات المحددة بشكل مباشر ومستقل."}
+                </p>
               </div>
             </div>
 
             <div className="flex gap-3 justify-end pt-2">
-              <button onClick={() => setBulkModal(null)} className="px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-xl">إلغاء</button>
+              <button
+                onClick={() => setBulkModal(null)}
+                className="px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              >
+                إلغاء
+              </button>
               <button
                 onClick={handleBulkPriceSave}
                 disabled={submittingBulk}
-                className="px-5 py-2.5 text-sm font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 disabled:opacity-50"
+                className="px-5 py-2.5 text-sm font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 active:scale-95 disabled:opacity-50 transition-all shadow-md flex items-center gap-1.5"
               >
-                {submittingBulk ? "جاري الحفظ..." : "تطبيق تعديل الأسعار"}
+                {submittingBulk ? "جاري الحفظ..." : "💰 تطبيق تعديل الأسعار"}
               </button>
             </div>
           </div>
