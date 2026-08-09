@@ -93,6 +93,88 @@ export default function DateFilterPanel({
   // Panel collapse
   const [collapsed, setCollapsed] = useState(false);
 
+  // ── Filtered products ──────────────────────────────────────────────────────
+  const filteredProducts = useMemo(
+    () =>
+      filterProductsByDate(products, filter).sort((a, b) => {
+        const da = a.createdAt || "";
+        const db = b.createdAt || "";
+        return sortDir === "desc" ? db.localeCompare(da) : da.localeCompare(db);
+      }),
+    [products, filter, sortDir]
+  );
+
+  const grouped = useMemo(() => groupByDate(filteredProducts), [filteredProducts]);
+
+  // ── Stats ──────────────────────────────────────────────────────────────────
+  const stats = useMemo(() => {
+    const totalStock = filteredProducts.reduce((s, p) => s + p.stock, 0);
+    const totalValue = filteredProducts.reduce((s, p) => s + p.retailPrice * p.stock, 0);
+    return { count: filteredProducts.length, totalStock, totalValue };
+  }, [filteredProducts]);
+
+  // ── Preset handler ─────────────────────────────────────────────────────────
+  const applyPreset = useCallback(
+    (preset: DatePreset) => {
+      setActivePreset(preset);
+      if (preset === "custom") {
+        if (customFrom && customTo) {
+          setFilter({ preset: "custom", from: customFrom, to: customTo });
+        }
+      } else {
+        setFilter({ preset });
+      }
+      setSelectedIds([]);
+      onSelectionChange([]);
+    },
+    [customFrom, customTo, onSelectionChange]
+  );
+
+  const applyCustomRange = () => {
+    if (!customFrom || !customTo) return;
+    setFilter({ preset: "custom", from: customFrom, to: customTo });
+    setActivePreset("custom");
+    setSelectedIds([]);
+    onSelectionChange([]);
+  };
+
+  const clearFilter = () => {
+    setFilter(null);
+    setActivePreset(null);
+    setSelectedIds([]);
+    onSelectionChange([]);
+  };
+
+  // ── Selection handlers ─────────────────────────────────────────────────────
+  const isAllSelected =
+    filteredProducts.length > 0 &&
+    filteredProducts.every((p) => selectedIds.includes(p.id));
+
+  const toggleSelectAll = () => {
+    const next = isAllSelected ? [] : filteredProducts.map((p) => p.id);
+    setSelectedIds(next);
+    onSelectionChange(next);
+  };
+
+  const toggleSelectOne = (id: string) => {
+    const next = selectedIds.includes(id)
+      ? selectedIds.filter((x) => x !== id)
+      : [...selectedIds, id];
+    setSelectedIds(next);
+    onSelectionChange(next);
+  };
+
+  const selectByDate = (date: string) => {
+    const dateProducts = grouped.get(date) || [];
+    const dateIds = dateProducts.map((p) => p.id);
+    const allSelected = dateIds.every((id) => selectedIds.includes(id));
+    const next = allSelected
+      ? selectedIds.filter((id) => !dateIds.includes(id))
+      : [...new Set([...selectedIds, ...dateIds])];
+    setSelectedIds(next);
+    onSelectionChange(next);
+  };
+
   // ── Date range label ───────────────────────────────────────────────────────
   const activeDateRangeLabel = useMemo(() => {
     if (!filter) return null;
