@@ -36,6 +36,27 @@ export default function ProductsPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkModal, setBulkModal] = useState<"category" | "supplier" | "margin" | "price" | "delete" | null>(null);
 
+  // Aliases and helpers for unified bulk action bar
+  const selectedProductIds = selectedIds;
+  const setSelectedProductIds = setSelectedIds;
+
+  const openModal = (
+    type: "EDIT_CATEGORY" | "EDIT_SUPPLIER" | "EDIT_PROFIT" | "EDIT_PRICE" | "DELETE" | "category" | "supplier" | "margin" | "price" | "delete",
+    ids?: string[]
+  ) => {
+    if (ids) setSelectedIds(ids);
+    if (type === "EDIT_CATEGORY" || type === "category") setBulkModal("category");
+    else if (type === "EDIT_SUPPLIER" || type === "supplier") setBulkModal("supplier");
+    else if (type === "EDIT_PROFIT" || type === "margin") setBulkModal("margin");
+    else if (type === "EDIT_PRICE" || type === "price") setBulkModal("price");
+    else if (type === "DELETE" || type === "delete") setBulkModal("delete");
+  };
+
+  const handleDeleteSelected = (ids?: string[]) => {
+    if (ids) setSelectedIds(ids);
+    setBulkModal("delete");
+  };
+
   // Bulk Edit Form Inputs
   const [bulkCategory, setBulkCategory] = useState("");
   const [bulkSupplierId, setBulkSupplierId] = useState("");
@@ -577,43 +598,48 @@ export default function ProductsPage() {
         )}
       </div>
 
-      {/* Sticky Floating Bulk Action Bar */}
-      {isAdminOrManager && selectedIds.length > 0 && (
-        <div className="sticky top-4 z-40 bg-blue-900 text-white p-4 rounded-2xl shadow-2xl border border-blue-700 animate-fadeIn flex flex-wrap items-center justify-between gap-3" dir="rtl">
-          <div className="flex items-center gap-2 font-bold text-sm">
-            <span className="bg-blue-600 text-white px-3 py-1 rounded-lg text-xs">
-              محدد {selectedIds.length} منتج
+      {/* شريط الإجراءات الجماعية الموحد - يظهر دائماً متى ما كان هناك منتجات محددة */}
+      {isAdminOrManager && selectedProductIds.length > 0 && (
+        <div className="sticky top-4 z-40 bg-purple-900/95 backdrop-blur-md border border-purple-700 p-4 rounded-xl shadow-2xl flex flex-wrap items-center justify-between gap-3 mb-6 transition-all animate-fadeIn" dir="rtl">
+          <div className="flex items-center gap-2 text-white font-medium">
+            <span className="bg-purple-600 px-3 py-1 rounded-lg text-sm font-bold">
+              محدد {selectedProductIds.length} منتج
             </span>
-            <span>خيارات التعديل والحذف الجماعي:</span>
+            <span className="font-semibold text-sm">خيارات التعديل والحذف الجماعي:</span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs">
+          {/* توحيد الأزرار لتعمل في التحديد العادي وتحديد التاريخ */}
+          <div className="flex flex-wrap items-center gap-2">
             {canEdit && (
               <>
+                {/* زر تعديل القسم */}
                 <button
-                  onClick={() => setBulkModal("category")}
-                  className="px-3 py-2 bg-blue-700 hover:bg-blue-600 rounded-xl font-bold transition-colors flex items-center gap-1 shadow-sm"
+                  onClick={() => openModal('EDIT_CATEGORY', selectedProductIds)}
+                  className="bg-purple-700 hover:bg-purple-600 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-colors shadow-sm font-semibold"
                 >
                   📁 تعديل القسم / الفئة
                 </button>
 
+                {/* زر تعديل المورد */}
                 <button
-                  onClick={() => setBulkModal("supplier")}
-                  className="px-3 py-2 bg-indigo-700 hover:bg-indigo-600 rounded-xl font-bold transition-colors flex items-center gap-1 shadow-sm"
+                  onClick={() => openModal('EDIT_SUPPLIER', selectedProductIds)}
+                  className="bg-purple-700 hover:bg-purple-600 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-colors shadow-sm font-semibold"
                 >
-                  🏬 تعديل المورد
+                  📦 تعديل المورد
                 </button>
 
+                {/* زر تعديل نسبة الربح */}
                 <button
-                  onClick={() => setBulkModal("margin")}
-                  className="px-3 py-2 bg-teal-700 hover:bg-teal-600 rounded-xl font-bold transition-colors flex items-center gap-1 shadow-sm"
+                  onClick={() => openModal('EDIT_PROFIT', selectedProductIds)}
+                  className="bg-purple-700 hover:bg-purple-600 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-colors shadow-sm font-semibold"
                 >
                   📈 تعديل نسبة الربح %
                 </button>
 
+                {/* زر تعديل السعر */}
                 <button
-                  onClick={() => setBulkModal("price")}
-                  className="px-3 py-2 bg-emerald-700 hover:bg-emerald-600 rounded-xl font-bold transition-colors flex items-center gap-1 shadow-sm"
+                  onClick={() => openModal('EDIT_PRICE', selectedProductIds)}
+                  className="bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-colors shadow-sm font-semibold"
                 >
                   💰 تعديل السعر والقيمة المضافة
                 </button>
@@ -621,17 +647,19 @@ export default function ProductsPage() {
             )}
 
             {canDelete && (
+              /* زر الحذف */
               <button
-                onClick={() => setBulkModal("delete")}
-                className="px-3 py-2 bg-red-600 hover:bg-red-700 rounded-xl font-bold transition-colors flex items-center gap-1 shadow-sm"
+                onClick={() => handleDeleteSelected(selectedProductIds)}
+                className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-colors shadow-sm font-semibold"
               >
-                🗑️ حذف المحددة
+                🗑️ حذف المحدد
               </button>
             )}
 
+            {/* زر إلغاء التحديد */}
             <button
-              onClick={() => setSelectedIds([])}
-              className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-xl font-medium transition-colors text-gray-300"
+              onClick={() => setSelectedProductIds([])}
+              className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-2 rounded-lg text-sm font-semibold transition-colors"
             >
               إلغاء التحديد
             </button>
