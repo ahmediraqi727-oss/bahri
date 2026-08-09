@@ -669,84 +669,177 @@ export default function InvoicesPage() {
           </div>
         ) : (
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
-            <DataTableWrapper>
-              <table className="w-full text-right text-xs min-w-[850px]">
-                <thead className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold border-b border-gray-200 dark:border-gray-700">
-                  <tr>
-                    <th className="p-3.5 text-center sticky right-0 z-20 bg-gray-100 dark:bg-gray-800 shadow-sm">الرقم التسلسلي</th>
-                    <th className="p-3.5 min-w-[200px]">الزبون والهاتف</th>
-                    <th className="p-3.5">المحافظة والعنوان</th>
-                    <th className="p-3.5 text-center">عدد المنتجات</th>
-                    <th className="p-3.5 text-center">تكلفة التوصيل</th>
-                    <th className="p-3.5 text-left">الإجمالي النهائي</th>
-                    <th className="p-3.5 text-center">حالة الفاتورة</th>
-                    <th className="p-3.5 text-center">تاريخ الإصدار</th>
-                    <th className="p-3.5 text-center sticky left-0 z-20 bg-gray-100 dark:bg-gray-800 shadow-md border-r border-gray-200 dark:border-gray-700 whitespace-nowrap">الإجراء</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {filteredInvoices.map((inv) => {
-                    const serialStr = formatInvoiceSerial(inv);
-                    const statusStyle = STATUS_COLORS[inv.status];
+            {/* Desktop Table View */}
+            <div className="hidden md:block">
+              <DataTableWrapper>
+                <table className="w-full text-right text-xs min-w-[850px]">
+                  <thead className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold border-b border-gray-200 dark:border-gray-700">
+                    <tr>
+                      <th className="p-3.5 text-center sticky right-0 z-20 bg-gray-100 dark:bg-gray-800 shadow-sm">الرقم التسلسلي</th>
+                      <th className="p-3.5 min-w-[200px]">الزبون والهاتف</th>
+                      <th className="p-3.5">المحافظة والعنوان</th>
+                      <th className="p-3.5 text-center">عدد المنتجات</th>
+                      <th className="p-3.5 text-center">تكلفة التوصيل</th>
+                      <th className="p-3.5 text-left">الإجمالي النهائي</th>
+                      <th className="p-3.5 text-center">حالة الفاتورة</th>
+                      <th className="p-3.5 text-center">تاريخ الإصدار</th>
+                      <th className="p-3.5 text-center sticky left-0 z-20 bg-gray-100 dark:bg-gray-800 shadow-md border-r border-gray-200 dark:border-gray-700 whitespace-nowrap">الإجراء</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {filteredInvoices.map((inv) => {
+                      const serialStr = formatInvoiceSerial(inv);
+                      const statusStyle = STATUS_COLORS[inv.status];
 
-                    return (
-                      <tr
-                        key={inv.id}
-                        onClick={() => openInvoiceModal(inv)}
-                        className="group hover:bg-blue-50/40 dark:hover:bg-gray-800/60 transition-colors cursor-pointer"
-                      >
-                        <td className="p-3.5 text-center font-mono font-bold text-blue-600 dark:text-blue-400 sticky right-0 z-10 bg-white dark:bg-gray-900 group-hover:bg-blue-50/90 dark:group-hover:bg-gray-800/90 transition-colors shadow-sm">
+                      return (
+                        <tr
+                          key={inv.id}
+                          onClick={() => openInvoiceModal(inv)}
+                          className="group hover:bg-blue-50/40 dark:hover:bg-gray-800/60 transition-colors cursor-pointer"
+                        >
+                          <td className="p-3.5 text-center font-mono font-bold text-blue-600 dark:text-blue-400 sticky right-0 z-10 bg-white dark:bg-gray-900 group-hover:bg-blue-50/90 dark:group-hover:bg-gray-800/90 transition-colors shadow-sm">
+                            {serialStr}
+                          </td>
+
+                          <td className="p-3.5 min-w-[200px]">
+                            <p className="font-bold text-gray-900 dark:text-white">{inv.customerName}</p>
+                            <p className="text-[11px] text-gray-500 font-mono" dir="ltr">{inv.customerPhone}</p>
+                          </td>
+
+                          <td className="p-3.5 text-gray-700 dark:text-gray-300 max-w-[180px] truncate">
+                            {inv.customerAddress}
+                          </td>
+
+                          <td className="p-3.5 text-center font-semibold">
+                            {inv.items.length} منتجات
+                          </td>
+
+                          <td className="p-3.5 text-center text-blue-600 dark:text-blue-400 font-semibold">
+                            {inv.deliveryFee ? `${inv.deliveryFee.toLocaleString()} د.ع` : "مجاني"}
+                          </td>
+
+                          <td className="p-3.5 text-left font-black text-emerald-600 dark:text-emerald-400 text-sm">
+                            {inv.total.toLocaleString()} د.ع
+                          </td>
+
+                          <td className="p-3.5 text-center">
+                            <span className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}>
+                              {STATUS_LABELS[inv.status]}
+                            </span>
+                          </td>
+
+                          <td className="p-3.5 text-center text-gray-500 text-[11px]">
+                            {new Date(inv.createdAt).toLocaleDateString("ar-EG")}
+                          </td>
+
+                          <td className="p-3.5 text-center sticky left-0 z-10 bg-white dark:bg-gray-900 group-hover:bg-blue-50/90 dark:group-hover:bg-gray-800/90 transition-colors shadow-md border-r border-gray-200 dark:border-gray-700 whitespace-nowrap">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openInvoiceModal(inv);
+                              }}
+                              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-[11px] hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap shrink-0"
+                            >
+                              👁️ معاينة وطباعة
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </DataTableWrapper>
+            </div>
+
+            {/* Mobile Cards List View */}
+            <div className="block md:hidden space-y-3.5 p-3">
+              {filteredInvoices.map((inv) => {
+                const serialStr = formatInvoiceSerial(inv);
+                const statusStyle = STATUS_COLORS[inv.status];
+
+                return (
+                  <div
+                    key={inv.id}
+                    onClick={() => openInvoiceModal(inv)}
+                    className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 shadow-sm space-y-3 cursor-pointer hover:border-blue-300 dark:hover:border-blue-800 transition-all"
+                  >
+                    {/* Header */}
+                    <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/40 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800">
                           {serialStr}
-                        </td>
+                        </span>
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}>
+                        {STATUS_LABELS[inv.status]}
+                      </span>
+                    </div>
 
-                        <td className="p-3.5 min-w-[200px]">
-                          <p className="font-bold text-gray-900 dark:text-white">{inv.customerName}</p>
-                          <p className="text-[11px] text-gray-500 font-mono" dir="ltr">{inv.customerPhone}</p>
-                        </td>
+                    {/* Customer Info */}
+                    <div className="space-y-0.5">
+                      <h3 className="font-bold text-gray-900 dark:text-white text-sm flex items-center gap-1.5">
+                        <span>👤</span>
+                        <span>{inv.customerName}</span>
+                      </h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 font-mono flex items-center gap-1.5" dir="ltr">
+                        <span>📞</span>
+                        <span>{inv.customerPhone}</span>
+                      </p>
+                    </div>
 
-                        <td className="p-3.5 text-gray-700 dark:text-gray-300 max-w-[180px] truncate">
-                          {inv.customerAddress}
-                        </td>
+                    {/* Details Grid */}
+                    <div className="grid grid-cols-2 gap-2 text-xs bg-gray-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-100 dark:border-gray-800/80">
+                      <div>
+                        <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">العنوان / المحافظة</span>
+                        <span className="font-semibold text-gray-800 dark:text-gray-200 truncate block">
+                          {inv.customerAddress || "غير محدد"}
+                        </span>
+                      </div>
 
-                        <td className="p-3.5 text-center font-semibold">
+                      <div>
+                        <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">عدد المنتجات</span>
+                        <span className="font-bold text-gray-900 dark:text-white">
                           {inv.items.length} منتجات
-                        </td>
+                        </span>
+                      </div>
 
-                        <td className="p-3.5 text-center text-blue-600 dark:text-blue-400 font-semibold">
+                      <div>
+                        <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">تكلفة التوصيل</span>
+                        <span className="font-semibold text-blue-600 dark:text-blue-400">
                           {inv.deliveryFee ? `${inv.deliveryFee.toLocaleString()} د.ع` : "مجاني"}
-                        </td>
+                        </span>
+                      </div>
 
-                        <td className="p-3.5 text-left font-black text-emerald-600 dark:text-emerald-400 text-sm">
-                          {inv.total.toLocaleString()} د.ع
-                        </td>
-
-                        <td className="p-3.5 text-center">
-                          <span className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}>
-                            {STATUS_LABELS[inv.status]}
-                          </span>
-                        </td>
-
-                        <td className="p-3.5 text-center text-gray-500 text-[11px]">
+                      <div>
+                        <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">تاريخ الإصدار</span>
+                        <span className="font-semibold text-gray-700 dark:text-gray-300">
                           {new Date(inv.createdAt).toLocaleDateString("ar-EG")}
-                        </td>
+                        </span>
+                      </div>
 
-                        <td className="p-3.5 text-center sticky left-0 z-10 bg-white dark:bg-gray-900 group-hover:bg-blue-50/90 dark:group-hover:bg-gray-800/90 transition-colors shadow-md border-r border-gray-200 dark:border-gray-700 whitespace-nowrap">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openInvoiceModal(inv);
-                            }}
-                            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-[11px] hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap shrink-0"
-                          >
-                            👁️ معاينة وطباعة
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </DataTableWrapper>
+                      <div className="col-span-2 pt-1 border-t border-gray-200/60 dark:border-gray-700/60 flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-700 dark:text-gray-300">الإجمالي النهائي:</span>
+                        <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
+                          {inv.total.toLocaleString()} د.ع
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Footer Action */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openInvoiceModal(inv);
+                      }}
+                      className="w-full py-2.5 px-4 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-sm active:scale-95 transition-all min-h-[40px] flex items-center justify-center gap-2"
+                    >
+                      <span>👁️</span>
+                      <span>معاينة وطباعة الفاتورة</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 

@@ -231,74 +231,157 @@ export default function AccountsPage() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
         </div>
       ) : (
-        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <DataTableWrapper>
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">المستخدم</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">الصلاحية</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">المشتريات</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">تاريخ الانضمام</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">الإجراءات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {accounts.map((account) => {
-                  const purchases = getUserPurchases(account);
-                  const totalSpent = purchases.reduce((sum, s) => sum + s.total, 0);
-                  return (
-                    <tr
-                      key={account.id}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer"
-                      onClick={() => { setSelectedAccount(account); setShowDetail(true); }}
-                    >
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold"
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
+          {/* Desktop Table View */}
+          <div className="hidden md:block">
+            <DataTableWrapper>
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">المستخدم</th>
+                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">الصلاحية</th>
+                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">المشتريات</th>
+                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">تاريخ الانضمام</th>
+                    <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">الإجراءات</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {accounts.map((account) => {
+                    const purchases = getUserPurchases(account);
+                    const totalSpent = purchases.reduce((sum, s) => sum + s.total, 0);
+                    return (
+                      <tr
+                        key={account.id}
+                        className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer"
+                        onClick={() => { setSelectedAccount(account); setShowDetail(true); }}
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold"
+                              style={{ backgroundColor: ROLE_COLORS[account.role] }}
+                            >
+                              {account.full_name?.charAt(0) || account.email.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900 dark:text-white">{account.full_name || "بدون اسم"}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">{account.email}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className="px-3 py-1 rounded-full text-xs font-bold text-white"
                             style={{ backgroundColor: ROLE_COLORS[account.role] }}
                           >
-                            {account.full_name?.charAt(0) || account.email.charAt(0).toUpperCase()}
-                          </div>
+                            {ROLE_LABELS[account.role]}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
                           <div>
-                            <p className="text-sm font-semibold text-gray-900 dark:text-white">{account.full_name || "بدون اسم"}</p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">{account.email}</p>
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white">{purchases.length} طلب</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{totalSpent.toLocaleString()} د.ع</p>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className="px-3 py-1 rounded-full text-xs font-bold text-white"
-                          style={{ backgroundColor: ROLE_COLORS[account.role] }}
-                        >
-                          {ROLE_LABELS[account.role]}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900 dark:text-white">{purchases.length} طلب</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{totalSpent.toLocaleString()} د.ع</p>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
+                          {new Date(account.created_at).toLocaleDateString("ar-EG")}
+                        </td>
+                        <td className="px-6 py-4">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleUpgradeClick(account); }}
+                            className="px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-colors hover:opacity-90"
+                            style={{ backgroundColor: ROLE_COLORS[account.role] === "#16a34a" ? "#2563eb" : ROLE_COLORS[account.role] === "#2563eb" ? "#dc2626" : "#7c3aed" }}
+                          >
+                            {account.role === "customer" ? "⬆ رفع صلاحيات" : account.role === "admin" ? "⬆ ترقية" : "👑 مدير"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </DataTableWrapper>
+          </div>
+
+          {/* Mobile Cards List View */}
+          <div className="block md:hidden space-y-3.5 p-3">
+            {accounts.map((account) => {
+              const purchases = getUserPurchases(account);
+              const totalSpent = purchases.reduce((sum, s) => sum + s.total, 0);
+
+              return (
+                <div
+                  key={account.id}
+                  onClick={() => { setSelectedAccount(account); setShowDetail(true); }}
+                  className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 shadow-sm space-y-3 cursor-pointer hover:border-blue-300 transition-all"
+                >
+                  {/* Header */}
+                  <div className="flex items-start justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className="w-11 h-11 rounded-full flex items-center justify-center text-white text-base font-bold shadow-sm flex-shrink-0"
+                        style={{ backgroundColor: ROLE_COLORS[account.role] }}
+                      >
+                        {account.full_name?.charAt(0) || account.email.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="font-bold text-gray-900 dark:text-white text-sm truncate">
+                          {account.full_name || "بدون اسم"}
+                        </h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate" dir="ltr">
+                          {account.email}
+                        </p>
+                      </div>
+                    </div>
+
+                    <span
+                      className="px-2.5 py-1 rounded-full text-xs font-bold text-white flex-shrink-0"
+                      style={{ backgroundColor: ROLE_COLORS[account.role] }}
+                    >
+                      {ROLE_LABELS[account.role]}
+                    </span>
+                  </div>
+
+                  {/* Details Grid */}
+                  <div className="grid grid-cols-2 gap-2 text-xs bg-gray-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-100 dark:border-gray-800/80">
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">إجمالي المشتريات</span>
+                      <span className="font-bold text-gray-900 dark:text-white block">
+                        {purchases.length} طلب ({totalSpent.toLocaleString()} د.ع)
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">تاريخ الانضمام</span>
+                      <span className="font-semibold text-gray-600 dark:text-gray-400 block">
                         {new Date(account.created_at).toLocaleDateString("ar-EG")}
-                      </td>
-                      <td className="px-6 py-4">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleUpgradeClick(account); }}
-                          className="px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-colors hover:opacity-90"
-                          style={{ backgroundColor: ROLE_COLORS[account.role] === "#16a34a" ? "#2563eb" : ROLE_COLORS[account.role] === "#2563eb" ? "#dc2626" : "#7c3aed" }}
-                        >
-                          {account.role === "customer" ? "⬆ رفع صلاحيات" : account.role === "admin" ? "⬆ ترقية" : "👑 مدير"}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </DataTableWrapper>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Footer Actions */}
+                  <div className="flex items-center gap-2 pt-1 border-t border-gray-100 dark:border-gray-800">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleUpgradeClick(account); }}
+                      className="flex-1 py-2.5 px-3 text-xs font-bold text-white rounded-xl shadow-sm hover:opacity-90 transition-all min-h-[40px] flex items-center justify-center gap-1.5"
+                      style={{ backgroundColor: ROLE_COLORS[account.role] === "#16a34a" ? "#2563eb" : ROLE_COLORS[account.role] === "#2563eb" ? "#dc2626" : "#7c3aed" }}
+                    >
+                      <span>{account.role === "customer" ? "⬆ رفع صلاحيات" : account.role === "admin" ? "⬆ ترقية" : "👑 مدير"}</span>
+                    </button>
+
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setSelectedAccount(account); setShowDetail(true); }}
+                      className="flex-1 py-2.5 px-3 text-xs font-bold text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-xl border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 transition-all min-h-[40px]"
+                    >
+                      <span>👁️</span>
+                      <span>معاينة التفاصيل</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
           {accounts.length === 0 && (
             <div className="text-center py-12">
               <span className="text-4xl block mb-3">👤</span>

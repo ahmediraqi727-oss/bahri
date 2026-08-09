@@ -945,39 +945,131 @@ export default function OrdersPage() {
                   </div>
 
                   <div className="border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden bg-white dark:bg-gray-900">
-                    <table className="w-full text-right text-xs">
-                      <thead className="bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-bold border-b border-gray-200 dark:border-gray-700">
-                        <tr>
-                          <th className="p-3 text-center">رقم</th>
-                          <th className="p-3 text-center">صورة المنتج</th>
-                          <th className="p-3">اسم المنتج</th>
-                          <th className="p-3 text-center">السعر الفردي</th>
-                          <th className="p-3 text-center">الكمية</th>
-                          <th className="p-3 text-left">الإجمالي</th>
-                          <th className="p-3 text-center">حذف</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                        {editItems.length === 0 ? (
+                    {/* Desktop Table View */}
+                    <div className="hidden sm:block overflow-x-auto">
+                      <table className="w-full text-right text-xs">
+                        <thead className="bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-bold border-b border-gray-200 dark:border-gray-700">
                           <tr>
-                            <td colSpan={7} className="p-6 text-center text-gray-400">
-                              لا توجد منتجات في الفاتورة
-                            </td>
+                            <th className="p-3 text-center">رقم</th>
+                            <th className="p-3 text-center">صورة المنتج</th>
+                            <th className="p-3">اسم المنتج</th>
+                            <th className="p-3 text-center">السعر الفردي</th>
+                            <th className="p-3 text-center">الكمية</th>
+                            <th className="p-3 text-left">الإجمالي</th>
+                            <th className="p-3 text-center">حذف</th>
                           </tr>
-                        ) : (
-                          editItems.map((item, idx) => (
-                            <tr key={idx} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50">
-                              <td className="p-3 text-center font-bold text-gray-400">{idx + 1}</td>
-                              <td className="p-3 text-center">
-                                {item.image ? (
-                                  <img src={item.image} alt="" className="w-8 h-8 rounded-lg object-cover mx-auto border border-gray-200 dark:border-gray-700" />
-                                ) : (
-                                  <span className="text-base">📦</span>
-                                )}
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                          {editItems.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} className="p-6 text-center text-gray-400">
+                                لا توجد منتجات في الفاتورة
                               </td>
-                              <td className="p-3 font-semibold text-gray-900 dark:text-white max-w-[200px] truncate">{item.name}</td>
+                            </tr>
+                          ) : (
+                            editItems.map((item, idx) => (
+                              <tr key={idx} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50">
+                                <td className="p-3 text-center font-bold text-gray-400">{idx + 1}</td>
+                                <td className="p-3 text-center">
+                                  {item.image ? (
+                                    <img src={item.image} alt="" className="w-8 h-8 rounded-lg object-cover mx-auto border border-gray-200 dark:border-gray-700" />
+                                  ) : (
+                                    <span className="text-base">📦</span>
+                                  )}
+                                </td>
+                                <td className="p-3 font-semibold text-gray-900 dark:text-white max-w-[200px] truncate">{item.name}</td>
 
-                              <td className="p-3 text-center">
+                                <td className="p-3 text-center">
+                                  <input
+                                    type="number"
+                                    value={item.retailPrice}
+                                    onChange={(e) => {
+                                      const val = Number(e.target.value) || 0;
+                                      setEditItems((prev) =>
+                                        prev.map((it, i) => (i === idx ? { ...it, retailPrice: val } : it))
+                                      );
+                                    }}
+                                    className="w-24 px-2 py-1 text-center bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-bold text-gray-900 dark:text-white"
+                                  />
+                                </td>
+
+                                <td className="p-3 text-center">
+                                  <div className="flex items-center justify-center gap-1">
+                                    <button
+                                      onClick={() => {
+                                        if (item.quantity > 1) {
+                                          setEditItems((prev) =>
+                                            prev.map((it, i) => (i === idx ? { ...it, quantity: it.quantity - 1 } : it))
+                                          );
+                                        }
+                                      }}
+                                      className="w-6 h-6 rounded bg-gray-200 dark:bg-gray-700 font-bold text-xs"
+                                    >
+                                      -
+                                    </button>
+                                    <span className="w-8 text-center font-extrabold text-gray-900 dark:text-white">{item.quantity}</span>
+                                    <button
+                                      onClick={() => {
+                                        setEditItems((prev) =>
+                                          prev.map((it, i) => (i === idx ? { ...it, quantity: it.quantity + 1 } : it))
+                                        );
+                                      }}
+                                      className="w-6 h-6 rounded bg-blue-600 text-white font-bold text-xs"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                </td>
+
+                                <td className="p-3 text-left font-bold text-blue-600 dark:text-blue-400">
+                                  {(item.retailPrice * item.quantity).toLocaleString()} د.ع
+                                </td>
+
+                                <td className="p-3 text-center">
+                                  <button
+                                    onClick={() => setEditItems((prev) => prev.filter((_, i) => i !== idx))}
+                                    className="text-red-400 hover:text-red-600 text-xs p-1"
+                                  >
+                                    ✕
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Mobile Items Cards View */}
+                    <div className="block sm:hidden space-y-2.5 p-2.5">
+                      {editItems.length === 0 ? (
+                        <p className="text-center text-xs text-gray-400 py-4">لا توجد منتجات في الفاتورة</p>
+                      ) : (
+                        editItems.map((item, idx) => (
+                          <div
+                            key={idx}
+                            className="bg-gray-50 dark:bg-gray-800/80 p-3 rounded-xl border border-gray-200/80 dark:border-gray-700/80 space-y-2 text-xs"
+                          >
+                            <div className="flex items-center justify-between gap-2 border-b border-gray-200/60 dark:border-gray-700/60 pb-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                {item.image ? (
+                                  <img src={item.image} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0 border border-gray-200 dark:border-gray-700" />
+                                ) : (
+                                  <span className="text-base flex-shrink-0">📦</span>
+                                )}
+                                <span className="font-bold text-gray-900 dark:text-white truncate">{item.name}</span>
+                              </div>
+                              <button
+                                onClick={() => setEditItems((prev) => prev.filter((_, i) => i !== idx))}
+                                className="w-7 h-7 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-bold text-xs flex items-center justify-center flex-shrink-0"
+                              >
+                                ✕
+                              </button>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 pt-0.5">
+                              <div>
+                                <span className="text-[10px] text-gray-500 block">السعر الفردي:</span>
                                 <input
                                   type="number"
                                   value={item.retailPrice}
@@ -987,12 +1079,13 @@ export default function OrdersPage() {
                                       prev.map((it, i) => (i === idx ? { ...it, retailPrice: val } : it))
                                     );
                                   }}
-                                  className="w-24 px-2 py-1 text-center bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-xs font-bold text-gray-900 dark:text-white"
+                                  className="w-20 px-2 py-1 text-center bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-md text-xs font-bold text-gray-900 dark:text-white"
                                 />
-                              </td>
+                              </div>
 
-                              <td className="p-3 text-center">
-                                <div className="flex items-center justify-center gap-1">
+                              <div>
+                                <span className="text-[10px] text-gray-500 block text-center">الكمية:</span>
+                                <div className="flex items-center gap-1">
                                   <button
                                     onClick={() => {
                                       if (item.quantity > 1) {
@@ -1005,7 +1098,7 @@ export default function OrdersPage() {
                                   >
                                     -
                                   </button>
-                                  <span className="w-8 text-center font-extrabold text-gray-900 dark:text-white">{item.quantity}</span>
+                                  <span className="w-6 text-center font-extrabold text-gray-900 dark:text-white">{item.quantity}</span>
                                   <button
                                     onClick={() => {
                                       setEditItems((prev) =>
@@ -1017,25 +1110,19 @@ export default function OrdersPage() {
                                     +
                                   </button>
                                 </div>
-                              </td>
+                              </div>
 
-                              <td className="p-3 text-left font-bold text-blue-600 dark:text-blue-400">
-                                {(item.retailPrice * item.quantity).toLocaleString()} د.ع
-                              </td>
-
-                              <td className="p-3 text-center">
-                                <button
-                                  onClick={() => setEditItems((prev) => prev.filter((_, i) => i !== idx))}
-                                  className="text-red-400 hover:text-red-600 text-xs p-1"
-                                >
-                                  ✕
-                                </button>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+                              <div className="text-left">
+                                <span className="text-[10px] text-gray-500 block">الإجمالي:</span>
+                                <span className="font-extrabold text-blue-600 dark:text-blue-400">
+                                  {(item.retailPrice * item.quantity).toLocaleString()} د.ع
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
                 </div>
 

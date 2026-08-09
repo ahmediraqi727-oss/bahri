@@ -763,159 +763,316 @@ export default function ProductsPage() {
             )}
           </div>
         ) : (
-          <DataTableWrapper>
-            <table className="w-full text-xs text-right border-collapse">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-                  {isAdminOrManager && (
-                    <th className="p-2 w-8 text-center">
-                      <input
-                        type="checkbox"
-                        checked={isAllSelected}
-                        onChange={toggleSelectAll}
-                        className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
-                        title="تحديد الكل"
-                      />
-                    </th>
-                  )}
-                  <th className="p-2.5 font-bold text-gray-700 dark:text-gray-300 max-w-[200px]">المنتج والوصف</th>
-                  <th className="p-2.5 font-bold text-gray-700 dark:text-gray-300">القسم</th>
-                  {isAdminOrManager && <th className="p-2 text-center font-bold text-gray-700 dark:text-gray-300">التكلفة</th>}
-                  {isAdminOrManager && <th className="p-2 text-center font-bold text-gray-700 dark:text-gray-300">الجملة</th>}
-                  {isAdminOrManager && <th className="p-2 text-center font-bold text-gray-700 dark:text-gray-300">ربح %</th>}
-                  <th className="p-2 text-center font-bold text-blue-600 dark:text-blue-400">المفرد</th>
-                  {isAdminOrManager && <th className="p-2 text-center font-bold text-gray-700 dark:text-gray-300">الكمية</th>}
-                  {isAdminOrManager && <th className="p-1.5 font-bold text-gray-700 dark:text-gray-300 text-center max-w-[75px] leading-tight">المورد</th>}
-                  {isAdminOrManager && <th className="p-2 text-center font-bold text-gray-700 dark:text-gray-300 w-20 sm:w-24 whitespace-nowrap sticky left-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-md border-r border-gray-200 dark:border-gray-700">إجراءات</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {filtered.map((product) => {
-                  const isSelected = selectedIds.includes(product.id);
-                  const rowBg = isSelected
-                    ? "bg-blue-50/90 dark:bg-blue-900/40"
-                    : "bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800/50";
-                  return (
-                    <tr
-                      key={product.id}
-                      className="group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                    >
+          <>
+            {/* Desktop Table View */}
+            <div className="hidden md:block">
+              <DataTableWrapper>
+                <table className="w-full text-xs text-right border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
                       {isAdminOrManager && (
-                        <td className="p-2 text-center">
+                        <th className="p-2 w-8 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isAllSelected}
+                            onChange={toggleSelectAll}
+                            className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                            title="تحديد الكل"
+                          />
+                        </th>
+                      )}
+                      <th className="p-2.5 font-bold text-gray-700 dark:text-gray-300 max-w-[200px]">المنتج والوصف</th>
+                      <th className="p-2.5 font-bold text-gray-700 dark:text-gray-300">القسم</th>
+                      {isAdminOrManager && <th className="p-2 text-center font-bold text-gray-700 dark:text-gray-300">التكلفة</th>}
+                      {isAdminOrManager && <th className="p-2 text-center font-bold text-gray-700 dark:text-gray-300">الجملة</th>}
+                      {isAdminOrManager && <th className="p-2 text-center font-bold text-gray-700 dark:text-gray-300">ربح %</th>}
+                      <th className="p-2 text-center font-bold text-blue-600 dark:text-blue-400">المفرد</th>
+                      {isAdminOrManager && <th className="p-2 text-center font-bold text-gray-700 dark:text-gray-300">الكمية</th>}
+                      {isAdminOrManager && <th className="p-1.5 font-bold text-gray-700 dark:text-gray-300 text-center max-w-[75px] leading-tight">المورد</th>}
+                      {isAdminOrManager && <th className="p-2 text-center font-bold text-gray-700 dark:text-gray-300 w-20 sm:w-24 whitespace-nowrap sticky left-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-md border-r border-gray-200 dark:border-gray-700">إجراءات</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {filtered.map((product) => {
+                      const isSelected = selectedIds.includes(product.id);
+                      const rowBg = isSelected
+                        ? "bg-blue-50/90 dark:bg-blue-900/40"
+                        : "bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800/50";
+                      return (
+                        <tr
+                          key={product.id}
+                          className="group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                        >
+                          {isAdminOrManager && (
+                            <td className="p-2 text-center">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleSelectOne(product.id)}
+                                className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                              />
+                            </td>
+                          )}
+                          <td className="p-2.5 max-w-[200px]">
+                            <div className="flex items-center gap-2">
+                              {product.image ? (
+                                <img src={product.image} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0 border border-gray-200 dark:border-gray-700" />
+                              ) : (
+                                <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 text-sm flex-shrink-0">📦</div>
+                              )}
+                              <div className="min-w-0">
+                                <p className="font-bold text-gray-900 dark:text-white truncate max-w-[140px]" title={product.name}>{product.name}</p>
+                                {product.notes && <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate max-w-[140px]">{product.notes}</p>}
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="p-2 text-center">
+                            {(() => {
+                              const match = product.notes ? product.notes.match(/الفئة:\s*([^|,\n]+)/) : null;
+                              const catName = match && match[1] ? match[1].trim() : null;
+                              return catName ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-[11px] whitespace-nowrap">
+                                  {catName}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400 text-[10px] italic">غير مصنف</span>
+                              );
+                            })()}
+                          </td>
+
+                          {isAdminOrManager && (
+                            <td className="p-2 text-center whitespace-nowrap">
+                              {canEdit ? (
+                                <InlineNumber value={product.costPrice} onSave={(v) => handleInlineEdit(product.id, "costPrice", v)} />
+                              ) : (
+                                <span className="text-gray-900 dark:text-white font-medium">{product.costPrice.toLocaleString()}</span>
+                              )}
+                            </td>
+                          )}
+
+                          {isAdminOrManager && (
+                            <td className="p-2 text-center whitespace-nowrap">
+                              {canEdit ? (
+                                <InlineNumber value={product.wholesalePrice} onSave={(v) => handleInlineEdit(product.id, "wholesalePrice", v)} />
+                              ) : (
+                                <span className="text-gray-900 dark:text-white font-medium">{product.wholesalePrice.toLocaleString()}</span>
+                              )}
+                            </td>
+                          )}
+
+                          {isAdminOrManager && (
+                            <td className="p-2 text-center text-emerald-600 dark:text-emerald-400 font-bold whitespace-nowrap">
+                              {product.profitMargin || 0}%
+                            </td>
+                          )}
+
+                          <td className="p-2 text-center font-black text-blue-600 dark:text-blue-400 text-xs whitespace-nowrap">
+                            {product.retailPrice.toLocaleString()} د.ع
+                          </td>
+
+                          {isAdminOrManager && (
+                            <td className="p-2 text-center whitespace-nowrap">
+                              {canEdit ? (
+                                <InlineNumber value={product.stock} onSave={(v) => handleInlineEdit(product.id, "stock", v)} isInteger />
+                              ) : (
+                                <span className="text-gray-900 dark:text-white font-bold">{product.stock}</span>
+                              )}
+                            </td>
+                          )}
+
+                          {isAdminOrManager && (
+                            <td className="p-1.5 text-gray-600 dark:text-gray-400 text-[10px] font-bold text-center max-w-[75px] leading-tight break-words">
+                              {getSupplierName(product.supplierId)}
+                            </td>
+                          )}
+
+                          {isAdminOrManager && (
+                            <td className={`p-1.5 sm:p-2 w-20 sm:w-24 whitespace-nowrap sticky left-0 z-10 transition-colors ${rowBg} shadow-md border-r border-gray-200 dark:border-gray-700`}>
+                              <div className="flex flex-col items-center justify-center gap-1 w-full">
+                                {canEdit && (
+                                  <button
+                                    onClick={() => { setEditingProduct(product); setModalOpen(true); }}
+                                    className="w-full max-w-[80px] px-2 py-0.5 sm:py-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-md text-[10px] sm:text-[11px] font-bold border border-blue-200 dark:border-blue-800 inline-flex items-center justify-center gap-1 transition-all active:scale-95"
+                                    title="تعديل المنتج"
+                                  >
+                                    <span>✏️</span>
+                                    <span>تعديل</span>
+                                  </button>
+                                )}
+                                {canDelete && (
+                                  <button
+                                    onClick={() => setDeleteConfirm(product.id)}
+                                    className="w-full max-w-[80px] px-2 py-0.5 sm:py-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md text-[10px] sm:text-[11px] font-bold border border-red-200 dark:border-red-800 inline-flex items-center justify-center gap-1 transition-all active:scale-95"
+                                    title="حذف المنتج"
+                                  >
+                                    <span>🗑️</span>
+                                    <span>حذف</span>
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </DataTableWrapper>
+            </div>
+
+            {/* Mobile Cards List View */}
+            <div className="block md:hidden space-y-3.5 p-3">
+              {filtered.map((product) => {
+                const isSelected = selectedIds.includes(product.id);
+                const match = product.notes ? product.notes.match(/الفئة:\s*([^|,\n]+)/) : null;
+                const catName = match && match[1] ? match[1].trim() : null;
+
+                return (
+                  <div
+                    key={product.id}
+                    className={`bg-white dark:bg-gray-900 rounded-2xl border ${
+                      isSelected
+                        ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/20 dark:bg-blue-950/20"
+                        : "border-gray-200 dark:border-gray-800"
+                    } p-4 shadow-sm space-y-3 transition-all`}
+                  >
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {isAdminOrManager && (
                           <input
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => toggleSelectOne(product.id)}
-                            className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                            className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer flex-shrink-0"
                           />
-                        </td>
-                      )}
-                      <td className="p-2.5 max-w-[200px]">
-                        <div className="flex items-center gap-2">
-                          {product.image ? (
-                            <img src={product.image} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0 border border-gray-200 dark:border-gray-700" />
-                          ) : (
-                            <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 text-sm flex-shrink-0">📦</div>
-                          )}
-                          <div className="min-w-0">
-                            <p className="font-bold text-gray-900 dark:text-white truncate max-w-[140px]" title={product.name}>{product.name}</p>
-                            {product.notes && <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate max-w-[140px]">{product.notes}</p>}
+                        )}
+                        {product.image ? (
+                          <img
+                            src={product.image}
+                            alt=""
+                            className="w-11 h-11 rounded-xl object-cover flex-shrink-0 border border-gray-200 dark:border-gray-700 shadow-sm"
+                          />
+                        ) : (
+                          <div className="w-11 h-11 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 text-lg flex-shrink-0 border border-gray-200 dark:border-gray-700">
+                            📦
                           </div>
+                        )}
+                        <div className="min-w-0">
+                          <h3 className="font-bold text-gray-900 dark:text-white text-sm truncate" title={product.name}>
+                            {product.name}
+                          </h3>
+                          {product.notes && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]">
+                              {product.notes}
+                            </p>
+                          )}
                         </div>
-                      </td>
+                      </div>
 
-                      <td className="p-2 text-center">
-                        {(() => {
-                          const match = product.notes ? product.notes.match(/الفئة:\s*([^|,\n]+)/) : null;
-                          const catName = match && match[1] ? match[1].trim() : null;
-                          return catName ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-[11px] whitespace-nowrap">
-                              {catName}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400 text-[10px] italic">غير مصنف</span>
-                          );
-                        })()}
-                      </td>
-
-                      {isAdminOrManager && (
-                        <td className="p-2 text-center whitespace-nowrap">
-                          {canEdit ? (
-                            <InlineNumber value={product.costPrice} onSave={(v) => handleInlineEdit(product.id, "costPrice", v)} />
-                          ) : (
-                            <span className="text-gray-900 dark:text-white font-medium">{product.costPrice.toLocaleString()}</span>
-                          )}
-                        </td>
+                      {catName && (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-xs whitespace-nowrap flex-shrink-0">
+                          {catName}
+                        </span>
                       )}
+                    </div>
+
+                    {/* Details Grid */}
+                    <div className="grid grid-cols-2 gap-2 text-xs bg-gray-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-100 dark:border-gray-800/80">
+                      <div>
+                        <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">سعر المفرد</span>
+                        <span className="font-black text-blue-600 dark:text-blue-400 text-sm">
+                          {product.retailPrice.toLocaleString()} د.ع
+                        </span>
+                      </div>
 
                       {isAdminOrManager && (
-                        <td className="p-2 text-center whitespace-nowrap">
-                          {canEdit ? (
-                            <InlineNumber value={product.wholesalePrice} onSave={(v) => handleInlineEdit(product.id, "wholesalePrice", v)} />
-                          ) : (
-                            <span className="text-gray-900 dark:text-white font-medium">{product.wholesalePrice.toLocaleString()}</span>
-                          )}
-                        </td>
-                      )}
-
-                      {isAdminOrManager && (
-                        <td className="p-2 text-center text-emerald-600 dark:text-emerald-400 font-bold whitespace-nowrap">
-                          {product.profitMargin || 0}%
-                        </td>
-                      )}
-
-                      <td className="p-2 text-center font-black text-blue-600 dark:text-blue-400 text-xs whitespace-nowrap">
-                        {product.retailPrice.toLocaleString()} د.ع
-                      </td>
-
-                      {isAdminOrManager && (
-                        <td className="p-2 text-center whitespace-nowrap">
-                          {canEdit ? (
-                            <InlineNumber value={product.stock} onSave={(v) => handleInlineEdit(product.id, "stock", v)} isInteger />
-                          ) : (
-                            <span className="text-gray-900 dark:text-white font-bold">{product.stock}</span>
-                          )}
-                        </td>
-                      )}
-
-                      {isAdminOrManager && (
-                        <td className="p-1.5 text-gray-600 dark:text-gray-400 text-[10px] font-bold text-center max-w-[75px] leading-tight break-words">
-                          {getSupplierName(product.supplierId)}
-                        </td>
-                      )}
-
-                      {isAdminOrManager && (
-                        <td className={`p-1.5 sm:p-2 w-20 sm:w-24 whitespace-nowrap sticky left-0 z-10 transition-colors ${rowBg} shadow-md border-r border-gray-200 dark:border-gray-700`}>
-                          <div className="flex flex-col items-center justify-center gap-1 w-full">
-                            {canEdit && (
-                              <button
-                                onClick={() => { setEditingProduct(product); setModalOpen(true); }}
-                                className="w-full max-w-[80px] px-2 py-0.5 sm:py-1 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-md text-[10px] sm:text-[11px] font-bold border border-blue-200 dark:border-blue-800 inline-flex items-center justify-center gap-1 transition-all active:scale-95"
-                                title="تعديل المنتج"
-                              >
-                                <span>✏️</span>
-                                <span>تعديل</span>
-                              </button>
+                        <div>
+                          <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">الكمية المتوفرة</span>
+                          <span className="font-bold text-gray-900 dark:text-white">
+                            {canEdit ? (
+                              <InlineNumber value={product.stock} onSave={(v) => handleInlineEdit(product.id, "stock", v)} isInteger />
+                            ) : (
+                              `${product.stock} قطعة`
                             )}
-                            {canDelete && (
-                              <button
-                                onClick={() => setDeleteConfirm(product.id)}
-                                className="w-full max-w-[80px] px-2 py-0.5 sm:py-1 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md text-[10px] sm:text-[11px] font-bold border border-red-200 dark:border-red-800 inline-flex items-center justify-center gap-1 transition-all active:scale-95"
-                                title="حذف المنتج"
-                              >
-                                <span>🗑️</span>
-                                <span>حذف</span>
-                              </button>
-                            )}
-                          </div>
-                        </td>
+                          </span>
+                        </div>
                       )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </DataTableWrapper>
+
+                      {isAdminOrManager && (
+                        <div>
+                          <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">التكلفة</span>
+                          <span className="font-semibold text-gray-800 dark:text-gray-200">
+                            {canEdit ? (
+                              <InlineNumber value={product.costPrice} onSave={(v) => handleInlineEdit(product.id, "costPrice", v)} />
+                            ) : (
+                              `${product.costPrice.toLocaleString()} د.ع`
+                            )}
+                          </span>
+                        </div>
+                      )}
+
+                      {isAdminOrManager && (
+                        <div>
+                          <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">سعر الجملة</span>
+                          <span className="font-semibold text-gray-800 dark:text-gray-200">
+                            {canEdit ? (
+                              <InlineNumber value={product.wholesalePrice} onSave={(v) => handleInlineEdit(product.id, "wholesalePrice", v)} />
+                            ) : (
+                              `${product.wholesalePrice.toLocaleString()} د.ع`
+                            )}
+                          </span>
+                        </div>
+                      )}
+
+                      {isAdminOrManager && (
+                        <div>
+                          <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">نسبة الربح</span>
+                          <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                            {product.profitMargin || 0}%
+                          </span>
+                        </div>
+                      )}
+
+                      {isAdminOrManager && (
+                        <div>
+                          <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">المورد</span>
+                          <span className="font-semibold text-gray-700 dark:text-gray-300 truncate block">
+                            {getSupplierName(product.supplierId)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Footer Actions */}
+                    {isAdminOrManager && (canEdit || canDelete) && (
+                      <div className="flex items-center gap-2 pt-1 border-t border-gray-100 dark:border-gray-800">
+                        {canEdit && (
+                          <button
+                            onClick={() => { setEditingProduct(product); setModalOpen(true); }}
+                            className="flex-1 py-2 px-3 text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-xl border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 transition-all active:scale-95 min-h-[40px]"
+                          >
+                            <span>✏️</span>
+                            <span>تعديل</span>
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            onClick={() => setDeleteConfirm(product.id)}
+                            className="flex-1 py-2 px-3 text-xs font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-xl border border-red-200 dark:border-red-800 flex items-center justify-center gap-1.5 transition-all active:scale-95 min-h-[40px]"
+                          >
+                            <span>🗑️</span>
+                            <span>حذف</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 

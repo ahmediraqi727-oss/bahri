@@ -160,77 +160,182 @@ export default function InventoryPage() {
             <p>{filterLevel !== "all" ? "لا توجد منتجات في هذا المستوى" : "لا توجد منتجات في المخزون"}</p>
           </div>
         ) : (
-          <DataTableWrapper>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المنتج</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">التكاليف</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الجملة</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المفرد</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الكمية</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المستوى</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">القيمة</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المورد</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {filtered.map((product) => {
-                  const level = getStockLevel(product.stock, maxStock, thresholds);
-                  const style = LEVEL_STYLES[level];
-                  const supplier = getSupplier(product.supplierId);
-                  const pct = maxStock > 0 ? Math.round((product.stock / maxStock) * 100) : 0;
-
-                  return (
-                    <tr key={product.id} className={`${style.bg} border-l-4 ${style.border} transition-colors`}>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          {product.image ? (
-                            <img src={product.image} alt="" className="w-9 h-9 rounded-lg object-cover" />
-                          ) : (
-                            <div className="w-9 h-9 rounded-lg bg-white dark:bg-gray-800 flex items-center justify-center text-gray-400 border border-gray-200 dark:border-gray-700">📦</div>
-                          )}
-                          <span className="font-medium text-gray-900 dark:text-white">{product.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-gray-900 dark:text-white">{product.costPrice.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-gray-900 dark:text-white">{product.wholesalePrice.toLocaleString()}</td>
-                      <td className="px-4 py-3 font-bold text-gray-900 dark:text-white">{product.retailPrice.toLocaleString()}</td>
-                      <td className="px-4 py-3">
-                        <InlineStock value={product.stock} onSave={(v) => handleInlineStock(product.id, v)} />
-                        <div className="mt-1 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
-                          <div className="h-1.5 rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: style.barColor }} />
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${style.badge}`}>
-                          {style.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-900 dark:text-white font-medium">
-                        {(product.retailPrice * product.stock).toLocaleString()} د.ع
-                      </td>
-                      <td className="px-4 py-3">
-                        {supplier && (level === "low" || level === "empty") ? (
-                          <button
-                            onClick={() => setContactModal({ supplier: supplier!, product })}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-lg hover:opacity-90 transition-opacity"
-                            style={{ backgroundColor: level === "empty" ? "#ef4444" : "#f59e0b" }}
-                          >
-                            📨 مراسلة
-                          </button>
-                        ) : supplier ? (
-                          <span className="text-xs text-gray-500 dark:text-gray-400">{supplier.name}</span>
-                        ) : (
-                          <span className="text-xs text-gray-400">—</span>
-                        )}
-                      </td>
+          <>
+            {/* Desktop Table View */}
+            <div className="hidden md:block">
+              <DataTableWrapper>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                      <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المنتج</th>
+                      <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">التكاليف</th>
+                      <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الجملة</th>
+                      <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المفرد</th>
+                      <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الكمية</th>
+                      <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المستوى</th>
+                      <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">القيمة</th>
+                      <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المورد</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </DataTableWrapper>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {filtered.map((product) => {
+                      const level = getStockLevel(product.stock, maxStock, thresholds);
+                      const style = LEVEL_STYLES[level];
+                      const supplier = getSupplier(product.supplierId);
+                      const pct = maxStock > 0 ? Math.round((product.stock / maxStock) * 100) : 0;
+
+                      return (
+                        <tr key={product.id} className={`${style.bg} border-l-4 ${style.border} transition-colors`}>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              {product.image ? (
+                                <img src={product.image} alt="" className="w-9 h-9 rounded-lg object-cover" />
+                              ) : (
+                                <div className="w-9 h-9 rounded-lg bg-white dark:bg-gray-800 flex items-center justify-center text-gray-400 border border-gray-200 dark:border-gray-700">📦</div>
+                              )}
+                              <span className="font-medium text-gray-900 dark:text-white">{product.name}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-gray-900 dark:text-white">{product.costPrice.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-gray-900 dark:text-white">{product.wholesalePrice.toLocaleString()}</td>
+                          <td className="px-4 py-3 font-bold text-gray-900 dark:text-white">{product.retailPrice.toLocaleString()}</td>
+                          <td className="px-4 py-3">
+                            <InlineStock value={product.stock} onSave={(v) => handleInlineStock(product.id, v)} />
+                            <div className="mt-1 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+                              <div className="h-1.5 rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: style.barColor }} />
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${style.badge}`}>
+                              {style.label}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-900 dark:text-white font-medium">
+                            {(product.retailPrice * product.stock).toLocaleString()} د.ع
+                          </td>
+                          <td className="px-4 py-3">
+                            {supplier && (level === "low" || level === "empty") ? (
+                              <button
+                                onClick={() => setContactModal({ supplier: supplier!, product })}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-lg hover:opacity-90 transition-opacity"
+                                style={{ backgroundColor: level === "empty" ? "#ef4444" : "#f59e0b" }}
+                              >
+                                📨 مراسلة
+                              </button>
+                            ) : supplier ? (
+                              <span className="text-xs text-gray-500 dark:text-gray-400">{supplier.name}</span>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </DataTableWrapper>
+            </div>
+
+            {/* Mobile Cards List View */}
+            <div className="block md:hidden space-y-3.5 p-3">
+              {filtered.map((product) => {
+                const level = getStockLevel(product.stock, maxStock, thresholds);
+                const style = LEVEL_STYLES[level];
+                const supplier = getSupplier(product.supplierId);
+                const pct = maxStock > 0 ? Math.round((product.stock / maxStock) * 100) : 0;
+
+                return (
+                  <div
+                    key={product.id}
+                    className={`bg-white dark:bg-gray-900 rounded-2xl border ${style.border} p-4 shadow-sm space-y-3 transition-all`}
+                  >
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {product.image ? (
+                          <img
+                            src={product.image}
+                            alt=""
+                            className="w-11 h-11 rounded-xl object-cover flex-shrink-0 border border-gray-200 dark:border-gray-700 shadow-sm"
+                          />
+                        ) : (
+                          <div className="w-11 h-11 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 text-lg flex-shrink-0 border border-gray-200 dark:border-gray-700">
+                            📦
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <h3 className="font-bold text-gray-900 dark:text-white text-sm truncate" title={product.name}>
+                            {product.name}
+                          </h3>
+                          <span className="text-xs text-gray-500 dark:text-gray-400 block truncate">
+                            المورد: {supplier ? supplier.name : "—"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold whitespace-nowrap flex-shrink-0 ${style.badge}`}>
+                        {style.label}
+                      </span>
+                    </div>
+
+                    {/* Stock Progress & Edit */}
+                    <div className="bg-gray-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-100 dark:border-gray-800/80 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-700 dark:text-gray-300">الكمية بالمخزن:</span>
+                        <InlineStock value={product.stock} onSave={(v) => handleInlineStock(product.id, v)} />
+                      </div>
+                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                        <div className="h-2 rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: style.barColor }} />
+                      </div>
+                    </div>
+
+                    {/* Pricing Details Grid */}
+                    <div className="grid grid-cols-2 gap-2 text-xs bg-gray-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-100 dark:border-gray-800/80">
+                      <div>
+                        <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">سعر المفرد</span>
+                        <span className="font-black text-blue-600 dark:text-blue-400 text-sm">
+                          {product.retailPrice.toLocaleString()} د.ع
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">سعر التكلفة</span>
+                        <span className="font-semibold text-gray-800 dark:text-gray-200">
+                          {product.costPrice.toLocaleString()} د.ع
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">سعر الجملة</span>
+                        <span className="font-semibold text-gray-800 dark:text-gray-200">
+                          {product.wholesalePrice.toLocaleString()} د.ع
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">إجمالي القيمة</span>
+                        <span className="font-extrabold text-emerald-600 dark:text-emerald-400">
+                          {(product.retailPrice * product.stock).toLocaleString()} د.ع
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Footer Action */}
+                    {supplier && (level === "low" || level === "empty") && (
+                      <button
+                        onClick={() => setContactModal({ supplier: supplier!, product })}
+                        className="w-full py-2.5 px-4 text-xs font-bold text-white rounded-xl shadow-sm hover:opacity-90 transition-all min-h-[40px] flex items-center justify-center gap-2"
+                        style={{ backgroundColor: level === "empty" ? "#ef4444" : "#f59e0b" }}
+                      >
+                        <span>📨</span>
+                        <span>مراسلة المورد لتسجيل طلبية تزويد</span>
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 

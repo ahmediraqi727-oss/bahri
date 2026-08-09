@@ -367,181 +367,343 @@ export default function CustomersPage() {
         </div>
       ) : (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
-          <DataTableWrapper>
-            <table className="w-full text-right text-sm">
-              <thead>
-                <tr className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 text-xs font-extrabold text-gray-500 dark:text-gray-400 uppercase">
-                  <th className="p-4 w-10 text-center">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.size > 0 && selectedIds.size === processedCustomers.length}
-                      onChange={toggleSelectAll}
-                      className="w-4 h-4 rounded text-blue-600 cursor-pointer"
-                    />
-                  </th>
-                  <th className="p-4">الزائر / الزبون</th>
-                  <th className="p-4">الهاتف والمحافظة</th>
-                  <th className="p-4 text-center">الجهاز والزيارات</th>
-                  <th className="p-4">آخر ظهور والتصفح</th>
-                  <th className="p-4 text-center">الإجراءات والتحكم</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {processedCustomers.map((c) => {
-                  const isAnon = c.name.startsWith("مجهول");
-                  const isSelected = selectedIds.has(c.id);
-                  const statsKey = (c.phone || c.name || "").trim().toLowerCase();
-                  const salesInfo = customerSalesStats.get(statsKey);
+          {/* Desktop Table View */}
+          <div className="hidden md:block">
+            <DataTableWrapper>
+              <table className="w-full text-right text-sm">
+                <thead>
+                  <tr className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 text-xs font-extrabold text-gray-500 dark:text-gray-400 uppercase">
+                    <th className="p-4 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.size > 0 && selectedIds.size === processedCustomers.length}
+                        onChange={toggleSelectAll}
+                        className="w-4 h-4 rounded text-blue-600 cursor-pointer"
+                      />
+                    </th>
+                    <th className="p-4">الزائر / الزبون</th>
+                    <th className="p-4">الهاتف والمحافظة</th>
+                    <th className="p-4 text-center">الجهاز والزيارات</th>
+                    <th className="p-4">آخر ظهور والتصفح</th>
+                    <th className="p-4 text-center">الإجراءات والتحكم</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {processedCustomers.map((c) => {
+                    const isAnon = c.name.startsWith("مجهول");
+                    const isSelected = selectedIds.has(c.id);
+                    const statsKey = (c.phone || c.name || "").trim().toLowerCase();
+                    const salesInfo = customerSalesStats.get(statsKey);
 
-                  return (
-                    <tr
-                      key={c.id}
-                      className={`hover:bg-gray-50/80 dark:hover:bg-gray-800/60 transition-colors ${
-                        isSelected ? "bg-blue-50/50 dark:bg-blue-950/20" : ""
-                      } ${c.isBlocked ? "opacity-60 bg-red-50/30 dark:bg-red-950/20" : ""} ${
-                        c.isSuspicious ? "bg-amber-50/30 dark:bg-amber-950/20" : ""
+                    return (
+                      <tr
+                        key={c.id}
+                        className={`hover:bg-gray-50/80 dark:hover:bg-gray-800/60 transition-colors ${
+                          isSelected ? "bg-blue-50/50 dark:bg-blue-950/20" : ""
+                        } ${c.isBlocked ? "opacity-60 bg-red-50/30 dark:bg-red-950/20" : ""} ${
+                          c.isSuspicious ? "bg-amber-50/30 dark:bg-amber-950/20" : ""
+                        }`}
+                      >
+                        <td className="p-4 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectOne(c.id)}
+                            className="w-4 h-4 rounded text-blue-600 cursor-pointer"
+                          />
+                        </td>
+
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white text-sm font-bold shadow-sm ${
+                                c.isSuspicious
+                                  ? "bg-red-600 animate-pulse"
+                                  : isAnon
+                                  ? "bg-gray-500 dark:bg-gray-700"
+                                  : c.isRegistered
+                                  ? "bg-gradient-to-br from-purple-600 to-indigo-600"
+                                  : "bg-gradient-to-br from-emerald-600 to-blue-600"
+                              }`}
+                            >
+                              {c.isSuspicious ? "⚠️" : isAnon ? "👤" : c.name.charAt(0)}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`font-extrabold text-sm ${
+                                    c.isSuspicious
+                                      ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/60 px-2 py-0.5 rounded-lg border border-red-200 dark:border-red-800"
+                                      : "text-gray-900 dark:text-white"
+                                  }`}
+                                >
+                                  {c.name}
+                                </span>
+
+                                {c.isSuspicious && (
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-500 text-white rounded-md text-[10px] font-bold shadow-sm cursor-help"
+                                    title="قام هذا الزائر بتغيير بياناته أكثر من 3 مرات"
+                                  >
+                                    <span>⚠️</span>
+                                    <span>نشاط مشبوه</span>
+                                  </span>
+                                )}
+
+                                {c.isBlocked && (
+                                  <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300 rounded-md text-[10px] font-bold">
+                                    محظور 🚫
+                                  </span>
+                                )}
+                                {c.isRegistered && (
+                                  <span className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 rounded-md text-[10px] font-bold">
+                                    مسجل 👑
+                                  </span>
+                                )}
+                              </div>
+
+                              <p className="text-[11px] font-mono text-gray-400 dark:text-gray-500 mt-0.5">
+                                ID: {c.visitorId.slice(0, 16)}...
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="p-4">
+                          <p className="text-xs font-bold text-gray-900 dark:text-gray-100" dir="ltr">
+                            {c.phone || "بدون رقم"}
+                          </p>
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                            {c.governorate || c.city || "غير محدد"}
+                          </p>
+                        </td>
+
+                        <td className="p-4 text-center">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-bold">
+                            <span>{c.deviceType === "هاتف" ? "📱" : c.deviceType === "تابلت" ? "📟" : "💻"}</span>
+                            <span>{c.deviceType}</span>
+                          </span>
+                          <span className="block text-[11px] font-bold text-blue-600 dark:text-blue-400 mt-1">
+                            {c.visitCount} زيارة
+                          </span>
+                        </td>
+
+                        <td className="p-4">
+                          <p className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                            {new Date(c.lastActiveAt).toLocaleString("ar-EG", {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </p>
+                          {salesInfo && (
+                            <p className="text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                              🛒 {salesInfo.orderCount} طلب ({salesInfo.totalSpent.toLocaleString()} د.ع)
+                            </p>
+                          )}
+                        </td>
+
+                        <td className="p-4 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => {
+                                setSelectedCustomer(c);
+                                setShowDetailModal(true);
+                              }}
+                              className="p-2 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-300 rounded-xl transition-colors text-xs font-bold"
+                              title="معاينة تفاصيل الزيارات"
+                            >
+                              👁️
+                            </button>
+
+                            <button
+                              onClick={() => handleToggleBlock(c)}
+                              className={`p-2 rounded-xl transition-colors text-xs font-bold ${
+                                c.isBlocked
+                                  ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-100"
+                                  : "bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300 hover:bg-amber-100"
+                              }`}
+                              title={c.isBlocked ? "إلغاء حظر الزائر" : "حظر الزائر"}
+                            >
+                              {c.isBlocked ? "🔓" : "🚫"}
+                            </button>
+
+                            <button
+                              onClick={() => handleDeleteSingle(c)}
+                              className="p-2 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/60 text-red-600 dark:text-red-300 rounded-xl transition-colors text-xs font-bold"
+                              title="حذف السجل"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </DataTableWrapper>
+          </div>
+
+          {/* Mobile Cards List View */}
+          <div className="block md:hidden space-y-3.5 p-3">
+            {processedCustomers.map((c) => {
+              const isAnon = c.name.startsWith("مجهول");
+              const isSelected = selectedIds.has(c.id);
+              const statsKey = (c.phone || c.name || "").trim().toLowerCase();
+              const salesInfo = customerSalesStats.get(statsKey);
+
+              return (
+                <div
+                  key={c.id}
+                  className={`bg-white dark:bg-gray-900 rounded-2xl border ${
+                    isSelected
+                      ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/20 dark:bg-blue-950/20"
+                      : "border-gray-200 dark:border-gray-800"
+                  } ${c.isBlocked ? "opacity-75 bg-red-50/30 dark:bg-red-950/20" : ""} ${
+                    c.isSuspicious ? "bg-amber-50/30 dark:bg-amber-950/20" : ""
+                  } p-4 shadow-sm space-y-3 transition-all`}
+                >
+                  {/* Header */}
+                  <div className="flex items-start justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelectOne(c.id)}
+                        className="w-5 h-5 rounded text-blue-600 cursor-pointer flex-shrink-0"
+                      />
+                      <div
+                        className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white text-base font-bold shadow-sm flex-shrink-0 ${
+                          c.isSuspicious
+                            ? "bg-red-600 animate-pulse"
+                            : isAnon
+                            ? "bg-gray-500 dark:bg-gray-700"
+                            : c.isRegistered
+                            ? "bg-gradient-to-br from-purple-600 to-indigo-600"
+                            : "bg-gradient-to-br from-emerald-600 to-blue-600"
+                        }`}
+                      >
+                        {c.isSuspicious ? "⚠️" : isAnon ? "👤" : c.name.charAt(0)}
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="font-bold text-gray-900 dark:text-white text-sm truncate">
+                          {c.name}
+                        </h3>
+                        <p className="text-[11px] font-mono text-gray-400 dark:text-gray-500 truncate">
+                          ID: {c.visitorId.slice(0, 16)}...
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                      {c.isSuspicious && (
+                        <span className="px-2 py-0.5 bg-amber-500 text-white rounded-md text-[10px] font-bold shadow-sm">
+                          ⚠️ مشبوه
+                        </span>
+                      )}
+                      {c.isBlocked && (
+                        <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300 rounded-md text-[10px] font-bold">
+                          محظور 🚫
+                        </span>
+                      )}
+                      {c.isRegistered && (
+                        <span className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 rounded-md text-[10px] font-bold">
+                          مسجل 👑
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Details Grid */}
+                  <div className="grid grid-cols-2 gap-2 text-xs bg-gray-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-100 dark:border-gray-800/80">
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">الهاتف</span>
+                      <span className="font-bold text-gray-900 dark:text-white font-mono block truncate" dir="ltr">
+                        {c.phone || "بدون رقم"}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">المحافظة / المدينة</span>
+                      <span className="font-semibold text-gray-800 dark:text-gray-200 truncate block">
+                        {c.governorate || c.city || "غير محدد"}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">نوع الجهاز</span>
+                      <span className="font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-1">
+                        <span>{c.deviceType === "هاتف" ? "📱" : c.deviceType === "تابلت" ? "📟" : "💻"}</span>
+                        <span>{c.deviceType}</span>
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">عدد الزيارات</span>
+                      <span className="font-bold text-blue-600 dark:text-blue-400">
+                        {c.visitCount} زيارة
+                      </span>
+                    </div>
+
+                    <div className="col-span-2 pt-1 border-t border-gray-200/60 dark:border-gray-700/60 flex items-center justify-between">
+                      <span className="text-gray-500 dark:text-gray-400 text-[11px]">آخر ظهور:</span>
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">
+                        {new Date(c.lastActiveAt).toLocaleString("ar-EG", {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </div>
+
+                    {salesInfo && (
+                      <div className="col-span-2 bg-emerald-50 dark:bg-emerald-900/20 p-2 rounded-lg text-emerald-700 dark:text-emerald-300 font-bold flex justify-between">
+                        <span>🛒 الطلبات: {salesInfo.orderCount}</span>
+                        <span>{salesInfo.totalSpent.toLocaleString()} د.ع</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer Actions */}
+                  <div className="flex items-center gap-2 pt-1 border-t border-gray-100 dark:border-gray-800">
+                    <button
+                      onClick={() => {
+                        setSelectedCustomer(c);
+                        setShowDetailModal(true);
+                      }}
+                      className="flex-1 py-2 px-3 text-xs font-bold text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-xl border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 transition-all min-h-[40px]"
+                    >
+                      <span>👁️</span>
+                      <span>التفاصيل</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleToggleBlock(c)}
+                      className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 transition-all min-h-[40px] ${
+                        c.isBlocked
+                          ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
+                          : "bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300 border-amber-200 dark:border-amber-800"
                       }`}
                     >
-                      <td className="p-4 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleSelectOne(c.id)}
-                          className="w-4 h-4 rounded text-blue-600 cursor-pointer"
-                        />
-                      </td>
+                      <span>{c.isBlocked ? "🔓" : "🚫"}</span>
+                      <span>{c.isBlocked ? "إلغاء الحظر" : "حظر"}</span>
+                    </button>
 
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white text-sm font-bold shadow-sm ${
-                              c.isSuspicious
-                                ? "bg-red-600 animate-pulse"
-                                : isAnon
-                                ? "bg-gray-500 dark:bg-gray-700"
-                                : c.isRegistered
-                                ? "bg-gradient-to-br from-purple-600 to-indigo-600"
-                                : "bg-gradient-to-br from-emerald-600 to-blue-600"
-                            }`}
-                          >
-                            {c.isSuspicious ? "⚠️" : isAnon ? "👤" : c.name.charAt(0)}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span
-                                className={`font-extrabold text-sm ${
-                                  c.isSuspicious
-                                    ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/60 px-2 py-0.5 rounded-lg border border-red-200 dark:border-red-800"
-                                    : "text-gray-900 dark:text-white"
-                                }`}
-                              >
-                                {c.name}
-                              </span>
-
-                              {c.isSuspicious && (
-                                <span
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-500 text-white rounded-md text-[10px] font-bold shadow-sm cursor-help"
-                                  title="قام هذا الزائر بتغيير بياناته أكثر من 3 مرات"
-                                >
-                                  <span>⚠️</span>
-                                  <span>نشاط مشبوه</span>
-                                </span>
-                              )}
-
-                              {c.isBlocked && (
-                                <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300 rounded-md text-[10px] font-bold">
-                                  محظور 🚫
-                                </span>
-                              )}
-                              {c.isRegistered && (
-                                <span className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 rounded-md text-[10px] font-bold">
-                                  مسجل 👑
-                                </span>
-                              )}
-                            </div>
-
-                            <p className="text-[11px] font-mono text-gray-400 dark:text-gray-500 mt-0.5">
-                              ID: {c.visitorId.slice(0, 16)}...
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="p-4">
-                        <p className="text-xs font-bold text-gray-900 dark:text-gray-100" dir="ltr">
-                          {c.phone || "بدون رقم"}
-                        </p>
-                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                          {c.governorate || c.city || "غير محدد"}
-                        </p>
-                      </td>
-
-                      <td className="p-4 text-center">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-bold">
-                          <span>{c.deviceType === "هاتف" ? "📱" : c.deviceType === "تابلت" ? "📟" : "💻"}</span>
-                          <span>{c.deviceType}</span>
-                        </span>
-                        <span className="block text-[11px] font-bold text-blue-600 dark:text-blue-400 mt-1">
-                          {c.visitCount} زيارة
-                        </span>
-                      </td>
-
-                      <td className="p-4">
-                        <p className="text-xs font-bold text-gray-700 dark:text-gray-300">
-                          {new Date(c.lastActiveAt).toLocaleString("ar-EG", {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                        {salesInfo && (
-                          <p className="text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                            🛒 {salesInfo.orderCount} طلب ({salesInfo.totalSpent.toLocaleString()} د.ع)
-                          </p>
-                        )}
-                      </td>
-
-                      <td className="p-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            onClick={() => {
-                              setSelectedCustomer(c);
-                              setShowDetailModal(true);
-                            }}
-                            className="p-2 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-300 rounded-xl transition-colors text-xs font-bold"
-                            title="معاينة تفاصيل الزيارات"
-                          >
-                            👁️
-                          </button>
-
-                          <button
-                            onClick={() => handleToggleBlock(c)}
-                            className={`p-2 rounded-xl transition-colors text-xs font-bold ${
-                              c.isBlocked
-                                ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-100"
-                                : "bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300 hover:bg-amber-100"
-                            }`}
-                            title={c.isBlocked ? "إلغاء حظر الزائر" : "حظر الزائر"}
-                          >
-                            {c.isBlocked ? "🔓" : "🚫"}
-                          </button>
-
-                          <button
-                            onClick={() => handleDeleteSingle(c)}
-                            className="p-2 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/60 text-red-600 dark:text-red-300 rounded-xl transition-colors text-xs font-bold"
-                            title="حذف السجل"
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </DataTableWrapper>
+                    <button
+                      onClick={() => handleDeleteSingle(c)}
+                      className="p-2 text-xs font-bold text-red-600 dark:text-red-300 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/60 rounded-xl border border-red-200 dark:border-red-800 flex items-center justify-center transition-all min-h-[40px] w-10"
+                      title="حذف السجل"
+                    >
+                      <span>🗑️</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

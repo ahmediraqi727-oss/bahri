@@ -161,37 +161,73 @@ export default function AnalyticsPage() {
               لا توجد بيانات زبائن بعد
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 dark:border-gray-700">
-                    <th className="py-2 text-right text-gray-500 font-medium">الزبون</th>
-                    <th className="py-2 text-right text-gray-500 font-medium">الهاتف</th>
-                    <th className="py-2 text-right text-gray-500 font-medium">الطلبات</th>
-                    <th className="py-2 text-right text-gray-500 font-medium">المصروف</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {loyalCustomers.slice(0, 8).map((c, i) => (
-                    <tr key={i} className={`${c.orders >= 3 ? "bg-amber-50 dark:bg-amber-900/10" : ""}`}>
-                      <td className="py-2.5 text-gray-900 dark:text-white font-medium">
-                        {c.name}
-                        {c.orders >= 3 && <span className="mr-1 text-xs">⭐</span>}
-                      </td>
-                      <td className="py-2.5 text-gray-500 dark:text-gray-400">{c.phone}</td>
-                      <td className="py-2.5">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                          c.orders >= 3 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
-                        }`}>
-                          {c.orders}
-                        </span>
-                      </td>
-                      <td className="py-2.5 text-gray-900 dark:text-white font-medium">{c.totalSpent.toLocaleString()} د.ع</td>
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-700">
+                      <th className="py-2 text-right text-gray-500 font-medium">الزبون</th>
+                      <th className="py-2 text-right text-gray-500 font-medium">الهاتف</th>
+                      <th className="py-2 text-right text-gray-500 font-medium">الطلبات</th>
+                      <th className="py-2 text-right text-gray-500 font-medium">المصروف</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {loyalCustomers.slice(0, 8).map((c, i) => (
+                      <tr key={i} className={`${c.orders >= 3 ? "bg-amber-50 dark:bg-amber-900/10" : ""}`}>
+                        <td className="py-2.5 text-gray-900 dark:text-white font-medium">
+                          {c.name}
+                          {c.orders >= 3 && <span className="mr-1 text-xs">⭐</span>}
+                        </td>
+                        <td className="py-2.5 text-gray-500 dark:text-gray-400">{c.phone}</td>
+                        <td className="py-2.5">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                            c.orders >= 3 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                          }`}>
+                            {c.orders}
+                          </span>
+                        </td>
+                        <td className="py-2.5 text-gray-900 dark:text-white font-medium">{c.totalSpent.toLocaleString()} د.ع</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Cards View */}
+              <div className="block md:hidden space-y-3">
+                {loyalCustomers.slice(0, 8).map((c, i) => (
+                  <div
+                    key={i}
+                    className={`rounded-2xl border p-3.5 shadow-sm space-y-2 ${
+                      c.orders >= 3
+                        ? "bg-amber-50/50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800"
+                        : "bg-gray-50/80 dark:bg-gray-800/60 border-gray-200 dark:border-gray-700"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-gray-900 dark:text-white text-sm flex items-center gap-1">
+                        <span>{c.name}</span>
+                        {c.orders >= 3 && <span>⭐</span>}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                        c.orders >= 3 ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+                      }`}>
+                        {c.orders} طلبات
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs pt-1 border-t border-gray-200/60 dark:border-gray-700/60">
+                      <span className="text-gray-500 dark:text-gray-400 font-mono" dir="ltr">📞 {c.phone}</span>
+                      <span className="font-extrabold text-emerald-600 dark:text-emerald-400">
+                        {c.totalSpent.toLocaleString()} د.ع
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
 

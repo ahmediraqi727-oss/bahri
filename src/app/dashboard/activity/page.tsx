@@ -111,38 +111,89 @@ export default function ActivityPage() {
             <p>لا توجد حركات مسجلة</p>
           </div>
         ) : (
-          <DataTableWrapper>
-            <table className="w-full text-sm min-w-[650px]">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400 sticky right-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-sm">الوقت</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المستخدم</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الإجراء</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الكيان</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">التفاصيل</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {filtered.map((entry) => (
-                  <tr key={entry.id} className="group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                    <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap text-xs sticky right-0 z-10 bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800/90 transition-colors shadow-sm">
-                      {formatTimestamp(entry.timestamp)}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="font-medium text-gray-900 dark:text-white">{formatRole(entry.user)}</span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${ACTION_COLORS[entry.action] || ""}`}>
-                        {formatAction(entry.action)}
+          <>
+            {/* Desktop Table View */}
+            <div className="hidden md:block">
+              <DataTableWrapper>
+                <table className="w-full text-sm min-w-[650px]">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                      <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400 sticky right-0 z-20 bg-gray-50 dark:bg-gray-800 shadow-sm">الوقت</th>
+                      <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المستخدم</th>
+                      <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الإجراء</th>
+                      <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الكيان</th>
+                      <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">التفاصيل</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {filtered.map((entry) => (
+                      <tr key={entry.id} className="group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap text-xs sticky right-0 z-10 bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800/90 transition-colors shadow-sm">
+                          {formatTimestamp(entry.timestamp)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="font-medium text-gray-900 dark:text-white">{formatRole(entry.user)}</span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${ACTION_COLORS[entry.action] || ""}`}>
+                            {formatAction(entry.action)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-900 dark:text-white font-medium whitespace-nowrap">{entry.entity}</td>
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400 max-w-xs truncate">{entry.details}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </DataTableWrapper>
+            </div>
+
+            {/* Mobile Cards List View */}
+            <div className="block md:hidden space-y-3 p-3">
+              {filtered.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 shadow-sm space-y-3"
+                >
+                  {/* Header */}
+                  <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-2.5">
+                    <span className="font-bold text-gray-900 dark:text-white text-sm flex items-center gap-1.5">
+                      <span>👤</span>
+                      <span>{formatRole(entry.user)}</span>
+                    </span>
+
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${ACTION_COLORS[entry.action] || ""}`}>
+                      {formatAction(entry.action)}
+                    </span>
+                  </div>
+
+                  {/* Body Details */}
+                  <div className="grid grid-cols-2 gap-2 text-xs bg-gray-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-100 dark:border-gray-800/80">
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">الكيان</span>
+                      <span className="font-bold text-gray-900 dark:text-white">
+                        {entry.entity}
                       </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-900 dark:text-white font-medium whitespace-nowrap">{entry.entity}</td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400 max-w-xs truncate">{entry.details}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </DataTableWrapper>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium">الوقت والتاريخ</span>
+                      <span className="font-semibold text-gray-600 dark:text-gray-400">
+                        {formatTimestamp(entry.timestamp)}
+                      </span>
+                    </div>
+
+                    <div className="col-span-2 pt-1 border-t border-gray-200/60 dark:border-gray-700/60">
+                      <span className="text-gray-500 dark:text-gray-400 block text-[11px] font-medium mb-0.5">التفاصيل</span>
+                      <p className="text-gray-800 dark:text-gray-200 font-medium leading-relaxed break-words">
+                        {entry.details}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 
