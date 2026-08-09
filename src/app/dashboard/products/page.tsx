@@ -34,14 +34,14 @@ export default function ProductsPage() {
 
   // Selection & Bulk Edits
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [bulkModal, setBulkModal] = useState<"category" | "supplier" | "margin" | "price" | "delete" | null>(null);
+  const [bulkModal, setBulkModal] = useState<"category" | "supplier" | "margin" | "price" | "stock" | "delete" | null>(null);
 
   // Aliases and helpers for unified bulk action bar
   const selectedProductIds = selectedIds;
   const setSelectedProductIds = setSelectedIds;
 
   const openModal = (
-    type: "EDIT_CATEGORY" | "EDIT_SUPPLIER" | "EDIT_PROFIT" | "EDIT_PRICE" | "DELETE" | "category" | "supplier" | "margin" | "price" | "delete",
+    type: "EDIT_CATEGORY" | "EDIT_SUPPLIER" | "EDIT_PROFIT" | "EDIT_PRICE" | "EDIT_STOCK" | "DELETE" | "category" | "supplier" | "margin" | "price" | "stock" | "delete",
     ids?: string[]
   ) => {
     if (ids) setSelectedIds(ids);
@@ -49,6 +49,7 @@ export default function ProductsPage() {
     else if (type === "EDIT_SUPPLIER" || type === "supplier") setBulkModal("supplier");
     else if (type === "EDIT_PROFIT" || type === "margin") setBulkModal("margin");
     else if (type === "EDIT_PRICE" || type === "price") setBulkModal("price");
+    else if (type === "EDIT_STOCK" || type === "stock") setBulkModal("stock");
     else if (type === "DELETE" || type === "delete") setBulkModal("delete");
   };
 
@@ -63,6 +64,8 @@ export default function ProductsPage() {
   const [bulkMargin, setBulkMargin] = useState<number>(20);
   const [bulkPriceMode, setBulkPriceMode] = useState<"fixed" | "add_amount" | "add_percent">("fixed");
   const [bulkPriceVal, setBulkPriceVal] = useState<number>(0);
+  const [bulkStockMode, setBulkStockMode] = useState<"fixed" | "add" | "subtract">("fixed");
+  const [bulkStockVal, setBulkStockVal] = useState<number>(0);
   const [submittingBulk, setSubmittingBulk] = useState(false);
 
   const canEdit = hasPermission(settings.currentRole, "products.edit", config);
@@ -251,11 +254,59 @@ export default function ProductsPage() {
         entity: "منتجات",
         details: `تعديل سعر المفرد لـ ${selectedIds.length} منتج`,
       });
-      alert(`🎉 تم تحديث الأسعار لـ ${selectedIds.length} منتج بنجاح!`);
+      toastSuccess(`🎉 تم تحديث الأسعار لـ ${selectedIds.length} منتج بنجاح!`);
       setBulkModal(null);
       setSelectedIds([]);
-    } catch (err) {
-      alert("حدث خطأ أثناء تعديل الأسعار");
+    } catch (err: any) {
+      toastError("خطأ في التعديل", err?.message || "حدث خطأ أثناء تعديل الأسعار");
+    } finally {
+      setSubmittingBulk(false);
+    }
+  };
+
+  const handleBulkStockSave = async () => {
+    if (selectedIds.length === 0) return;
+
+    const parsedVal = Math.round(Number(bulkStockVal));
+    if (isNaN(parsedVal) || parsedVal < 0) {
+      toastError("خطأ في الإدخال", "يرجى إدخال رقم صحيح موجب للكمية");
+      return;
+    }
+
+    setSubmittingBulk(true);
+    try {
+      const selectedSet = new Set(selectedIds);
+      const targetProducts = products.filter((pr) => selectedSet.has(pr.id));
+
+      await Promise.all(
+        targetProducts.map((p) => {
+          let newStock = p.stock;
+          if (bulkStockMode === "fixed") {
+            newStock = parsedVal;
+          } else if (bulkStockMode === "add") {
+            newStock = p.stock + parsedVal;
+          } else if (bulkStockMode === "subtract") {
+            newStock = Math.max(0, p.stock - parsedVal);
+          }
+          return updateProduct(p.id, { stock: newStock });
+        })
+      );
+
+      await logActivity({
+        user: settings.currentRole,
+        action: "update",
+        entity: "منتجات",
+        details: `تعديل كمية المخزون لـ ${selectedIds.length} منتج (نوع العملية: ${
+          bulkStockMode === "fixed" ? "تعيين ثابت" : bulkStockMode === "add" ? "إضافة" : "خصم"
+        } بقيمة ${parsedVal})`,
+      });
+
+      toastSuccess(`🎉 تم تحديث كمية المخزون لـ ${selectedIds.length} منتج بنجاح!`);
+      setBulkModal(null);
+      setBulkStockVal(0);
+      setSelectedIds([]);
+    } catch (err: any) {
+      toastError("خطأ في التعديل", err?.message || "حدث خطأ أثناء تعديل الكميات");
     } finally {
       setSubmittingBulk(false);
     }
@@ -562,6 +613,14 @@ export default function ProductsPage() {
                   className="bg-emerald-700 hover:bg-emerald-600 active:scale-95 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-all shadow-sm font-semibold whitespace-nowrap"
                 >
                   💰 تعديل السعر والقيمة المضافة
+                </button>
+
+                {/* زر تعديل الكمية */}
+                <button
+                  onClick={() => openModal('EDIT_STOCK', selectedProductIds)}
+                  className="bg-amber-700 hover:bg-amber-600 active:scale-95 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-all shadow-sm font-semibold whitespace-nowrap"
+                >
+                  📦 تعديل الكمية
                 </button>
               </>
             )}
@@ -959,6 +1018,81 @@ export default function ProductsPage() {
                 className="px-5 py-2.5 text-sm font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 disabled:opacity-50"
               >
                 {submittingBulk ? "جاري الحفظ..." : "تطبيق تعديل الأسعار"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Bulk Stock Update Modal */}
+      {bulkModal === "stock" && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" dir="rtl">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 max-w-md w-full border border-gray-200 dark:border-gray-700 shadow-2xl text-right space-y-4">
+            <div className="flex justify-between items-center border-b border-gray-200 dark:border-gray-700 pb-3">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <span>📦</span>
+                <span>تعديل كمية المخزون لـ ({selectedIds.length}) منتج</span>
+              </h3>
+              <button onClick={() => setBulkModal(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                  اختر نوع عملية التعديل على المخزون:
+                </label>
+                <select
+                  value={bulkStockMode}
+                  onChange={(e: any) => setBulkStockMode(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-amber-500 font-medium"
+                >
+                  <option value="fixed">🎯 تعيين كمية ثابتة لجميع المنتجات المحددة</option>
+                  <option value="add">➕ إضافة كمية على المخزون الحالي (+)</option>
+                  <option value="subtract">➖ خصم كمية من المخزون الحالي (-)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                  {bulkStockMode === "fixed" ? "الكمية الجديدة الثابتة:" : bulkStockMode === "add" ? "الكمية المراد إضافتها:" : "الكمية المراد خصمها:"}
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={bulkStockVal}
+                  onChange={(e) => setBulkStockVal(Math.max(0, parseInt(e.target.value) || 0))}
+                  placeholder="أدخل الكمية..."
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-amber-500 font-bold"
+                />
+              </div>
+
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 space-y-1">
+                <p className="font-bold flex items-center gap-1">
+                  <span>💡</span>
+                  <span>معاينة الإجراء:</span>
+                </p>
+                <p>
+                  {bulkStockMode === "fixed" && `سيتم تعيين كمية كل منتج من المنتجات الـ (${selectedIds.length}) لتصبح ${bulkStockVal} قطعة بالضبط.`}
+                  {bulkStockMode === "add" && `سيتم زيادة مخزون كل منتج بمقدار +${bulkStockVal} قطعة.`}
+                  {bulkStockMode === "subtract" && `سيتم خصم -${bulkStockVal} قطعة من مخزون كل منتج (مع حماية الحد الأدنى عند 0).`}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                onClick={() => setBulkModal(null)}
+                className="px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={handleBulkStockSave}
+                disabled={submittingBulk}
+                className="px-5 py-2.5 text-sm font-bold text-white bg-amber-600 rounded-xl hover:bg-amber-700 active:scale-95 disabled:opacity-50 transition-all shadow-md flex items-center gap-1.5"
+              >
+                {submittingBulk ? "جاري التحديث..." : "📦 تطبيق تعديل الكمية"}
               </button>
             </div>
           </div>
