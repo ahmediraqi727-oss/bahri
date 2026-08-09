@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Product } from "@/lib/types";
 
 export interface IncompleteImportItem {
-  rowIndex: number; // 1-based index in Excel/CSV
+  rowIndex: number;
   rawRow: Record<string, any>;
   name: string;
   costPrice: number;
@@ -53,7 +53,7 @@ export default function MissingDataModal({
       setBulkStockInput("");
       setShowBulkStockPrompt(false);
     }
-  }, [isOpen]);
+  }, [isOpen, incompleteItems]);
 
   if (!isOpen) return null;
 
@@ -93,7 +93,6 @@ export default function MissingDataModal({
       const target = { ...next[index] };
       (target as any)[field] = val;
 
-      // Recalculate missing state for target
       const nameMissing = !target.name || !target.name.trim();
       const retailMissing = !target.retailPrice || target.retailPrice <= 0 || isNaN(target.retailPrice);
       const costMissing = !target.costPrice || target.costPrice <= 0 || isNaN(target.costPrice);
@@ -132,7 +131,6 @@ export default function MissingDataModal({
   const handleBulkAutoFillDefaults = () => {
     setItems((prev) =>
       prev.map((item) => {
-        // Only apply to selected items if any selected, otherwise all
         if (selectedRowIndexes.size > 0 && !selectedRowIndexes.has(item.rowIndex)) {
           return item;
         }
@@ -148,9 +146,9 @@ export default function MissingDataModal({
         if (stock <= 0 || isNaN(stock)) stock = 10;
 
         if (retail > 0 && (cost <= 0 || isNaN(cost))) {
-          cost = Math.round(retail * 0.75); // 25% margin default
+          cost = Math.round(retail * 0.75);
         } else if (cost > 0 && (retail <= 0 || isNaN(retail))) {
-          retail = Math.round(cost * 1.3); // 30% margin default
+          retail = Math.round(cost * 1.3);
         } else if (retail <= 0 && cost <= 0) {
           retail = 10000;
           cost = 7000;
@@ -223,7 +221,6 @@ export default function MissingDataModal({
   const totalImportingCount = validCount + selectedAndValidFixedItems.length;
 
   const handleSaveAndImport = () => {
-    // Collect valid items from SELECTED fixed items
     const correctedProducts: Partial<Product>[] = selectedAndValidFixedItems.map((i) => ({
       name: i.name.trim(),
       costPrice: Number(i.costPrice) || 0,
@@ -271,7 +268,6 @@ export default function MissingDataModal({
         {/* Summary Stats & Select All Control Bar */}
         <div className="p-3.5 bg-blue-50/50 dark:bg-blue-950/30 border-b border-blue-100 dark:border-blue-900/50 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Master Select All Checkbox */}
             {items.length > 0 && (
               <label className="flex items-center gap-2 font-extrabold text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-xl border border-blue-200 dark:border-blue-800 cursor-pointer shadow-sm active:scale-95 transition-all select-none">
                 <input
@@ -318,7 +314,6 @@ export default function MissingDataModal({
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Bulk Unified Stock */}
               {!showBulkStockPrompt ? (
                 <button
                   onClick={() => setShowBulkStockPrompt(true)}
@@ -351,7 +346,6 @@ export default function MissingDataModal({
                 </div>
               )}
 
-              {/* Bulk Auto Fill */}
               <button
                 onClick={handleBulkAutoFillDefaults}
                 className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg font-bold transition-all whitespace-nowrap shrink-0 active:scale-95"
@@ -359,7 +353,6 @@ export default function MissingDataModal({
                 🪄 تعبئة أسعار ومخزون
               </button>
 
-              {/* Bulk Remove */}
               <button
                 onClick={handleBulkRemoveSelected}
                 className="px-3 py-1.5 bg-red-500/80 hover:bg-red-600 text-white rounded-lg font-bold transition-all whitespace-nowrap shrink-0 active:scale-95"
@@ -367,7 +360,6 @@ export default function MissingDataModal({
                 🗑️ استبعاد الصفوف المحددة ({selectedRowIndexes.size})
               </button>
 
-              {/* Clear Selection */}
               <button
                 onClick={() => setSelectedRowIndexes(new Set())}
                 className="px-2 py-1.5 text-white/80 hover:text-white font-medium text-[11px] underline whitespace-nowrap shrink-0"
