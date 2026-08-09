@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { Product } from "@/lib/types";
+import { useToast } from "@/components/ToastProvider";
 
 export interface IncompleteImportItem {
   rowIndex: number;
@@ -35,10 +36,11 @@ export default function MissingDataModal({
   isOpen,
   onClose,
   fileName,
-  validCount,
-  incompleteItems,
+  validCount = 0,
+  incompleteItems = [],
   onConfirmImport,
 }: MissingDataModalProps) {
+  const { error: toastError } = useToast();
   const [items, setItems] = useState<IncompleteImportItem[]>([]);
   const [selectedRowIndexes, setSelectedRowIndexes] = useState<Set<number>>(new Set());
   const [bulkStockInput, setBulkStockInput] = useState<string>("");
@@ -46,40 +48,82 @@ export default function MissingDataModal({
 
   // Sync state safely ONLY when modal opens
   useEffect(() => {
-    if (isOpen) {
-      const safeItems = Array.isArray(incompleteItems) ? incompleteItems : [];
-      setItems(safeItems);
-      setSelectedRowIndexes(new Set(safeItems.map((i) => i.rowIndex)));
-      setBulkStockInput("");
-      setShowBulkStockPrompt(false);
+    try {
+      if (isOpen) {
+        const safeItems = Array.isArray(incompleteItems)
+          ? incompleteItems.map((i, idx) => ({
+              rowIndex: typeof i?.rowIndex === "number" ? i.rowIndex : idx + 2,
+              rawRow: i?.rawRow && typeof i.rawRow === "object" ? i.rawRow : {},
+              name: typeof i?.name === "string" ? i.name : "",
+              costPrice: typeof i?.costPrice === "number" && !isNaN(i.costPrice) ? i.costPrice : 0,
+              wholesalePrice: typeof i?.wholesalePrice === "number" && !isNaN(i.wholesalePrice) ? i.wholesalePrice : 0,
+              retailPrice: typeof i?.retailPrice === "number" && !isNaN(i.retailPrice) ? i.retailPrice : 0,
+              stock: typeof i?.stock === "number" && !isNaN(i.stock) ? i.stock : 0,
+              supplierId: typeof i?.supplierId === "string" ? i.supplierId : "",
+              notes: typeof i?.notes === "string" ? i.notes : "",
+              image: typeof i?.image === "string" ? i.image : "",
+              missingFields: {
+                name: Boolean(i?.missingFields?.name ?? (!i?.name || !i.name.trim())),
+                retailPrice: Boolean(i?.missingFields?.retailPrice ?? (!i?.retailPrice || i.retailPrice <= 0)),
+                costPrice: Boolean(i?.missingFields?.costPrice ?? (!i?.costPrice || i.costPrice <= 0)),
+                stock: Boolean(i?.missingFields?.stock ?? (i?.stock === undefined || i?.stock < 0)),
+              },
+            }))
+          : [];
+
+        setItems(safeItems);
+        setSelectedRowIndexes(new Set(safeItems.map((i) => i.rowIndex)));
+        setBulkStockInput("");
+        setShowBulkStockPrompt(false);
+      }
+    } catch (err) {
+      console.error("Error initializing MissingDataModal:", err);
+      toastError("خطأ في قراءة البيانات", "حدث خطأ غير متوقع أثناء تهيئة نافذة تدقيق البيانات.");
     }
   }, [isOpen, incompleteItems]);
 
   if (!isOpen) return null;
 
-  // ── Selection Logic ──
+  // ── Safe Selection Logic ──
   const isAllSelected = useMemo(() => {
-    return items.length > 0 && items.every((i) => selectedRowIndexes.has(i.rowIndex));
+    try {
+      if (!Array.isArray(items) || items.length === 0) return false;
+      return items.every((i) => typeof i?.rowIndex === "number" && selectedRowIndexes.has(i.rowIndex));
+    } catch {
+      return false;
+    }
   }, [items, selectedRowIndexes]);
 
   const toggleSelectAll = () => {
-    if (isAllSelected) {
-      setSelectedRowIndexes(new Set());
-    } else {
-      setSelectedRowIndexes(new Set(items.map((i) => i.rowIndex)));
+    try {
+      if (isAllSelected) {
+        setSelectedRowIndexes(new Set());
+      } else {
+        const validIndexes = items
+          .map((i) => i?.rowIndex)
+          .filter((idx): idx is number => typeof idx === "number");
+        setSelectedRowIndexes(new Set(validIndexes));
+      }
+    } catch (err) {
+      console.error("Error toggling select all:", err);
     }
   };
 
   const toggleSelectRow = (rowIndex: number) => {
-    setSelectedRowIndexes((prev) => {
-      const next = new Set(prev);
-      if (next.has(rowIndex)) {
-        next.delete(rowIndex);
-      } else {
-        next.add(rowIndex);
-      }
-      return next;
-    });
+    try {
+      if (typeof rowIndex !== "number") return;
+      setSelectedRowIndexes((prev) => {
+        const next = new Set(prev);
+        if (next.has(rowIndex)) {
+          next.delete(rowIndex);
+        } else {
+          next.add(rowIndex);
+        }
+        return next;
+      });
+    } catch (err) {
+      console.error("Error toggling select row:", err);
+    }
   };
 
   const handleFieldChange = (
@@ -87,157 +131,206 @@ export default function MissingDataModal({
     field: keyof Omit<IncompleteImportItem, "missingFields" | "rawRow" | "rowIndex">,
     val: any
   ) => {
-    setItems((prev) => {
-      if (index < 0 || index >= prev.length) return prev;
-      const next = [...prev];
-      const target = { ...next[index] };
-      (target as any)[field] = val;
+    try {
+      setItems((prev) => {
+        if (!Array.isArray(prev) || index < 0 || index >= prev.length) return prev;
+        const next = [...prev];
+        const target = { ...next[index] };
+        (target as any)[field] = val;
 
-      const nameMissing = !target.name || !target.name.trim();
-      const retailMissing = !target.retailPrice || target.retailPrice <= 0 || isNaN(target.retailPrice);
-      const costMissing = !target.costPrice || target.costPrice <= 0 || isNaN(target.costPrice);
-      const stockMissing = target.stock === undefined || target.stock < 0 || isNaN(target.stock);
+        const nameMissing = !target.name || !String(target.name).trim();
+        const retailMissing = !target.retailPrice || Number(target.retailPrice) <= 0 || isNaN(Number(target.retailPrice));
+        const costMissing = !target.costPrice || Number(target.costPrice) <= 0 || isNaN(Number(target.costPrice));
+        const stockMissing = target.stock === undefined || target.stock === null || Number(target.stock) < 0 || isNaN(Number(target.stock));
 
-      target.missingFields = {
-        name: nameMissing,
-        retailPrice: retailMissing,
-        costPrice: costMissing,
-        stock: stockMissing,
-      };
+        target.missingFields = {
+          name: nameMissing,
+          retailPrice: retailMissing,
+          costPrice: costMissing,
+          stock: stockMissing,
+        };
 
-      next[index] = target;
-      return next;
-    });
+        next[index] = target;
+        return next;
+      });
+    } catch (err) {
+      console.error("Error updating field:", err);
+      toastError("خطأ في التعديل", "تعذر تعديل الحقل المتاثر.");
+    }
   };
 
   const handleRemoveItem = (index: number) => {
-    if (index < 0 || index >= items.length) return;
-    const targetRowIndex = items[index].rowIndex;
-    setItems((prev) => prev.filter((_, i) => i !== index));
-    setSelectedRowIndexes((prev) => {
-      const next = new Set(prev);
-      next.delete(targetRowIndex);
-      return next;
-    });
+    try {
+      if (!Array.isArray(items) || index < 0 || index >= items.length) return;
+      const targetRowIndex = items[index]?.rowIndex;
+      setItems((prev) => prev.filter((_, i) => i !== index));
+      if (typeof targetRowIndex === "number") {
+        setSelectedRowIndexes((prev) => {
+          const next = new Set(prev);
+          next.delete(targetRowIndex);
+          return next;
+        });
+      }
+    } catch (err) {
+      console.error("Error removing item:", err);
+    }
   };
 
-  // ── Bulk Actions ──
+  // ── Safe Bulk Actions ──
   const handleBulkRemoveSelected = () => {
-    if (selectedRowIndexes.size === 0) return;
-    setItems((prev) => prev.filter((item) => !selectedRowIndexes.has(item.rowIndex)));
-    setSelectedRowIndexes(new Set());
+    try {
+      if (selectedRowIndexes.size === 0) return;
+      setItems((prev) => prev.filter((item) => typeof item?.rowIndex === "number" && !selectedRowIndexes.has(item.rowIndex)));
+      setSelectedRowIndexes(new Set());
+    } catch (err) {
+      console.error("Error performing bulk remove:", err);
+    }
   };
 
   const handleBulkAutoFillDefaults = () => {
-    setItems((prev) =>
-      prev.map((item) => {
-        if (selectedRowIndexes.size > 0 && !selectedRowIndexes.has(item.rowIndex)) {
-          return item;
-        }
+    try {
+      setItems((prev) =>
+        prev.map((item) => {
+          if (!item) return item;
+          if (selectedRowIndexes.size > 0 && typeof item.rowIndex === "number" && !selectedRowIndexes.has(item.rowIndex)) {
+            return item;
+          }
 
-        let name = item.name ? item.name.trim() : "";
-        if (!name) name = `منتج غير معنون #${item.rowIndex}`;
+          let name = item.name ? String(item.name).trim() : "";
+          if (!name) name = `منتج غير معنون #${item.rowIndex ?? 1}`;
 
-        let retail = item.retailPrice || 0;
-        let cost = item.costPrice || 0;
-        let wholesale = item.wholesalePrice || 0;
-        let stock = item.stock;
+          let retail = Number(item.retailPrice) || 0;
+          let cost = Number(item.costPrice) || 0;
+          let wholesale = Number(item.wholesalePrice) || 0;
+          let stock = Number(item.stock);
 
-        if (stock <= 0 || isNaN(stock)) stock = 10;
+          if (isNaN(stock) || stock <= 0) stock = 10;
 
-        if (retail > 0 && (cost <= 0 || isNaN(cost))) {
-          cost = Math.round(retail * 0.75);
-        } else if (cost > 0 && (retail <= 0 || isNaN(retail))) {
-          retail = Math.round(cost * 1.3);
-        } else if (retail <= 0 && cost <= 0) {
-          retail = 10000;
-          cost = 7000;
-        }
+          if (retail > 0 && (cost <= 0 || isNaN(cost))) {
+            cost = Math.round(retail * 0.75);
+          } else if (cost > 0 && (retail <= 0 || isNaN(retail))) {
+            retail = Math.round(cost * 1.3);
+          } else if (retail <= 0 && cost <= 0) {
+            retail = 10000;
+            cost = 7000;
+          }
 
-        if (wholesale <= 0 || isNaN(wholesale)) {
-          wholesale = Math.round(cost * 1.15);
-        }
+          if (wholesale <= 0 || isNaN(wholesale)) {
+            wholesale = Math.round(cost * 1.15);
+          }
 
-        return {
-          ...item,
-          name,
-          retailPrice: retail,
-          costPrice: cost,
-          wholesalePrice: wholesale,
-          stock,
-          missingFields: {
-            name: false,
-            retailPrice: false,
-            costPrice: false,
-            stock: false,
-          },
-        };
-      })
-    );
+          return {
+            ...item,
+            name,
+            retailPrice: retail,
+            costPrice: cost,
+            wholesalePrice: wholesale,
+            stock,
+            missingFields: {
+              name: false,
+              retailPrice: false,
+              costPrice: false,
+              stock: false,
+            },
+          };
+        })
+      );
+    } catch (err) {
+      console.error("Error performing bulk autofill:", err);
+      toastError("خطأ التعبئة التلقائية", "تعذر تعبئة البيانات الافتراضية.");
+    }
   };
 
   const handleApplyBulkStock = () => {
-    const newStockNum = parseInt(bulkStockInput);
-    if (isNaN(newStockNum) || newStockNum < 0) {
-      alert("يرجى إدخال رقم كمية صالح!");
-      return;
+    try {
+      const newStockNum = parseInt(bulkStockInput);
+      if (isNaN(newStockNum) || newStockNum < 0) {
+        alert("يرجى إدخال رقم كمية صالح!");
+        return;
+      }
+
+      setItems((prev) =>
+        prev.map((item) => {
+          if (!item || typeof item.rowIndex !== "number" || !selectedRowIndexes.has(item.rowIndex)) return item;
+          const target = { ...item, stock: newStockNum };
+
+          const nameMissing = !target.name || !String(target.name).trim();
+          const retailMissing = !target.retailPrice || Number(target.retailPrice) <= 0 || isNaN(Number(target.retailPrice));
+          const costMissing = !target.costPrice || Number(target.costPrice) <= 0 || isNaN(Number(target.costPrice));
+
+          return {
+            ...target,
+            missingFields: {
+              name: nameMissing,
+              retailPrice: retailMissing,
+              costPrice: costMissing,
+              stock: false,
+            },
+          };
+        })
+      );
+      setShowBulkStockPrompt(false);
+      setBulkStockInput("");
+    } catch (err) {
+      console.error("Error applying bulk stock:", err);
     }
-
-    setItems((prev) =>
-      prev.map((item) => {
-        if (!selectedRowIndexes.has(item.rowIndex)) return item;
-        const target = { ...item, stock: newStockNum };
-
-        const nameMissing = !target.name || !target.name.trim();
-        const retailMissing = !target.retailPrice || target.retailPrice <= 0 || isNaN(target.retailPrice);
-        const costMissing = !target.costPrice || target.costPrice <= 0 || isNaN(target.costPrice);
-
-        return {
-          ...target,
-          missingFields: {
-            name: nameMissing,
-            retailPrice: retailMissing,
-            costPrice: costMissing,
-            stock: false,
-          },
-        };
-      })
-    );
-    setShowBulkStockPrompt(false);
-    setBulkStockInput("");
   };
 
-  // ── Filtered & Count Calculations ──
+  // ── Safe Filtered & Count Calculations ──
   const selectedItems = useMemo(() => {
-    return items.filter((i) => selectedRowIndexes.has(i.rowIndex));
+    try {
+      if (!Array.isArray(items)) return [];
+      return items.filter((i) => typeof i?.rowIndex === "number" && selectedRowIndexes.has(i.rowIndex));
+    } catch {
+      return [];
+    }
   }, [items, selectedRowIndexes]);
 
   const selectedAndValidFixedItems = useMemo(() => {
-    return selectedItems.filter(
-      (i) => !i.missingFields.name && !i.missingFields.retailPrice && !i.missingFields.costPrice && !i.missingFields.stock
-    );
+    try {
+      return selectedItems.filter(
+        (i) =>
+          i?.missingFields &&
+          !i.missingFields.name &&
+          !i.missingFields.retailPrice &&
+          !i.missingFields.costPrice &&
+          !i.missingFields.stock
+      );
+    } catch {
+      return [];
+    }
   }, [selectedItems]);
 
-  const totalImportingCount = validCount + selectedAndValidFixedItems.length;
+  const safeValidCount = typeof validCount === "number" && !isNaN(validCount) ? validCount : 0;
+  const totalImportingCount = safeValidCount + selectedAndValidFixedItems.length;
 
   const handleSaveAndImport = () => {
-    const correctedProducts: Partial<Product>[] = selectedAndValidFixedItems.map((i) => ({
-      name: i.name.trim(),
-      costPrice: Number(i.costPrice) || 0,
-      wholesalePrice: Number(i.wholesalePrice) || Number(i.costPrice) || 0,
-      profitMargin: 0,
-      retailPrice: Number(i.retailPrice) || 0,
-      stock: Number(i.stock) || 0,
-      supplierId: i.supplierId || "",
-      notes: i.notes || "",
-      image: i.image || "",
-    }));
+    try {
+      const correctedProducts: Partial<Product>[] = selectedAndValidFixedItems.map((i) => ({
+        name: String(i?.name || "").trim(),
+        costPrice: Number(i?.costPrice) || 0,
+        wholesalePrice: Number(i?.wholesalePrice) || Number(i?.costPrice) || 0,
+        profitMargin: 0,
+        retailPrice: Number(i?.retailPrice) || 0,
+        stock: Number(i?.stock) || 0,
+        supplierId: String(i?.supplierId || ""),
+        notes: String(i?.notes || ""),
+        image: String(i?.image || ""),
+      }));
 
-    onConfirmImport(correctedProducts, false);
+      onConfirmImport(correctedProducts, false);
+    } catch (err) {
+      console.error("Error in handleSaveAndImport:", err);
+      toastError("خطأ الاستيراد", "تعذر متابعة عملية الاستيراد.");
+    }
   };
 
   const handleImportOnlyValid = () => {
-    onConfirmImport([], true);
+    try {
+      onConfirmImport([], true);
+    } catch (err) {
+      console.error("Error in handleImportOnlyValid:", err);
+    }
   };
 
   return (
@@ -253,7 +346,7 @@ export default function MissingDataModal({
               </h2>
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              الملف: <span className="font-bold text-gray-700 dark:text-gray-300">{fileName}</span> — حدد الصفوف المراد معالجتها وإكمال بياناتها مباشرة.
+              الملف: <span className="font-bold text-gray-700 dark:text-gray-300">{fileName || "ملف غير مسمى"}</span> — حدد الصفوف المراد معالجتها وإكمال بياناتها مباشرة.
             </p>
           </div>
           <button
@@ -281,7 +374,7 @@ export default function MissingDataModal({
             )}
 
             <span className="px-3 py-1 rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800 whitespace-nowrap shrink-0">
-              ✅ مكتمل بالملف: {validCount}
+              ✅ مكتمل بالملف: {safeValidCount}
             </span>
 
             <span className="px-3 py-1 rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-bold border border-amber-200 dark:border-amber-800 whitespace-nowrap shrink-0">
@@ -380,16 +473,18 @@ export default function MissingDataModal({
             </div>
           ) : (
             items.map((item, idx) => {
-              const isSelected = selectedRowIndexes.has(item.rowIndex);
+              if (!item) return null;
+              const rowIndex = typeof item.rowIndex === "number" ? item.rowIndex : idx + 2;
+              const isSelected = selectedRowIndexes.has(rowIndex);
               const isFullyValid =
-                !item.missingFields.name &&
-                !item.missingFields.retailPrice &&
-                !item.missingFields.costPrice &&
-                !item.missingFields.stock;
+                !item.missingFields?.name &&
+                !item.missingFields?.retailPrice &&
+                !item.missingFields?.costPrice &&
+                !item.missingFields?.stock;
 
               return (
                 <div
-                  key={item.rowIndex}
+                  key={rowIndex}
                   className={`p-4 rounded-xl border transition-all space-y-3 ${
                     isSelected
                       ? isFullyValid
@@ -404,12 +499,12 @@ export default function MissingDataModal({
                       <input
                         type="checkbox"
                         checked={isSelected}
-                        onChange={() => toggleSelectRow(item.rowIndex)}
+                        onChange={() => toggleSelectRow(rowIndex)}
                         className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer shrink-0"
                       />
 
                       <span className="font-extrabold text-xs text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 px-2.5 py-1 rounded-lg whitespace-nowrap">
-                        صف #{item.rowIndex}
+                        صف #{rowIndex}
                       </span>
 
                       {isFullyValid ? (
@@ -439,17 +534,17 @@ export default function MissingDataModal({
                     <div className="md:col-span-2">
                       <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1 flex items-center justify-between">
                         <span>اسم المنتج *</span>
-                        {item.missingFields.name && (
+                        {item.missingFields?.name && (
                           <span className="text-[10px] text-red-500 font-bold">مطلوب</span>
                         )}
                       </label>
                       <input
                         type="text"
                         placeholder="أدخل اسم المنتج..."
-                        value={item.name}
+                        value={item.name ?? ""}
                         onChange={(e) => handleFieldChange(idx, "name", e.target.value)}
                         className={`w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white font-bold outline-none focus:ring-2 ${
-                          item.missingFields.name
+                          item.missingFields?.name
                             ? "border-red-400 focus:ring-red-400 bg-red-50/30 dark:bg-red-950/20"
                             : "border-gray-300 dark:border-gray-600 focus:ring-blue-500"
                         }`}
@@ -460,7 +555,7 @@ export default function MissingDataModal({
                     <div>
                       <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1 flex items-center justify-between">
                         <span>سعر المفرد *</span>
-                        {item.missingFields.retailPrice && (
+                        {item.missingFields?.retailPrice && (
                           <span className="text-[10px] text-red-500 font-bold">مطلوب</span>
                         )}
                       </label>
@@ -468,10 +563,10 @@ export default function MissingDataModal({
                         type="number"
                         min="0"
                         placeholder="مثال: 15000"
-                        value={item.retailPrice || ""}
+                        value={item.retailPrice ?? ""}
                         onChange={(e) => handleFieldChange(idx, "retailPrice", parseFloat(e.target.value) || 0)}
                         className={`w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white font-bold outline-none focus:ring-2 ${
-                          item.missingFields.retailPrice
+                          item.missingFields?.retailPrice
                             ? "border-red-400 focus:ring-red-400 bg-red-50/30 dark:bg-red-950/20"
                             : "border-gray-300 dark:border-gray-600 focus:ring-blue-500"
                         }`}
@@ -482,7 +577,7 @@ export default function MissingDataModal({
                     <div>
                       <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1 flex items-center justify-between">
                         <span>سعر التكلفة *</span>
-                        {item.missingFields.costPrice && (
+                        {item.missingFields?.costPrice && (
                           <span className="text-[10px] text-red-500 font-bold">مطلوب</span>
                         )}
                       </label>
@@ -490,10 +585,10 @@ export default function MissingDataModal({
                         type="number"
                         min="0"
                         placeholder="مثال: 10000"
-                        value={item.costPrice || ""}
+                        value={item.costPrice ?? ""}
                         onChange={(e) => handleFieldChange(idx, "costPrice", parseFloat(e.target.value) || 0)}
                         className={`w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white font-bold outline-none focus:ring-2 ${
-                          item.missingFields.costPrice
+                          item.missingFields?.costPrice
                             ? "border-red-400 focus:ring-red-400 bg-red-50/30 dark:bg-red-950/20"
                             : "border-gray-300 dark:border-gray-600 focus:ring-blue-500"
                         }`}
@@ -504,7 +599,7 @@ export default function MissingDataModal({
                     <div>
                       <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1 flex items-center justify-between">
                         <span>الكمية / المخزون *</span>
-                        {item.missingFields.stock && (
+                        {item.missingFields?.stock && (
                           <span className="text-[10px] text-red-500 font-bold">مطلوب</span>
                         )}
                       </label>
@@ -512,10 +607,10 @@ export default function MissingDataModal({
                         type="number"
                         min="0"
                         placeholder="مثال: 10"
-                        value={item.stock !== undefined ? item.stock : ""}
+                        value={item.stock !== undefined && item.stock !== null ? item.stock : ""}
                         onChange={(e) => handleFieldChange(idx, "stock", parseInt(e.target.value) || 0)}
                         className={`w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white font-bold outline-none focus:ring-2 ${
-                          item.missingFields.stock
+                          item.missingFields?.stock
                             ? "border-red-400 focus:ring-red-400 bg-red-50/30 dark:bg-red-950/20"
                             : "border-gray-300 dark:border-gray-600 focus:ring-blue-500"
                         }`}
@@ -538,13 +633,13 @@ export default function MissingDataModal({
           </button>
 
           <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap justify-end">
-            {validCount > 0 && (
+            {safeValidCount > 0 && (
               <button
                 onClick={handleImportOnlyValid}
                 className="flex-1 sm:flex-initial min-h-[40px] px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-xs transition-all shadow-sm active:scale-95 whitespace-nowrap shrink-0"
                 title="استيراد المنتجات المكتملة أصلاً بالملف فقط"
               >
-                ⏭️ استيراد السليمة بالملف فقط ({validCount} منتج)
+                ⏭️ استيراد السليمة بالملف فقط ({safeValidCount} منتج)
               </button>
             )}
 
