@@ -35,7 +35,7 @@ interface DataContextType {
   updateSupplier: (id: string, updates: Partial<Supplier>) => Promise<void>;
   deleteSupplier: (id: string) => Promise<void>;
   addCategory: (cat: Omit<CategoryItem, "id">) => Promise<CategoryItem>;
-  updateCategory: (id: string, updates: Partial<CategoryItem>) => Promise<void>;
+  updateCategory: (id: string, updates: Partial<CategoryItem>) => Promise<CategoryItem>;
   deleteCategory: (id: string) => Promise<void>;
   incrementCategoryViews: (catIdOrName: string) => Promise<void>;
   autoSyncCategoriesFromProducts: () => Promise<CategoryItem[]>;
