@@ -518,51 +518,82 @@ export default function ProductsPage() {
 
       {isAdminOrManager && <ImportExportBar />}
 
+      {/* شريط الإجراءات الجماعية الموحد - يظهر دائماً متى ما كان هناك منتجات محددة بأي طريقة */}
+      {isAdminOrManager && selectedProductIds.length > 0 && (
+        <div className="sticky top-4 z-50 bg-purple-900/95 backdrop-blur-md border border-purple-700 p-4 rounded-xl shadow-2xl flex flex-wrap items-center justify-between gap-3 mb-6 transition-all animate-fadeIn max-w-full overflow-hidden" dir="rtl">
+          <div className="flex items-center gap-2 text-white font-medium">
+            <span className="bg-purple-600 px-3 py-1 rounded-lg text-sm font-bold shadow-inner">
+              محدد {selectedProductIds.length} منتج
+            </span>
+            <span className="font-semibold text-sm hidden sm:inline">خيارات التعديل والحذف الجماعي:</span>
+          </div>
+
+          {/* توحيد الأزرار لتعمل في التحديد العادي وتحديد التاريخ */}
+          <div className="flex flex-wrap items-center gap-2 max-w-full">
+            {canEdit && (
+              <>
+                {/* زر تعديل القسم */}
+                <button
+                  onClick={() => openModal('EDIT_CATEGORY', selectedProductIds)}
+                  className="bg-purple-700 hover:bg-purple-600 active:scale-95 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-all shadow-sm font-semibold whitespace-nowrap"
+                >
+                  📁 تعديل القسم / الفئة
+                </button>
+
+                {/* زر تعديل المورد */}
+                <button
+                  onClick={() => openModal('EDIT_SUPPLIER', selectedProductIds)}
+                  className="bg-purple-700 hover:bg-purple-600 active:scale-95 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-all shadow-sm font-semibold whitespace-nowrap"
+                >
+                  📦 تعديل المورد
+                </button>
+
+                {/* زر تعديل نسبة الربح */}
+                <button
+                  onClick={() => openModal('EDIT_PROFIT', selectedProductIds)}
+                  className="bg-purple-700 hover:bg-purple-600 active:scale-95 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-all shadow-sm font-semibold whitespace-nowrap"
+                >
+                  📈 تعديل نسبة الربح %
+                </button>
+
+                {/* زر تعديل السعر */}
+                <button
+                  onClick={() => openModal('EDIT_PRICE', selectedProductIds)}
+                  className="bg-emerald-700 hover:bg-emerald-600 active:scale-95 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-all shadow-sm font-semibold whitespace-nowrap"
+                >
+                  💰 تعديل السعر والقيمة المضافة
+                </button>
+              </>
+            )}
+
+            {canDelete && (
+              /* زر الحذف */
+              <button
+                onClick={() => handleDeleteSelected(selectedProductIds)}
+                className="bg-rose-600 hover:bg-rose-700 active:scale-95 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-all shadow-sm font-semibold whitespace-nowrap"
+              >
+                🗑️ حذف المحدد
+              </button>
+            )}
+
+            {/* زر إلغاء التحديد */}
+            <button
+              onClick={() => setSelectedProductIds([])}
+              className="bg-gray-800 hover:bg-gray-700 active:scale-95 text-gray-300 px-3 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap"
+            >
+              إلغاء التحديد
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Date-Based Product Filtering & Bulk Management Panel */}
       {isAdminOrManager && (
         <DateFilterPanel
           products={products}
           categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+          selectedIds={selectedIds}
           onSelectionChange={(ids) => setSelectedIds(ids)}
-          onBulkAction={async (action, ids, payload) => {
-            if (action === "category" && payload?.category) {
-              try {
-                await bulkUpdateProducts(ids, { notes: `الفئة: ${payload.category}` });
-                await logActivity({
-                  user: settings.currentRole,
-                  action: "update",
-                  entity: "منتجات",
-                  details: `نقل ${ids.length} منتج إلى قسم "${payload.category}" عبر فلتر التاريخ`,
-                });
-                toastSuccess(`✅ تم نقل ${ids.length} منتج إلى قسم "${payload.category}"`);
-              } catch (err: any) {
-                toastError("خطأ أثناء نقل المنتجات", err?.message);
-              }
-            } else if (action === "delete") {
-              try {
-                const selectedSet = new Set(ids);
-                const itemsToDelete = products.filter((p) => selectedSet.has(p.id));
-                const trashPayloads = itemsToDelete.map((p) => ({
-                  entity: "product",
-                  entityId: p.id,
-                  entityName: p.name,
-                  data: { ...p },
-                  deletedBy: settings.currentRole,
-                }));
-                await bulkSoftDelete(trashPayloads);
-                await bulkDeleteProducts(ids);
-                await logActivity({
-                  user: settings.currentRole,
-                  action: "delete",
-                  entity: "منتجات",
-                  details: `حذف جماعي بالتاريخ لـ ${ids.length} منتج`,
-                });
-                toastSuccess(`🗑️ تم حذف ${ids.length} منتج بنجاح`);
-              } catch (err: any) {
-                toastError("خطأ أثناء الحذف", err?.message);
-              }
-            }
-          }}
         />
       )}
 
@@ -598,74 +629,7 @@ export default function ProductsPage() {
         )}
       </div>
 
-      {/* شريط الإجراءات الجماعية الموحد - يظهر دائماً متى ما كان هناك منتجات محددة */}
-      {isAdminOrManager && selectedProductIds.length > 0 && (
-        <div className="sticky top-4 z-40 bg-purple-900/95 backdrop-blur-md border border-purple-700 p-4 rounded-xl shadow-2xl flex flex-wrap items-center justify-between gap-3 mb-6 transition-all animate-fadeIn" dir="rtl">
-          <div className="flex items-center gap-2 text-white font-medium">
-            <span className="bg-purple-600 px-3 py-1 rounded-lg text-sm font-bold">
-              محدد {selectedProductIds.length} منتج
-            </span>
-            <span className="font-semibold text-sm">خيارات التعديل والحذف الجماعي:</span>
-          </div>
 
-          {/* توحيد الأزرار لتعمل في التحديد العادي وتحديد التاريخ */}
-          <div className="flex flex-wrap items-center gap-2">
-            {canEdit && (
-              <>
-                {/* زر تعديل القسم */}
-                <button
-                  onClick={() => openModal('EDIT_CATEGORY', selectedProductIds)}
-                  className="bg-purple-700 hover:bg-purple-600 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-colors shadow-sm font-semibold"
-                >
-                  📁 تعديل القسم / الفئة
-                </button>
-
-                {/* زر تعديل المورد */}
-                <button
-                  onClick={() => openModal('EDIT_SUPPLIER', selectedProductIds)}
-                  className="bg-purple-700 hover:bg-purple-600 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-colors shadow-sm font-semibold"
-                >
-                  📦 تعديل المورد
-                </button>
-
-                {/* زر تعديل نسبة الربح */}
-                <button
-                  onClick={() => openModal('EDIT_PROFIT', selectedProductIds)}
-                  className="bg-purple-700 hover:bg-purple-600 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-colors shadow-sm font-semibold"
-                >
-                  📈 تعديل نسبة الربح %
-                </button>
-
-                {/* زر تعديل السعر */}
-                <button
-                  onClick={() => openModal('EDIT_PRICE', selectedProductIds)}
-                  className="bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-colors shadow-sm font-semibold"
-                >
-                  💰 تعديل السعر والقيمة المضافة
-                </button>
-              </>
-            )}
-
-            {canDelete && (
-              /* زر الحذف */
-              <button
-                onClick={() => handleDeleteSelected(selectedProductIds)}
-                className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-colors shadow-sm font-semibold"
-              >
-                🗑️ حذف المحدد
-              </button>
-            )}
-
-            {/* زر إلغاء التحديد */}
-            <button
-              onClick={() => setSelectedProductIds([])}
-              className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-2 rounded-lg text-sm font-semibold transition-colors"
-            >
-              إلغاء التحديد
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Products Data Table */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">

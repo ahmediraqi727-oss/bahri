@@ -18,7 +18,8 @@ interface DateFilterPanelProps {
   products: Product[];
   categories: { id: string; name: string }[];
   onSelectionChange: (ids: string[]) => void;
-  onBulkAction: (action: "category" | "delete", ids: string[], payload?: { category: string }) => Promise<void>;
+  selectedIds?: string[];
+  onBulkAction?: (action: "category" | "delete", ids: string[], payload?: { category: string }) => Promise<void>;
 }
 
 // ─── Date Preset Labels ───────────────────────────────────────────────────────
@@ -76,7 +77,7 @@ export default function DateFilterPanel({
   products,
   categories,
   onSelectionChange,
-  onBulkAction,
+  selectedIds: externalSelectedIds,
 }: DateFilterPanelProps) {
   // Filter state
   const [filter, setFilter] = useState<DateFilter | null>(null);
@@ -87,8 +88,17 @@ export default function DateFilterPanel({
   // Sort
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
 
-  // Selection
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // Synchronized Selection (Controlled with fallback)
+  const [internalSelectedIds, setInternalSelectedIds] = useState<string[]>([]);
+  const selectedIds = externalSelectedIds !== undefined ? externalSelectedIds : internalSelectedIds;
+
+  const updateSelection = useCallback(
+    (next: string[]) => {
+      setInternalSelectedIds(next);
+      onSelectionChange(next);
+    },
+    [onSelectionChange]
+  );
 
   // Panel collapse
   const [collapsed, setCollapsed] = useState(false);
@@ -124,25 +134,22 @@ export default function DateFilterPanel({
       } else {
         setFilter({ preset });
       }
-      setSelectedIds([]);
-      onSelectionChange([]);
+      updateSelection([]);
     },
-    [customFrom, customTo, onSelectionChange]
+    [customFrom, customTo, updateSelection]
   );
 
   const applyCustomRange = () => {
     if (!customFrom || !customTo) return;
     setFilter({ preset: "custom", from: customFrom, to: customTo });
     setActivePreset("custom");
-    setSelectedIds([]);
-    onSelectionChange([]);
+    updateSelection([]);
   };
 
   const clearFilter = () => {
     setFilter(null);
     setActivePreset(null);
-    setSelectedIds([]);
-    onSelectionChange([]);
+    updateSelection([]);
   };
 
   // ── Selection handlers ─────────────────────────────────────────────────────
@@ -152,16 +159,14 @@ export default function DateFilterPanel({
 
   const toggleSelectAll = () => {
     const next = isAllSelected ? [] : filteredProducts.map((p) => p.id);
-    setSelectedIds(next);
-    onSelectionChange(next);
+    updateSelection(next);
   };
 
   const toggleSelectOne = (id: string) => {
     const next = selectedIds.includes(id)
       ? selectedIds.filter((x) => x !== id)
       : [...selectedIds, id];
-    setSelectedIds(next);
-    onSelectionChange(next);
+    updateSelection(next);
   };
 
   const selectByDate = (date: string) => {
@@ -171,8 +176,7 @@ export default function DateFilterPanel({
     const next = allSelected
       ? selectedIds.filter((id) => !dateIds.includes(id))
       : [...new Set([...selectedIds, ...dateIds])];
-    setSelectedIds(next);
-    onSelectionChange(next);
+    updateSelection(next);
   };
 
   // ── Date range label ───────────────────────────────────────────────────────
