@@ -5,7 +5,7 @@ import { Product } from "@/lib/types";
 import { useToast } from "@/components/ToastProvider";
 
 export interface IncompleteImportItem {
-  rowIndex: number; // 1-based index in Excel/CSV
+  rowIndex: number;
   rawRow: Record<string, any>;
   name: string;
   costPrice: number;
@@ -82,9 +82,7 @@ export default function MissingDataModal({
     }
   }, [isOpen, incompleteItems, toastError]);
 
-  if (!isOpen) return null;
-
-  // ── Safe Selection Logic ──
+  // Protect Hooks from conditional execution rules
   const isAllSelected = useMemo(() => {
     try {
       if (!Array.isArray(items) || items.length === 0) return false;
@@ -93,6 +91,32 @@ export default function MissingDataModal({
       return false;
     }
   }, [items, selectedRowIndexes]);
+
+  const selectedItems = useMemo(() => {
+    try {
+      if (!Array.isArray(items)) return [];
+      return items.filter((i) => typeof i?.rowIndex === "number" && selectedRowIndexes.has(i.rowIndex));
+    } catch {
+      return [];
+    }
+  }, [items, selectedRowIndexes]);
+
+  const selectedAndValidFixedItems = useMemo(() => {
+    try {
+      return selectedItems.filter(
+        (i) =>
+          i?.missingFields &&
+          !i.missingFields.name &&
+          !i.missingFields.retailPrice &&
+          !i.missingFields.costPrice &&
+          !i.missingFields.stock
+      );
+    } catch {
+      return [];
+    }
+  }, [selectedItems]);
+
+  if (!isOpen) return null;
 
   const toggleSelectAll = () => {
     try {
@@ -126,7 +150,6 @@ export default function MissingDataModal({
     }
   };
 
-  // تعديل الحقل بناءً على rowIndex حصراً لتفادي أي تضارب
   const handleFieldByRowIndex = (
     rowIndex: number,
     field: keyof Omit<IncompleteImportItem, "missingFields" | "rawRow" | "rowIndex">,
@@ -161,7 +184,6 @@ export default function MissingDataModal({
     }
   };
 
-  // استبعاد الصف بناءً على rowIndex حصراً
   const handleRemoveByRowIndex = (rowIndex: number) => {
     try {
       setItems((prev) => prev.filter((item) => item.rowIndex !== rowIndex));
@@ -175,7 +197,6 @@ export default function MissingDataModal({
     }
   };
 
-  // ── Safe Bulk Actions ──
   const handleBulkRemoveSelected = () => {
     try {
       if (selectedRowIndexes.size === 0) return;
@@ -274,31 +295,6 @@ export default function MissingDataModal({
       console.error("Error applying bulk stock:", err);
     }
   };
-
-  // ── Safe Filtered & Count Calculations ──
-  const selectedItems = useMemo(() => {
-    try {
-      if (!Array.isArray(items)) return [];
-      return items.filter((i) => typeof i?.rowIndex === "number" && selectedRowIndexes.has(i.rowIndex));
-    } catch {
-      return [];
-    }
-  }, [items, selectedRowIndexes]);
-
-  const selectedAndValidFixedItems = useMemo(() => {
-    try {
-      return selectedItems.filter(
-        (i) =>
-          i?.missingFields &&
-          !i.missingFields.name &&
-          !i.missingFields.retailPrice &&
-          !i.missingFields.costPrice &&
-          !i.missingFields.stock
-      );
-    } catch {
-      return [];
-    }
-  }, [selectedItems]);
 
   const safeValidCount = typeof validCount === "number" && !isNaN(validCount) ? validCount : 0;
   const totalImportingCount = safeValidCount + selectedAndValidFixedItems.length;
