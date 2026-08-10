@@ -250,7 +250,7 @@ export default function ImportExportBar() {
                 `معالجة صور ${latestProducts.length} منتج مستورد عبر السيرفر`
               );
 
-              await fetch("/api/watermark/bulk", {
+              const response = await fetch("/api/watermark/bulk", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -259,8 +259,14 @@ export default function ImportExportBar() {
                 }),
               });
 
+              const result = await response.json();
               await reloadAllData();
-              resolveToast(wmToastId, "success", "🎉 اكتمل إضافة العلامة المائية للصور المستوردة بالخلفية!");
+
+              if (result?.errorsCount > 0) {
+                resolveToast(wmToastId, "warning", `⚠️ اكتملت المهمة مع وجود أخطاء في ${result.errorsCount} صورة.`);
+              } else {
+                resolveToast(wmToastId, "success", "🎉 تمت إضافة العلامة المائية لجميع الصور بنجاح!");
+              }
             }
           } catch (wmErr) {
             console.warn("Background watermark job error:", wmErr);
