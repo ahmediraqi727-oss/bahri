@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
 
     let processedCount = 0;
     let failedCount = 0;
-    const results = [];
+    const results: Array<any> = [];
 
     // المعالجة على دفعات (Chunks of 5) لمنع استنزاف ذاكرة الخادم (Memory Safe)
     const CHUNK_SIZE = 5;
