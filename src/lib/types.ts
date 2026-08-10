@@ -23,13 +23,13 @@ export interface WatermarkConfig {
 export type WatermarkOptions = WatermarkConfig;
 
 export const DEFAULT_WATERMARK_CONFIG: WatermarkConfig = {
-  enabled: false,
-  watermarkUrl: "",
-  position: "bottom-right",
-  customX: 85,
-  customY: 85,
-  opacity: 80,
-  scale: 20,
+  enabled: true,
+  watermarkUrl: "/watermark.png",
+  position: "top-left",
+  customX: 10,
+  customY: 10,
+  opacity: 90,
+  scale: 22,
   applyOnUpload: true,
   targetBucket: "watermarked-products",
 };

@@ -59,25 +59,43 @@ export default function WatermarkSettings({ initialConfig, onSave }: WatermarkSe
     setServerPreviewUrl(null); // Clear server preview cache when parameters change
   };
 
-  // Upload logo via local File Input (Base64 or URL)
-  const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Upload logo via local File Input (Upload to Supabase Storage or fallback to clean path)
+  const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      toastError("حجم الملف كبير", "يجب أن يكون حجم شعار اللوكو أقل من 2 ميجابايت.");
+    if (file.size > 5 * 1024 * 1024) {
+      toastError("حجم الملف كبير", "يجب أن يكون حجم شعار اللوكو أقل من 5 ميجابايت.");
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (uploadEvent) => {
-      const result = uploadEvent.target?.result as string;
-      if (result) {
-        handleConfigChange("watermarkUrl", result);
-        success("تم تحميل الشعار بنجاح", "تمت معاينة الشعار الجديد فوراً.");
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+      const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+      const fileName = `watermark-${Date.now()}.${file.name.split('.').pop() || 'png'}`;
+      const { data, error } = await supabase.storage.from("watermarked-products").upload(fileName, file, {
+        cacheControl: "3600",
+        upsert: true,
+      });
+
+      if (!error && data) {
+        const { data: publicUrlData } = supabase.storage.from("watermarked-products").getPublicUrl(data.path);
+        if (publicUrlData?.publicUrl) {
+          handleConfigChange("watermarkUrl", publicUrlData.publicUrl);
+          success("تم رفع الشعار بنجاح", "تمت إضافة الشعار وتوليد رابط سحابي نظيف.");
+          return;
+        }
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (storageErr) {
+      console.warn("Storage upload fallback to clean path:", storageErr);
+    }
+
+    // Fallback if storage fails: use clean local path
+    handleConfigChange("watermarkUrl", "/watermark.png");
+    success("تم تعيين الشعار", "تم استخدام مسار الشعار المحلي النظيف (/watermark.png).");
   };
 
   // ── 1. Save Watermark Settings ─────────────────────────────────────────────
@@ -86,6 +104,11 @@ export default function WatermarkSettings({ initialConfig, onSave }: WatermarkSe
   const handleSaveConfig = async () => {
     try {
       setIsSaving(true);
+
+      let cleanConfig = { ...config };
+      if (!cleanConfig.watermarkUrl || cleanConfig.watermarkUrl.startsWith("data:image/")) {
+        cleanConfig.watermarkUrl = "/watermark.png";
+      }
 
       const { createClient } = await import("@supabase/supabase-js");
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -99,23 +122,24 @@ export default function WatermarkSettings({ initialConfig, onSave }: WatermarkSe
       if (existing?.id) {
         const { error } = await supabase
           .from("settings")
-          .update({ watermark_config: config })
+          .update({ watermark_config: cleanConfig })
           .eq("id", existing.id);
         err = error;
       } else {
         const { error } = await supabase
           .from("settings")
-          .insert({ watermark_config: config });
+          .insert({ watermark_config: cleanConfig });
         err = error;
       }
 
       if (err) throw new Error(err.message);
 
       // تحديث سياق التطبيق المحلي بالتغييرات الجديدة
-      await updateSettings({ watermarkConfig: config });
+      await updateSettings({ watermarkConfig: cleanConfig });
+      setConfig(cleanConfig);
 
-      success("تم الحفظ بنجاح", "تم حفظ إعدادات العلامة المائية الخاصة بالصور فقط.");
-      if (onSave) await onSave(config);
+      success("تم الحفظ بنجاح", "تم حفظ إعدادات العلامة المائية برابط نظيف ومباشر.");
+      if (onSave) await onSave(cleanConfig);
     } catch (err: any) {
       console.error("Save error:", err);
       toastError("فشل الحفظ", err?.message || "حدث خطأ غير متوقع.");
@@ -369,7 +393,7 @@ export default function WatermarkSettings({ initialConfig, onSave }: WatermarkSe
               <input
                 type="text"
                 placeholder="أدخل رابط الشعار المباشر (URL) أو ارفع صورة..."
-                value={config.watermarkUrl}
+                value={config.watermarkUrl?.startsWith("data:image/") ? "/watermark.png" : config.watermarkUrl}
                 onChange={(e) => handleConfigChange("watermarkUrl", e.target.value)}
                 className="flex-1 px-3.5 py-2.5 border border-gray-300 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-xs font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
               />

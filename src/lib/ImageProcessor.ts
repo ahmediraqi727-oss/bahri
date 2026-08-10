@@ -21,8 +21,20 @@ export async function urlToBuffer(input: string): Promise<Buffer> {
   }
 
   let fetchUrl = input;
-  // Handle relative URLs (e.g. /logo.jpg or uploads/...)
+  // Handle relative URLs (e.g. /watermark.png or /logo.jpg)
   if (input.startsWith("/") || !input.startsWith("http")) {
+    try {
+      const fs = await import("fs");
+      const path = await import("path");
+      const cleanPath = input.replace(/^\//, "").split("?")[0];
+      const localPath = path.join(process.cwd(), "public", cleanPath);
+      if (fs.existsSync(localPath)) {
+        return fs.readFileSync(localPath);
+      }
+    } catch (fsErr) {
+      console.warn("Direct disk read fallback:", fsErr);
+    }
+
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
     fetchUrl = `${siteUrl.replace(/\/$/, "")}/${input.replace(/^\//, "")}`;
   }
