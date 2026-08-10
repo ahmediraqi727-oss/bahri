@@ -182,20 +182,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const autoSyncCategoriesFromProducts = useCallback(async () => {
     try {
-      const { data: prodsData } = await supabase.from("products").select("notes, image");
-      if (!prodsData || prodsData.length === 0) return [];
-
-      // Fetch existing category custom images from database to preserve manager's custom bike pictures!
+      // 1. جلب الأقسام الحالية أولاً لمعرفة الصور المخصصة الموجودة مسبقاً وعدم مسحها
       const { data: existingCats } = await supabase.from("categories").select("id, name, image, image_url");
-      const customCategoryImagesMap = new Map<string, string>();
+      const existingImageMap = new Map<string, string>();
       if (existingCats) {
         existingCats.forEach((c) => {
-          const img = (c.image as string) || (c.image_url as string) || "";
-          if (img.trim()) {
-            customCategoryImagesMap.set(c.name.trim().toLowerCase(), img.trim());
+          const img = (c.image as string) || (c.image_url as string);
+          if (img && img.trim()) {
+            existingImageMap.set(c.name.trim().toLowerCase(), img.trim());
           }
         });
       }
+
+      const { data: prodsData } = await supabase.from("products").select("notes, image");
+      if (!prodsData || prodsData.length === 0) return [];
 
       const categoryMap = new Map<string, { name: string; image: string }>();
 
@@ -203,31 +203,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const notes = (p.notes as string) || "";
         const catName = extractCategoryFromNotes(notes);
         if (catName && catName !== "عام" && catName !== "غير محدد") {
-          const existingCustomImg = customCategoryImagesMap.get(catName.trim().toLowerCase());
+          const existingImg = existingImageMap.get(catName.trim().toLowerCase());
           if (!categoryMap.has(catName)) {
-            categoryMap.set(catName, { name: catName, image: existingCustomImg || (p.image as string) || "" });
-          } else if (!categoryMap.get(catName)?.image && p.image) {
-            categoryMap.get(catName)!.image = existingCustomImg || (p.image as string) || "";
+            // استخدام الصورة المخصصة الموجودة مسبقاً إن وجدت، وإلا صورة المنتج
+            categoryMap.set(catName, { 
+              name: catName, 
+              image: existingImg || (p.image as string) || "" 
+            });
           }
         }
       }
 
       if (categoryMap.size === 0) return [];
 
-      const catRows = Array.from(categoryMap.values()).map((cat, idx) => {
-        const existingCustomImg = customCategoryImagesMap.get(cat.name.trim().toLowerCase());
-        const finalImg = existingCustomImg || cat.image || "";
-        return {
-          name: cat.name,
-          image: finalImg,
-          image_url: finalImg,
-          priority: idx + 1,
-          display_order: idx + 1,
-          sort_order: idx + 1,
-          is_active: true,
-          keywords: cat.name,
-        };
-      });
+      const catRows = Array.from(categoryMap.values()).map((cat, idx) => ({
+        name: cat.name,
+        image: cat.image || "",
+        image_url: cat.image || "",
+        priority: idx + 1,
+        display_order: idx + 1,
+        sort_order: idx + 1,
+        is_active: true,
+        keywords: cat.name,
+      }));
 
       const { error } = await supabase
         .from("categories")
@@ -278,17 +276,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           });
 
           if (loadedCategories.length === 0 || loadedCategories.length < distinctFromProducts.size) {
-            const customCategoryImagesMap = new Map<string, string>();
+            const existingImageMap = new Map<string, string>();
             loadedCategories.forEach((c) => {
               if (c.image && c.image.trim()) {
-                customCategoryImagesMap.set(c.name.trim().toLowerCase(), c.image.trim());
+                existingImageMap.set(c.name.trim().toLowerCase(), c.image.trim());
               }
             });
 
             const catRows = Array.from(distinctFromProducts).map((catName, idx) => {
-              const existingCustomImg = customCategoryImagesMap.get(catName.trim().toLowerCase());
+              const existingImg = existingImageMap.get(catName.trim().toLowerCase());
               const sampleProduct = loadedProducts.find((p) => (p.notes || "").includes(catName));
-              const finalImg = existingCustomImg || sampleProduct?.image || "";
+              const finalImg = existingImg || sampleProduct?.image || "";
               return {
                 name: catName,
                 image: finalImg,
