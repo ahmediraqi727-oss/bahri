@@ -20,52 +20,58 @@ export async function urlToBuffer(input: string): Promise<Buffer> {
     return Buffer.from(base64Data, "base64");
   }
 
-  // 2. Handle relative URLs & Local public directory files
-  if (!input.startsWith("http")) {
-    try {
-      const fs = await import("fs");
-      const path = await import("path");
-      const cleanPath = input.replace(/^\//, "").split("?")[0];
-      
-      // Try public/ directory first
-      let localPath = path.join(process.cwd(), "public", cleanPath);
-      if (fs.existsSync(localPath)) {
-        return fs.readFileSync(localPath);
-      }
-
-      // Try public/watermark.png fallback
-      localPath = path.join(process.cwd(), "public", "watermark.png");
-      if (fs.existsSync(localPath)) {
-        return fs.readFileSync(localPath);
-      }
-
-      // Try public/logo.jpg fallback
-      localPath = path.join(process.cwd(), "public", "logo.jpg");
-      if (fs.existsSync(localPath)) {
-        return fs.readFileSync(localPath);
-      }
-    } catch (fsErr) {
-      console.warn("Direct disk read fallback warning:", fsErr);
+  // 2. Handle absolute URLs (HTTP / HTTPS)
+  if (input.startsWith("http://") || input.startsWith("https://")) {
+    const response = await fetch(input);
+    if (!response.ok) {
+      throw new Error(`فشل تحميل الصورة من الرابط [${response.status}]: ${response.statusText}`);
     }
-
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-    input = `${siteUrl.replace(/\/$/, "")}/${input.replace(/^\//, "")}`;
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
   }
 
-  // 3. Handle Standard HTTP / HTTPS URL
-  const response = await fetch(input);
-  if (!response.ok) {
-    throw new Error(`فشل تحميل الصورة من الرابط [${response.status}]: ${response.statusText}`);
+  // 3. Handle relative URLs & Vercel environment safe fallback
+  let cleanPath = input.replace(/^\//, "").split("?")[0];
+  if (!cleanPath) cleanPath = "watermark.png";
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://ahmed-bahri.vercel.app";
+  const absoluteUrl = `${siteUrl.replace(/\/$/, "")}/${cleanPath}`;
+
+  try {
+    const response = await fetch(absoluteUrl);
+    if (response.ok) {
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    }
+  } catch (netErr) {
+    console.warn("فشل الجلب عبر الشبكة للرابط النسبي، جاري محاولة التخزين المحلي:", netErr);
   }
-  const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+
+  // Fallback to local disk read only if running in a node environment with fs support
+  try {
+    const fs = await import("fs");
+    const path = await import("path");
+    const localPath = path.join(process.cwd(), "public", cleanPath);
+    if (fs.existsSync(localPath)) {
+      return fs.readFileSync(localPath);
+    }
+    // Fallback default watermark
+    const defaultPath = path.join(process.cwd(), "public", "watermark.png");
+    if (fs.existsSync(defaultPath)) {
+      return fs.readFileSync(defaultPath);
+    }
+  } catch (fsErr) {
+    console.warn("Direct disk read fallback warning:", fsErr);
+  }
+
+  throw new Error(`تعذر العثور على صورة الشعار أو تحميلها نهائياً من المسار: ${input}`);
 }
 
 /**
  * Gets cached watermark buffer or downloads and caches it with bulletproof fallbacks
  */
 async function getCachedWatermarkBuffer(watermarkUrl: string): Promise<Buffer> {
-  const cacheKey = watermarkUrl || "/watermark.png";
+  const cacheKey = watermarkUrl || "watermark.png";
   if (watermarkBufferCache.has(cacheKey)) {
     return watermarkBufferCache.get(cacheKey)!;
   }
@@ -75,16 +81,10 @@ async function getCachedWatermarkBuffer(watermarkUrl: string): Promise<Buffer> {
     watermarkBufferCache.set(cacheKey, buffer);
     return buffer;
   } catch (err) {
-    console.warn(`Watermark logo fetch error for ${watermarkUrl}, attempting fallback to local /watermark.png:`, err);
-    try {
-      const fallbackBuffer = await urlToBuffer("/watermark.png");
-      watermarkBufferCache.set(cacheKey, fallbackBuffer);
-      return fallbackBuffer;
-    } catch {
-      const fallbackBuffer2 = await urlToBuffer("/logo.jpg");
-      watermarkBufferCache.set(cacheKey, fallbackBuffer2);
-      return fallbackBuffer2;
-    }
+    console.warn(`Watermark logo fetch error for ${watermarkUrl}, attempting fallback to /watermark.png:`, err);
+    const fallbackBuffer = await urlToBuffer("watermark.png");
+    watermarkBufferCache.set(cacheKey, fallbackBuffer);
+    return fallbackBuffer;
   }
 }
 
@@ -96,7 +96,7 @@ export async function applyWatermarkToBuffer(
   baseImageBuffer: Buffer,
   config: WatermarkConfig
 ): Promise<{ buffer: Buffer; format: string; width: number; height: number }> {
-  const targetWmUrl = config.watermarkUrl || "/watermark.png";
+  const targetWmUrl = config.watermarkUrl || "watermark.png";
 
   // 1. Fetch & Metadata for Base Product Image
   const baseSharp = sharp(baseImageBuffer);
@@ -114,8 +114,8 @@ export async function applyWatermarkToBuffer(
   const targetWmW = Math.max(20, Math.round(baseWidth * (scalePercent / 100)));
 
   // Resize watermark logo keeping aspect ratio
-  let wmSharp = sharp(wmRawBuffer).resize({ width: targetWmW, fit: "inside" }).ensureAlpha();
-  let wmResizedBuffer = await wmSharp.toBuffer();
+  const wmSharp = sharp(wmRawBuffer).resize({ width: targetWmW, fit: "inside" }).ensureAlpha();
+  const wmResizedBuffer = await wmSharp.toBuffer();
 
   const wmMeta = await sharp(wmResizedBuffer).metadata();
   const wmW = wmMeta.width || targetWmW;
@@ -191,7 +191,6 @@ export async function applyWatermarkToBuffer(
 
 /**
  * Processes base image URL and uploads the watermarked version to Supabase Storage (/products/watermarked/).
- * Fallbacks cleanly to secondary bucket or Data URL to guarantee images NEVER return 404 or break!
  */
 export async function processAndUploadWatermarkImage(
   imageUrl: string,
@@ -217,8 +216,6 @@ export async function processAndUploadWatermarkImage(
       if (publicData?.publicUrl) {
         return publicData.publicUrl;
       }
-    } else if (error) {
-      console.warn(`Primary storage bucket '${bucket}' upload notice: ${error.message}. Trying 'products' fallback bucket...`);
     }
   } catch (primaryErr) {
     console.warn("Primary storage bucket exception:", primaryErr);
@@ -241,15 +238,12 @@ export async function processAndUploadWatermarkImage(
     console.warn("Secondary storage bucket exception:", secErr);
   }
 
-  // 3. Ultra-Safe Fallback: Return Data URL so the image ALWAYS renders cleanly without 404 empty boxes!
+  // 3. Ultra-Safe Fallback
   const base64Str = buffer.toString("base64");
   const mimeType = format === "png" ? "image/png" : format === "webp" ? "image/webp" : "image/jpeg";
   return `data:${mimeType};base64,${base64Str}`;
 }
 
-/**
- * Convenience wrapper for processing an image buffer directly with Sharp and returning the watermarked buffer.
- */
 export async function processImageWithWatermark(
   imageBuffer: Buffer,
   config: WatermarkConfig
