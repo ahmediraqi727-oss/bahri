@@ -57,6 +57,7 @@ function rowToProduct(row: Record<string, unknown>): Product {
     id: row.id as string,
     name: row.name as string,
     image: (row.image as string) || "",
+    originalImageUrl: (row.original_image_url as string) || (row.image as string) || "",
     costPrice: Number(row.cost_price) || 0,
     wholesalePrice: Number(row.wholesale_price) || 0,
     profitMargin: Number(row.profit_margin) || 0,
@@ -78,6 +79,8 @@ export function productToRow(product: Record<string, unknown>): Record<string, u
   };
   if ("name" in product) row.name = product.name;
   if ("image" in product) row.image = product.image || "";
+  if ("originalImageUrl" in product) row.original_image_url = product.originalImageUrl || product.image || "";
+  if ("original_image_url" in product) row.original_image_url = product.original_image_url || "";
   if ("costPrice" in product) row.cost_price = Number(product.costPrice) || 0;
   if ("wholesalePrice" in product) row.wholesale_price = Number(product.wholesalePrice) || 0;
   if ("profitMargin" in product) row.profit_margin = Number(product.profitMargin) || 0;
