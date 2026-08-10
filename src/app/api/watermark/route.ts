@@ -4,15 +4,21 @@ import { WatermarkConfig } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { imageUrl, watermarkConfig, preview = true } = body as {
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "طلب غير صالح، يرجى تزويد بيانات بصيغة JSON" }, { status: 400 });
+    }
+
+    const { imageUrl, watermarkConfig, preview = true } = (body || {}) as {
       imageUrl: string;
       watermarkConfig: WatermarkConfig;
       preview?: boolean;
     };
 
     if (!imageUrl || !watermarkConfig?.watermarkUrl) {
-      return NextResponse.json({ error: "الرابط أو إعدادات الشعار غير متوفرة" }, { status: 400 });
+      return NextResponse.json({ error: "رابط الصورة أو إعدادات العلامة المائية غير متوفرة" }, { status: 400 });
     }
 
     // 1. If upload to storage is specifically requested (preview === false)

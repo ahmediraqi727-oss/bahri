@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { processAndUploadWatermarkImage, processImageWithWatermark } from "@/lib/ImageProcessor";
+import { processAndUploadWatermarkImage } from "@/lib/ImageProcessor";
 import { WatermarkConfig, WatermarkOptions } from "@/lib/types";
 import { supabase } from "@/lib/supabase-client";
 import { createClient } from "@supabase/supabase-js";
@@ -19,8 +19,14 @@ interface BulkItem {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { productIds, items, options, watermarkConfig, revertToOriginal } = body as {
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "طلب غير صالح، يرجى تزويد بيانات بصيغة JSON" }, { status: 400 });
+    }
+
+    const { productIds, items, options, watermarkConfig, revertToOriginal } = (body || {}) as {
       productIds?: string[];
       items?: BulkItem[];
       options?: WatermarkOptions;
@@ -51,7 +57,7 @@ export async function POST(req: NextRequest) {
         targetItems = dbProducts.map((p) => ({
           id: p.id,
           image: p.image || "",
-          originalImageUrl: p.original_image_url || "",
+          originalImageUrl: p.original_image_url || p.image || "",
         }));
       }
     } else if (Array.isArray(items) && items.length > 0) {
@@ -76,11 +82,15 @@ export async function POST(req: NextRequest) {
       const dbClient = process.env.SUPABASE_SERVICE_ROLE_KEY ? supabaseAdmin : supabase;
       for (const item of targetItems) {
         try {
-          const originalUrl = item.originalImageUrl || item.image;
+          const originalUrl = (item.originalImageUrl && item.originalImageUrl.trim()) ? item.originalImageUrl.trim() : item.image;
           if (originalUrl) {
             await dbClient
               .from("products")
-              .update({ image: originalUrl, updated_at: new Date().toISOString() })
+              .update({
+                image: originalUrl,
+                original_image_url: originalUrl,
+                updated_at: new Date().toISOString(),
+              })
               .eq("id", item.id);
 
             results.push({ id: item.id, success: true, image: originalUrl, originalImageUrl: originalUrl });
@@ -112,7 +122,7 @@ export async function POST(req: NextRequest) {
 
       await Promise.all(
         chunk.map(async (item) => {
-          const sourceUrl = item.originalImageUrl && item.originalImageUrl.trim() ? item.originalImageUrl.trim() : item.image;
+          const sourceUrl = (item.originalImageUrl && item.originalImageUrl.trim()) ? item.originalImageUrl.trim() : item.image;
           if (!sourceUrl || !sourceUrl.trim()) {
             failedCount++;
             results.push({ id: item.id, success: false, error: "لا تتوفر صورة للمنتج" });

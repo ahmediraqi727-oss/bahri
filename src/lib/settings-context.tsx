@@ -259,54 +259,41 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const updateSettings = useCallback(
     async (updates: Partial<SiteSettings>) => {
-      const merged = { ...settings, ...updates };
-      const row = settingsToRow(merged);
+      let updatedSettings: SiteSettings | null = null;
 
-      // Update local state and localStorage cache immediately
-      setSettings(merged);
-      if (typeof window !== "undefined") {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-      }
+      setSettings((prev) => {
+        const merged = { ...prev, ...updates };
+        updatedSettings = merged;
+        if (typeof window !== "undefined") {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+        }
+        return merged;
+      });
 
-      // Persist to Supabase database cleanly
-      let resultData: Record<string, unknown> | null = null;
-      let queryError: { message: string; details?: string; hint?: string } | null = null;
+      if (!updatedSettings) return;
+
+      const row = settingsToRow(updatedSettings);
 
       try {
         if (settingsId) {
           const res = await supabase.from("settings").update(row).eq("id", settingsId).select().single();
-          resultData = res.data;
-          queryError = res.error;
+          if (res.error) console.warn("Error updating settings DB:", res.error.message);
         } else {
-          // Check if a row already exists in table
           const existing = await supabase.from("settings").select("id").limit(1).maybeSingle();
-          if (existing.data) {
+          if (existing.data?.id) {
             setSettingsId(existing.data.id);
             const res = await supabase.from("settings").update(row).eq("id", existing.data.id).select().single();
-            resultData = res.data;
-            queryError = res.error;
+            if (res.error) console.warn("Error updating settings DB:", res.error.message);
           } else {
             const res = await supabase.from("settings").insert(row).select().single();
-            resultData = res.data;
-            queryError = res.error;
+            if (res.data?.id) setSettingsId(res.data.id);
           }
         }
-      } catch (err: unknown) {
-        console.error("Database query exception:", err);
-        const message = err instanceof Error ? err.message : String(err);
-        queryError = { message };
-      }
-
-      if (queryError) {
-        console.error("Failed to save settings to database:", queryError);
-        throw new Error(queryError.message || "فشل حفظ الإعدادات في قاعدة البيانات");
-      }
-
-      if (resultData && resultData.id) {
-        setSettingsId(resultData.id as string);
+      } catch (err) {
+        console.error("Database query exception in updateSettings:", err);
       }
     },
-    [settings, settingsId]
+    [settingsId]
   );
 
   const updateRoleTheme = useCallback(
@@ -314,7 +301,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       const newThemes = { ...settings.roleThemes, [role]: { ...settings.roleThemes[role], ...theme } };
       await updateSettings({ roleThemes: newThemes });
     },
-    [settings, updateSettings]
+    [settings.roleThemes, updateSettings]
   );
 
   const setCurrentRole = useCallback((role: UserRole) => {

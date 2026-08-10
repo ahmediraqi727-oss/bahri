@@ -53,11 +53,13 @@ export function isUUID(str: string): boolean {
 }
 
 function rowToProduct(row: Record<string, unknown>): Product {
+  const image = (row.image as string) || "";
+  const origImage = (row.original_image_url as string) || image || "";
   return {
     id: row.id as string,
-    name: row.name as string,
-    image: (row.image as string) || "",
-    originalImageUrl: (row.original_image_url as string) || (row.image as string) || "",
+    name: (row.name as string) || "",
+    image,
+    originalImageUrl: origImage,
     costPrice: Number(row.cost_price) || 0,
     wholesalePrice: Number(row.wholesale_price) || 0,
     profitMargin: Number(row.profit_margin) || 0,
@@ -65,29 +67,42 @@ function rowToProduct(row: Record<string, unknown>): Product {
     stock: Number(row.stock) || 0,
     supplierId: (row.supplier_id as string) || "",
     notes: (row.notes as string) || "",
-    createdAt: row.created_at as string,
-    updatedAt: row.updated_at as string,
+    createdAt: (row.created_at as string) || new Date().toISOString(),
+    updatedAt: (row.updated_at as string) || new Date().toISOString(),
   };
 }
 
 export function productToRow(product: Record<string, unknown>): Record<string, unknown> {
-  const row: Record<string, unknown> = {
-    is_active: true,
-    is_published: true,
-    status: "active",
-    is_deleted: false,
-  };
+  const row: Record<string, unknown> = {};
+
   if ("name" in product) row.name = product.name;
   if ("image" in product) row.image = product.image || "";
-  if ("originalImageUrl" in product) row.original_image_url = product.originalImageUrl || product.image || "";
-  if ("original_image_url" in product) row.original_image_url = product.original_image_url || "";
-  if ("costPrice" in product) row.cost_price = Number(product.costPrice) || 0;
-  if ("wholesalePrice" in product) row.wholesale_price = Number(product.wholesalePrice) || 0;
-  if ("profitMargin" in product) row.profit_margin = Number(product.profitMargin) || 0;
-  if ("retailPrice" in product) row.retail_price = Number(product.retailPrice) || 0;
+
+  if ("originalImageUrl" in product && product.originalImageUrl !== undefined) {
+    row.original_image_url = product.originalImageUrl || product.image || "";
+  } else if ("original_image_url" in product && product.original_image_url !== undefined) {
+    row.original_image_url = product.original_image_url || product.image || "";
+  } else if ("image" in product && product.image && !("id" in product)) {
+    // New product insertion fallback
+    row.original_image_url = product.image;
+  }
+
+  if ("costPrice" in product || "cost_price" in product) {
+    row.cost_price = Number(product.costPrice ?? product.cost_price) || 0;
+  }
+  if ("wholesalePrice" in product || "wholesale_price" in product) {
+    row.wholesale_price = Number(product.wholesalePrice ?? product.wholesale_price) || 0;
+  }
+  if ("profitMargin" in product || "profit_margin" in product) {
+    row.profit_margin = Number(product.profitMargin ?? product.profit_margin) || 0;
+  }
+  if ("retailPrice" in product || "retail_price" in product) {
+    row.retail_price = Number(product.retailPrice ?? product.retail_price) || 0;
+  }
   if ("stock" in product) row.stock = Number(product.stock) || 0;
-  if ("supplierId" in product) {
-    const sid = String(product.supplierId || "").trim();
+
+  if ("supplierId" in product || "supplier_id" in product) {
+    const sid = String(product.supplierId ?? product.supplier_id ?? "").trim();
     row.supplier_id = isUUID(sid) ? sid : null;
   }
   if ("category_id" in product && product.category_id) {
@@ -95,18 +110,24 @@ export function productToRow(product: Record<string, unknown>): Record<string, u
     if (isUUID(cid)) row.category_id = cid;
   }
   if ("notes" in product) row.notes = product.notes || "";
+
+  if ("is_active" in product) row.is_active = Boolean(product.is_active);
+  if ("is_published" in product) row.is_published = Boolean(product.is_published);
+  if ("status" in product) row.status = product.status || "active";
+  if ("is_deleted" in product) row.is_deleted = Boolean(product.is_deleted);
+
   return row;
 }
 
 function rowToSupplier(row: Record<string, unknown>): Supplier {
   return {
     id: row.id as string,
-    name: row.name as string,
+    name: (row.name as string) || "",
     phone: (row.phone as string) || "",
     email: (row.email as string) || "",
     address: (row.address as string) || "",
     notes: (row.notes as string) || "",
-    createdAt: row.created_at as string,
+    createdAt: (row.created_at as string) || new Date().toISOString(),
   };
 }
 
@@ -125,19 +146,22 @@ function rowToCategory(row: Record<string, unknown>): CategoryItem {
   return {
     id: row.id as string,
     name: (row.name as string) || "",
-    image: (row.image as string) || "",
+    image: (row.image as string) || (row.image_url as string) || "",
     priority: prio,
     isActive: row.is_active !== undefined ? Boolean(row.is_active) : true,
     keywords: (row.keywords as string) || "",
     views: Number(row.views) || 0,
-    createdAt: row.created_at as string,
+    createdAt: (row.created_at as string) || new Date().toISOString(),
   };
 }
 
 export function categoryToRow(cat: Record<string, unknown>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if ("name" in cat) row.name = cat.name;
-  if ("image" in cat) row.image = cat.image || "";
+  if ("image" in cat) {
+    row.image = cat.image || "";
+    row.image_url = cat.image || "";
+  }
   if ("priority" in cat) {
     const pVal = Number(cat.priority) || 1;
     row.priority = pVal;
@@ -180,6 +204,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const catRows = Array.from(categoryMap.values()).map((cat, idx) => ({
         name: cat.name,
         image: cat.image || "",
+        image_url: cat.image || "",
         priority: idx + 1,
         display_order: idx + 1,
         sort_order: idx + 1,
@@ -221,9 +246,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
         const loadedProducts = productsRes.data ? productsRes.data.map(rowToProduct) : [];
         const loadedCategories = categoriesRes.data ? categoriesRes.data.map(rowToCategory) : [];
+        const loadedSuppliers = suppliersRes.data ? suppliersRes.data.map(rowToSupplier) : [];
 
         if (productsRes.data) setProducts(loadedProducts);
-        if (suppliersRes.data) setSuppliers(loadedSuppliersFromRow(suppliersRes.data));
+        if (suppliersRes.data) setSuppliers(loadedSuppliers);
         if (loadedCategories.length > 0) setCategories(loadedCategories);
 
         // Auto Populate categories if missing
@@ -240,6 +266,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               return {
                 name: catName,
                 image: sampleProduct?.image || "",
+                image_url: sampleProduct?.image || "",
                 priority: idx + 1,
                 display_order: idx + 1,
                 sort_order: idx + 1,
@@ -276,7 +303,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "suppliers" }, async () => {
         const { data } = await supabase.from("suppliers").select("*").order("created_at", { ascending: false });
-        if (data) setSuppliers(loadedSuppliersFromRow(data));
+        if (data) setSuppliers(data.map(rowToSupplier));
       })
       .subscribe();
 
@@ -285,12 +312,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  function loadedSuppliersFromRow(data: Record<string, unknown>[]): Supplier[] {
-    return data.map(rowToSupplier);
-  }
-
   const addProduct = useCallback(async (product: Omit<Product, "id" | "createdAt" | "updatedAt">) => {
-    const row = productToRow(product);
+    const row = productToRow(product as Record<string, unknown>);
+
+    // Guarantee original_image_url is set for new product
+    if (product.image && !row.original_image_url) {
+      row.original_image_url = product.image;
+    }
+
     const { data: created, error } = await supabase.from("products").insert(row).select().single();
     if (error) throw error;
     const newProduct = rowToProduct(created);
@@ -299,7 +328,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateProduct = useCallback(async (id: string, updates: Partial<Product>) => {
-    const row = productToRow(updates);
+    const row = productToRow(updates as Record<string, unknown>);
+
     const { data: updated, error } = await supabase.from("products").update(row).eq("id", id).select().single();
     if (error) throw error;
     const product = rowToProduct(updated);
@@ -308,7 +338,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const bulkUpdateProducts = useCallback(async (ids: string[], updates: Partial<Product>) => {
     if (!ids || ids.length === 0) return;
-    const row = productToRow(updates);
+    const row = productToRow(updates as Record<string, unknown>);
     const chunkSize = 200;
     const updatedRows: Record<string, unknown>[] = [];
 
@@ -346,7 +376,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addSupplier = useCallback(async (supplier: Omit<Supplier, "id" | "createdAt">) => {
-    const row = supplierToRow(supplier);
+    const row = supplierToRow(supplier as Record<string, unknown>);
     const { data: created, error } = await supabase.from("suppliers").insert(row).select().single();
     if (error) throw error;
     const newSupplier = rowToSupplier(created);
@@ -355,7 +385,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateSupplier = useCallback(async (id: string, updates: Partial<Supplier>) => {
-    const row = supplierToRow(updates);
+    const row = supplierToRow(updates as Record<string, unknown>);
     const { data: updated, error } = await supabase.from("suppliers").update(row).eq("id", id).select().single();
     if (error) throw error;
     const supplier = rowToSupplier(updated);
@@ -369,7 +399,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addCategory = useCallback(async (cat: Omit<CategoryItem, "id">): Promise<CategoryItem> => {
-    const row = categoryToRow(cat);
+    const row = categoryToRow(cat as Record<string, unknown>);
     let createdRow: Record<string, unknown> | null = null;
 
     const { data: created, error } = await supabase
@@ -383,7 +413,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     } else if (error) {
       console.warn("Primary addCategory error, attempting fallback with image_url column:", error.message);
       const altRow: Record<string, unknown> = { ...row, name: cat.name, image_url: cat.image };
-      delete altRow.image;
       const { data: altCreated } = await supabase
         .from("categories")
         .upsert(altRow, { onConflict: "name" })
@@ -408,7 +437,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateCategory = useCallback(async (id: string, updates: Partial<CategoryItem>): Promise<CategoryItem> => {
-    const row = categoryToRow(updates);
+    const row = categoryToRow(updates as Record<string, unknown>);
     let updatedRow: Record<string, unknown> | null = null;
 
     if (isUUID(id)) {
@@ -420,7 +449,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const altRow: Record<string, unknown> = { ...row };
         if ("image" in altRow) {
           altRow.image_url = altRow.image;
-          delete altRow.image;
         }
         const { data: altData } = await supabase.from("categories").update(altRow).eq("id", id).select().maybeSingle();
         if (altData) updatedRow = altData;
@@ -432,6 +460,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const upsertRow: Record<string, unknown> = {
         name: catName,
         image: updates.image !== undefined ? updates.image : "",
+        image_url: updates.image !== undefined ? updates.image : "",
         priority: Number(updates.priority) || 1,
         display_order: Number(updates.priority) || 1,
         sort_order: Number(updates.priority) || 1,
@@ -450,7 +479,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       } else if (upsertError) {
         console.warn("Primary category upsert error, trying image_url fallback:", upsertError.message);
         const altUpsert: Record<string, unknown> = { ...upsertRow, image_url: upsertRow.image };
-        delete altUpsert.image;
         const { data: altUpsertData } = await supabase
           .from("categories")
           .upsert(altUpsert, { onConflict: "name" })
@@ -509,7 +537,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       supabase.from("categories").select("*").order("priority", { ascending: true }),
     ]);
     if (productsRes.data) setProducts(productsRes.data.map(rowToProduct));
-    if (suppliersRes.data) setSuppliers(productsRes.data ? loadedSuppliersFromRow(suppliersRes.data) : []);
+    if (suppliersRes.data) setSuppliers(suppliersRes.data.map(rowToSupplier));
     if (categoriesRes.data) setCategories(categoriesRes.data.map(rowToCategory));
   }, []);
 
@@ -519,6 +547,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const r: Record<string, unknown> = {
           name: c.name,
           image: c.image || "",
+          image_url: c.image || "",
           priority: Number(c.priority) || 1,
           is_active: c.isActive !== false,
           keywords: c.keywords || "",
@@ -611,7 +640,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const productCategoryPairs: { productName: string; categoryId: string }[] = [];
 
       const rows = items.map((item) => {
-        const row = productToRow(item);
+        const row = productToRow(item as Record<string, unknown>);
+
+        // Ensure original_image_url is populated from image upon import
+        if (item.image && !row.original_image_url) {
+          row.original_image_url = item.image;
+        }
 
         const match = (item.notes || "").match(/الفئة:\s*([^|]+)/);
         if (match && match[1]) {

@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS public.settings (
     watermark_config JSONB DEFAULT '{"enabled": false, "watermarkUrl": "", "position": "bottom-right", "customX": 85, "customY": 85, "opacity": 80, "scale": 20, "applyOnUpload": true, "targetBucket": "watermarked-products"}'::jsonb,
     custom_themes JSONB DEFAULT '[]'::jsonb,
     active_theme_preset TEXT DEFAULT 'classic-blue',
-    store_address TEXT DEFAULT 'العراق - بغداد',
+    store_address TEXT DEFAULT 'العراق - بغداد - الشارع التجاري الرئيسي',
     store_map_link TEXT DEFAULT 'https://maps.google.com',
     store_map_embed_url TEXT DEFAULT '',
     whatsapp_link TEXT DEFAULT '',
@@ -66,11 +66,24 @@ CREATE TABLE IF NOT EXISTS public.settings (
 );
 
 -- ضمان إضافة جميع الأعمدة إن كان جدول settings موجوداً مسبقاً
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS user_id UUID;
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS site_name TEXT DEFAULT 'موقع أحمد بحري';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS logo TEXT DEFAULT '';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS hero_image TEXT DEFAULT '';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS hero_image_url TEXT DEFAULT '';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS footer_image TEXT DEFAULT '';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS footer_image_url TEXT DEFAULT '';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS font_family TEXT DEFAULT 'Cairo';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS font_size INTEGER DEFAULT 16;
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS primary_color TEXT DEFAULT '#2563eb';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS secondary_color TEXT DEFAULT '#7c3aed';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS accent_color TEXT DEFAULT '#f59e0b';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS dark_mode BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS eye_protection BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS watermark_config JSONB DEFAULT '{"enabled": false, "watermarkUrl": "", "position": "bottom-right", "customX": 85, "customY": 85, "opacity": 80, "scale": 20, "applyOnUpload": true, "targetBucket": "watermarked-products"}'::jsonb;
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS custom_themes JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS active_theme_preset TEXT DEFAULT 'classic-blue';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS store_address TEXT DEFAULT 'العراق - بغداد';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS store_address TEXT DEFAULT 'العراق - بغداد - الشارع التجاري الرئيسي';
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS store_map_link TEXT DEFAULT 'https://maps.google.com';
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS store_map_embed_url TEXT DEFAULT '';
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS whatsapp_link TEXT DEFAULT '';
@@ -125,9 +138,12 @@ CREATE TABLE IF NOT EXISTS public.categories (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS image TEXT DEFAULT '';
 ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS image_url TEXT DEFAULT '';
+ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS priority INT DEFAULT 1;
 ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS display_order INT DEFAULT 1;
 ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS sort_order INT DEFAULT 1;
+ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
 ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS keywords TEXT DEFAULT '';
 ALTER TABLE public.categories ADD COLUMN IF NOT EXISTS views INT DEFAULT 0;
 
@@ -141,6 +157,11 @@ CREATE TABLE IF NOT EXISTS public.suppliers (
   notes TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT '';
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS email TEXT DEFAULT '';
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS address TEXT DEFAULT '';
+ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT '';
 
 -- 5. جدول المنتجات (public.products)
 CREATE TABLE IF NOT EXISTS public.products (
@@ -164,8 +185,17 @@ CREATE TABLE IF NOT EXISTS public.products (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS image TEXT DEFAULT '';
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS original_image_url TEXT DEFAULT '';
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS cost_price NUMERIC DEFAULT 0;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS wholesale_price NUMERIC DEFAULT 0;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS profit_margin NUMERIC DEFAULT 0;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS retail_price NUMERIC DEFAULT 0;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS stock NUMERIC DEFAULT 0;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS supplier_id UUID REFERENCES public.suppliers(id) ON DELETE SET NULL;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT '';
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_published BOOLEAN DEFAULT true;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;
@@ -200,6 +230,8 @@ CREATE TABLE IF NOT EXISTS public.orders (
 );
 
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS invoice_serial TEXT DEFAULT '';
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC DEFAULT 0;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS delivery_duration TEXT DEFAULT '';
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS delivery_time TEXT DEFAULT '';
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS platform TEXT DEFAULT '';
 
