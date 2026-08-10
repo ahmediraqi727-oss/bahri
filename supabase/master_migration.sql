@@ -1,6 +1,5 @@
 -- ==============================================================================
--- MASTER PRODUCTION SCRIPT - AHMED BAHRI STORE (FINAL & COMPLETE VERIFIED)
--- Run this script in Supabase Dashboard → SQL Editor
+-- MASTER PRODUCTION MIGRATION SCRIPT - AHMED BAHRI STORE (ULTIMATE EDITION)
 -- ==============================================================================
 
 -- 1. تفعيل الإضافات البرمجية الأساسية
@@ -65,65 +64,18 @@ CREATE TABLE IF NOT EXISTS public.settings (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ضمان إضافة جميع الأعمدة إن كان جدول settings موجوداً مسبقاً
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS user_id UUID;
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS site_name TEXT DEFAULT 'موقع أحمد بحري';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS logo TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS hero_image TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS hero_image_url TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS footer_image TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS footer_image_url TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS font_family TEXT DEFAULT 'Cairo';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS font_size INTEGER DEFAULT 16;
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS primary_color TEXT DEFAULT '#2563eb';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS secondary_color TEXT DEFAULT '#7c3aed';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS accent_color TEXT DEFAULT '#f59e0b';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS dark_mode BOOLEAN DEFAULT FALSE;
+-- حقن الحقول المفقودة بجدول settings إن وجد مسبقاً
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS eye_protection BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS watermark_config JSONB DEFAULT '{"enabled": false, "watermarkUrl": "", "position": "bottom-right", "customX": 85, "customY": 85, "opacity": 80, "scale": 20, "applyOnUpload": true, "targetBucket": "watermarked-products"}'::jsonb;
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS custom_themes JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS active_theme_preset TEXT DEFAULT 'classic-blue';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS store_address TEXT DEFAULT 'العراق - بغداد - الشارع التجاري الرئيسي';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS store_map_link TEXT DEFAULT 'https://maps.google.com';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS store_map_embed_url TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS whatsapp_link TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS whatsapp_number TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS telegram_link TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS telegram_url TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS messenger_link TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS messenger_url TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS phone_link TEXT DEFAULT '07800000000';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS phone_link2 TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS direct_phone TEXT DEFAULT '07800000000';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS facebook_link TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS instagram_link TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS tiktok_link TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS youtube_link TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS app_download_url TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS android_app_url TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS ios_app_url TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS home_icon TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS home_icon_size INTEGER DEFAULT 28;
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS search_icon TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS search_icon_size INTEGER DEFAULT 28;
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS cart_icon TEXT DEFAULT '';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS cart_icon_size INTEGER DEFAULT 28;
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS footer_height INTEGER DEFAULT 120;
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS footer_right_text TEXT DEFAULT 'جميع الحقوق محفوظة © 2026 موقع أحمد بحري';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS footer_center_text TEXT DEFAULT 'أفضل المنتجات والخدمات لعملائنا الكرام';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS footer_left_text TEXT DEFAULT 'للطلب والتواصل: 07800000000';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS show_categories_carousel BOOLEAN DEFAULT TRUE;
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS default_delivery_fee NUMERIC DEFAULT 5000;
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS default_delivery_duration TEXT DEFAULT '2 - 3 أيام عمل';
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS role_themes JSONB DEFAULT '{"manager": {"primary": "#1e40af", "secondary": "#7c3aed", "accent": "#f59e0b"}, "admin": {"primary": "#059669", "secondary": "#0891b2", "accent": "#f97316"}, "customer": {"primary": "#2563eb", "secondary": "#6366f1", "accent": "#ec4899"}}'::jsonb;
-ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS auto_delete_days INTEGER DEFAULT 30;
 
--- إدخال السجل الافتراضي للإعدادات إن كان الجدول فارغاً
+-- إدخال سجل افتراضي للإعدادات إن كان الجدول فارغاً
 INSERT INTO public.settings (site_name)
 SELECT 'موقع أحمد بحري'
 WHERE NOT EXISTS (SELECT 1 FROM public.settings LIMIT 1);
 
--- 3. جدول الأقسام (public.categories)
+-- 3. جدول الأقسام (public.categories) مع دعم تام لحقلي image و image_url لمنع مسح الصور
 CREATE TABLE IF NOT EXISTS public.categories (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL UNIQUE,
@@ -158,12 +110,7 @@ CREATE TABLE IF NOT EXISTS public.suppliers (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
-ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT '';
-ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS email TEXT DEFAULT '';
-ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS address TEXT DEFAULT '';
-ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT '';
-
--- 5. جدول المنتجات (public.products)
+-- 5. جدول المنتجات (public.products) مع دعم original_image_url
 CREATE TABLE IF NOT EXISTS public.products (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL UNIQUE,
@@ -185,20 +132,8 @@ CREATE TABLE IF NOT EXISTS public.products (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
-ALTER TABLE public.products ADD COLUMN IF NOT EXISTS image TEXT DEFAULT '';
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS original_image_url TEXT DEFAULT '';
-ALTER TABLE public.products ADD COLUMN IF NOT EXISTS cost_price NUMERIC DEFAULT 0;
-ALTER TABLE public.products ADD COLUMN IF NOT EXISTS wholesale_price NUMERIC DEFAULT 0;
-ALTER TABLE public.products ADD COLUMN IF NOT EXISTS profit_margin NUMERIC DEFAULT 0;
-ALTER TABLE public.products ADD COLUMN IF NOT EXISTS retail_price NUMERIC DEFAULT 0;
-ALTER TABLE public.products ADD COLUMN IF NOT EXISTS stock NUMERIC DEFAULT 0;
-ALTER TABLE public.products ADD COLUMN IF NOT EXISTS supplier_id UUID REFERENCES public.suppliers(id) ON DELETE SET NULL;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL;
-ALTER TABLE public.products ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT '';
-ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
-ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_published BOOLEAN DEFAULT true;
-ALTER TABLE public.products ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
-ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;
 
 -- 6. جدول الربط الوسيط بين المنتجات والأقسام (public.product_categories)
 CREATE TABLE IF NOT EXISTS public.product_categories (
@@ -228,12 +163,6 @@ CREATE TABLE IF NOT EXISTS public.orders (
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
-
-ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS invoice_serial TEXT DEFAULT '';
-ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS delivery_fee NUMERIC DEFAULT 0;
-ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS delivery_duration TEXT DEFAULT '';
-ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS delivery_time TEXT DEFAULT '';
-ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS platform TEXT DEFAULT '';
 
 -- 8. جدول الزبائن وتتبع الزوار (public.customers)
 CREATE TABLE IF NOT EXISTS public.customers (
@@ -319,7 +248,7 @@ CREATE TABLE IF NOT EXISTS public.notifications (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 14. تفعيل سياسات الأمان الملساء (Smooth RLS) لمنع أي رفض للصلاحيات
+-- 14. تفعيل سياسات الأمان الملساء (Smooth RLS) لمنع أي رفض للصلاحيات (403 Forbidden)
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
