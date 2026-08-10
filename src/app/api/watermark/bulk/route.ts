@@ -15,7 +15,20 @@ export async function POST(req: NextRequest) {
     }
 
     const { productIds, items, options, watermarkConfig, revertToOriginal } = body || {};
-    const effectiveConfig = options || watermarkConfig;
+    const effectiveConfig = {
+      watermarkUrl: "/watermark.png",
+      position: "top-left",
+      customX: 10,
+      customY: 10,
+      opacity: 90,
+      scale: 22,
+      applyOnUpload: true,
+      ...(watermarkConfig || options || {}),
+    };
+
+    if (!revertToOriginal && (!effectiveConfig.watermarkUrl || effectiveConfig.watermarkUrl.trim() === "")) {
+      effectiveConfig.watermarkUrl = "/watermark.png";
+    }
 
     let targetItems: Array<{ id: string; image: string; original_image_url?: string }> = [];
 
@@ -39,10 +52,6 @@ export async function POST(req: NextRequest) {
 
     if (targetItems.length === 0) {
       return NextResponse.json({ error: "لم يتم تحديد أي منتجات للمعالجة." }, { status: 400 });
-    }
-
-    if (!revertToOriginal && (!effectiveConfig || !effectiveConfig.watermarkUrl)) {
-      return NextResponse.json({ error: "رابط الشعار (Watermark) غير متوفر في الإعدادات." }, { status: 400 });
     }
 
     let processedCount = 0;
