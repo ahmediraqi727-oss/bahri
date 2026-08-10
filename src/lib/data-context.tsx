@@ -21,6 +21,37 @@ export function extractCategoryFromNotes(notes: string): string {
   return "عام";
 }
 
+// دالة مساعدة لتطبيق العلامة المائية مركزياً عند الإضافة أو التعديل أو الاستيراد
+async function applyWatermarkIfNeeded(imageUrl: string): Promise<string> {
+  if (!imageUrl || typeof window === "undefined") return imageUrl;
+  try {
+    const cachedSettings = localStorage.getItem("app_site_settings_cache");
+    if (!cachedSettings) return imageUrl;
+
+    const parsed = JSON.parse(cachedSettings);
+    const wmConfig = parsed?.watermarkConfig;
+
+    if (wmConfig?.enabled && wmConfig?.applyOnUpload && wmConfig?.watermarkUrl) {
+      const res = await fetch("/api/watermark", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageUrl: imageUrl,
+          watermarkConfig: wmConfig,
+          preview: false,
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.watermarkedUrl) {
+        return json.watermarkedUrl;
+      }
+    }
+  } catch (err) {
+    console.warn("خطأ في تطبيق العلامة المائية تلقائياً:", err);
+  }
+  return imageUrl;
+}
+
 interface DataContextType {
   products: Product[];
   suppliers: Supplier[];
@@ -158,10 +189,12 @@ function rowToCategory(row: Record<string, unknown>): CategoryItem {
 export function categoryToRow(cat: Record<string, unknown>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if ("name" in cat) row.name = cat.name;
-  if ("image" in cat) {
-    row.image = cat.image || "";
-    row.image_url = cat.image || "";
-  }
+
+  // توحيد إرسال الحقلين معاً لضمان التوافق التام مع أي بنية لجدول Categories في Supabase
+  const imgValue = cat.image !== undefined ? cat.image : (cat.image_url !== undefined ? cat.image_url : "");
+  row.image = imgValue;
+  row.image_url = imgValue;
+
   if ("priority" in cat) {
     const pVal = Number(cat.priority) || 1;
     row.priority = pVal;
@@ -340,33 +373,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     let finalImageUrl = product.image || "";
     const originalImageUrl = product.originalImageUrl || product.image || "";
 
-    // التحقق مما إذا كان التطبيق التلقائي للعلامة المائية مفعلاً عند إضافة منتج جديد
-    try {
-      if (typeof window !== "undefined") {
-        const cachedSettings = localStorage.getItem("app_site_settings_cache");
-        if (cachedSettings) {
-          const parsed = JSON.parse(cachedSettings);
-          const wmConfig = parsed?.watermarkConfig;
-          if (wmConfig?.enabled && wmConfig?.applyOnUpload && wmConfig?.watermarkUrl && finalImageUrl) {
-            // استدعاء السيرفر لدمج الشعار قبل الحفظ
-            const res = await fetch("/api/watermark", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                imageUrl: finalImageUrl,
-                watermarkConfig: wmConfig,
-                preview: false,
-              }),
-            });
-            const json = await res.json();
-            if (json.success && json.watermarkedUrl) {
-              finalImageUrl = json.watermarkedUrl;
-            }
-          }
-        }
-      }
-    } catch (wmErr) {
-      console.warn("فشل التطبيق التلقائي للعلامة المائية أثناء إضافة المنتج:", wmErr);
+    if (finalImageUrl) {
+      finalImageUrl = await applyWatermarkIfNeeded(finalImageUrl);
     }
 
     const row = productToRow({
@@ -383,13 +391,24 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateProduct = useCallback(async (id: string, updates: Partial<Product>) => {
-    const row = productToRow(updates as Record<string, unknown>);
+    let finalUpdates = { ...updates };
+
+    if (updates.image) {
+      const existingProduct = products.find((p) => p.id === id);
+      const originalToKeep = updates.originalImageUrl || existingProduct?.originalImageUrl || updates.image;
+      const watermarkedImg = await applyWatermarkIfNeeded(updates.image);
+
+      finalUpdates.image = watermarkedImg;
+      finalUpdates.originalImageUrl = originalToKeep;
+    }
+
+    const row = productToRow(finalUpdates as Record<string, unknown>);
 
     const { data: updated, error } = await supabase.from("products").update(row).eq("id", id).select().single();
     if (error) throw error;
     const product = rowToProduct(updated);
     setProducts((prev) => prev.map((p) => (p.id === id ? product : p)));
-  }, []);
+  }, [products]);
 
   const bulkUpdateProducts = useCallback(async (ids: string[], updates: Partial<Product>) => {
     if (!ids || ids.length === 0) return;
@@ -691,31 +710,39 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // 3. Map products to rows and collect Many-to-Many category relationships
+      // 3. Map products to rows, apply Watermark if enabled, and collect Many-to-Many category relationships
       const productCategoryPairs: { productName: string; categoryId: string }[] = [];
 
-      const rows = items.map((item) => {
-        const row = productToRow(item as Record<string, unknown>);
+      const rows = await Promise.all(
+        items.map(async (item) => {
+          let finalImg = item.image || "";
+          const origImg = item.originalImageUrl || item.image || "";
 
-        // Ensure original_image_url is populated from image upon import
-        if (item.image && !row.original_image_url) {
-          row.original_image_url = item.image;
-        }
-
-        const match = (item.notes || "").match(/الفئة:\s*([^|]+)/);
-        if (match && match[1]) {
-          const catNameClean = match[1].trim().toLowerCase();
-          const mappedCatId = categoryIdMap.get(catNameClean);
-          if (mappedCatId) {
-            row.category_id = mappedCatId;
-            productCategoryPairs.push({
-              productName: item.name.trim(),
-              categoryId: mappedCatId,
-            });
+          if (finalImg) {
+            finalImg = await applyWatermarkIfNeeded(finalImg);
           }
-        }
-        return row;
-      });
+
+          const row = productToRow({
+            ...item,
+            image: finalImg,
+            originalImageUrl: origImg,
+          } as Record<string, unknown>);
+
+          const match = (item.notes || "").match(/الفئة:\s*([^|]+)/);
+          if (match && match[1]) {
+            const catNameClean = match[1].trim().toLowerCase();
+            const mappedCatId = categoryIdMap.get(catNameClean);
+            if (mappedCatId) {
+              row.category_id = mappedCatId;
+              productCategoryPairs.push({
+                productName: item.name.trim(),
+                categoryId: mappedCatId,
+              });
+            }
+          }
+          return row;
+        })
+      );
 
       // 4. Send product rows in batch chunks (CHUNK_SIZE = 50) using upsert by name
       const CHUNK_SIZE = 50;
