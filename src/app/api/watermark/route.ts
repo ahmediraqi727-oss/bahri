@@ -5,41 +5,45 @@ import { WatermarkConfig } from "@/lib/types";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { imageUrl, watermarkConfig, preview } = body as {
+    const { imageUrl, watermarkConfig, preview = true } = body as {
       imageUrl: string;
       watermarkConfig: WatermarkConfig;
       preview?: boolean;
     };
 
-    if (!imageUrl) {
-      return NextResponse.json({ error: "رابط الصورة الأصلية مطلوب" }, { status: 400 });
+    if (!imageUrl || !watermarkConfig?.watermarkUrl) {
+      return NextResponse.json({ error: "الرابط أو إعدادات الشعار غير متوفرة" }, { status: 400 });
     }
 
-    if (!watermarkConfig || !watermarkConfig.watermarkUrl) {
-      return NextResponse.json({ error: "رابط شعار العلامة المائية مطلوب" }, { status: 400 });
+    // 1. If upload to storage is specifically requested (preview === false)
+    if (preview === false) {
+      const watermarkedUrl = await processAndUploadWatermarkImage(imageUrl, watermarkConfig);
+      return NextResponse.json({
+        success: true,
+        watermarkedUrl,
+        originalUrl: imageUrl,
+      });
     }
 
-    // 1. Preview Mode: returns base64 data URL for instant live preview without uploading to storage
-    if (preview) {
-      const baseBuffer = await urlToBuffer(imageUrl);
-      const { buffer, format } = await applyWatermarkToBuffer(baseBuffer, watermarkConfig);
-      const mimeType = format === "jpeg" ? "image/jpeg" : `image/${format}`;
-      const dataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
-      return NextResponse.json({ success: true, previewUrl: dataUrl });
-    }
+    // 2. Download original image as Buffer
+    const imageBuffer = await urlToBuffer(imageUrl);
 
-    // 2. Storage Upload Mode: processes and uploads to Supabase Storage (/products/watermarked/)
-    const watermarkedUrl = await processAndUploadWatermarkImage(imageUrl, watermarkConfig);
+    // 3. Apply watermark via Sharp engine
+    const { buffer: processedBuffer, format } = await applyWatermarkToBuffer(imageBuffer, watermarkConfig);
+
+    // 4. Convert result to Base64 Data URL for instant live preview without storage upload
+    const base64Image = processedBuffer.toString("base64");
+    const mimeType = format === "png" ? "image/png" : format === "webp" ? "image/webp" : "image/jpeg";
+    const previewUrl = `data:${mimeType};base64,${base64Image}`;
 
     return NextResponse.json({
       success: true,
-      watermarkedUrl,
-      originalUrl: imageUrl,
+      previewUrl,
     });
   } catch (error: any) {
-    console.error("Watermark API error:", error);
+    console.error("Server preview API error:", error);
     return NextResponse.json(
-      { error: error?.message || "حدث خطأ أثناء معالجة العلامة المائية" },
+      { error: error?.message || "فشل توليد المعاينة على السيرفر" },
       { status: 500 }
     );
   }
