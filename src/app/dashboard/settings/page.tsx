@@ -4,12 +4,12 @@ import { useState, useEffect } from "react";
 import { useSettings } from "@/lib/settings-context";
 import { useActivityLog } from "@/lib/activity-log";
 import { useAuth } from "@/lib/auth-context";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ColorPicker from "@/components/ColorPicker";
 import ImageUploader from "@/components/ImageUploader";
 import CategoriesManager from "@/components/CategoriesManager";
 import WatermarkSettings from "@/components/WatermarkSettings";
+import ThemeCustomizer from "@/components/ThemeCustomizer";
 import ProfileEditModal from "@/components/ProfileEditModal";
 import { SiteSettings, UserRole } from "@/lib/types";
 
@@ -60,11 +60,11 @@ export default function SettingsPage() {
           <div className="w-16 h-16 bg-red-100 dark:bg-red-950/80 rounded-2xl border border-red-300 dark:border-red-800 flex items-center justify-center text-3xl mx-auto shadow-sm">
             ⛔
           </div>
-          
+
           <h2 className="text-lg sm:text-xl font-extrabold text-gray-900 dark:text-white">
             غير مصرح لك بدخول هذه الصفحة (403 Access Denied)
           </h2>
-          
+
           <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
             صفحة إعدادات الهوية والبنية التحتية للمتجر مخصصة حصراً لمدراء النظام والإداريين. بصفتك زبون، يمكنك تعديل معلومات ملفك الشخصي بكل سهولة.
           </p>
@@ -125,7 +125,7 @@ export default function SettingsPage() {
         user: settings.currentRole,
         action: "update",
         entity: "إعدادات الموقع",
-        details: "حفظ وتحديث إعدادات الموقع، الصور، الأيقونات والتذييل بالكامل",
+        details: "حفظ وتحديث إعدادات الموقع، الصور، الثيمات والموقع الجغرافي بالكامل",
       });
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 4000);
@@ -161,7 +161,7 @@ export default function SettingsPage() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">إعدادات النظام والشكل العام</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">تخصيص الهوية، الأيقونات والأحجام، تذييل الصفحة، وروابط التواصل</p>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">تخصيص الهوية، الثيمات، الموقع الجغرافي، وسوشيال ميديا المتجر</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -182,7 +182,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Success Notification Banner */}
+      {/* Notifications Banners */}
       {savedSuccess && (
         <div className="p-4 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700 rounded-2xl flex items-center justify-between text-emerald-800 dark:text-emerald-300 text-sm font-bold animate-fadeIn">
           <div className="flex items-center gap-2">
@@ -193,7 +193,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Error Notification Banner */}
       {errorMsg && (
         <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-2xl flex items-center justify-between text-red-800 dark:text-red-300 text-sm font-bold animate-fadeIn">
           <div className="flex items-center gap-2">
@@ -243,89 +242,176 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      {/* === Section 1.8: Custom Header Icons & Sizing (أيقونات الواجهة وأحجامها) === */}
-      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
+      {/* === Section 2: Advanced Theme Customizer === */}
+      <ThemeCustomizer />
+
+      {/* === Section 3: Store Location & Maps === */}
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-4 shadow-sm">
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-xl">⚙️</span>
+          <span className="text-xl">📍</span>
           <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">تخصيص أيقونات الواجهة وأحجامها</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400">تغيير صور وأيقونات القائمة، البحث، وسلة المشتريات والتحكم بأحجامها</p>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">إدارة الموقع الجغرافي وخريطة المعرض</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">تحديد عنوان الموقع ورابط خرائط Google Maps المعروض للزبائن في القائمة</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Main Menu / Home Icon */}
-          <div className="space-y-3 bg-gray-50 dark:bg-gray-800/60 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-            <ImageUploader
-              label="أيقونة القائمة الرئيسية"
-              image={formData.homeIcon || ""}
-              onUpload={(img) => handleChange({ homeIcon: img })}
-              aspect="aspect-square"
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
+              عنوان المعرض / المحل التفصيلي:
+            </label>
+            <input
+              type="text"
+              placeholder="مثال: العراق - بغداد - الشارع التجاري الرئيسي"
+              value={formData.storeAddress || ""}
+              onChange={(e) => handleChange({ storeAddress: e.target.value })}
+              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-xs outline-none"
             />
-            <div>
-              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                حجم الأيقونة: {formData.homeIconSize || 28}px
-              </label>
-              <input
-                type="range"
-                min="16"
-                max="64"
-                value={formData.homeIconSize || 28}
-                onChange={(e) => handleChange({ homeIconSize: Number(e.target.value) })}
-                className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
-              />
-            </div>
           </div>
 
-          {/* Search Icon */}
-          <div className="space-y-3 bg-gray-50 dark:bg-gray-800/60 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-            <ImageUploader
-              label="أيقونة البحث"
-              image={formData.searchIcon || ""}
-              onUpload={(img) => handleChange({ searchIcon: img })}
-              aspect="aspect-square"
+          <div>
+            <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
+              رابط الموقع المباشر في Google Maps:
+            </label>
+            <input
+              type="text"
+              placeholder="https://maps.google.com/..."
+              value={formData.storeMapLink || ""}
+              onChange={(e) => handleChange({ storeMapLink: e.target.value })}
+              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-xs outline-none"
             />
-            <div>
-              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                حجم الأيقونة: {formData.searchIconSize || 28}px
-              </label>
-              <input
-                type="range"
-                min="16"
-                max="64"
-                value={formData.searchIconSize || 28}
-                onChange={(e) => handleChange({ searchIconSize: Number(e.target.value) })}
-                className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
-              />
-            </div>
-          </div>
-
-          {/* Cart Icon */}
-          <div className="space-y-3 bg-gray-50 dark:bg-gray-800/60 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-            <ImageUploader
-              label="أيقونة السلة"
-              image={formData.cartIcon || ""}
-              onUpload={(img) => handleChange({ cartIcon: img })}
-              aspect="aspect-square"
-            />
-            <div>
-              <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                حجم الأيقونة: {formData.cartIconSize || 28}px
-              </label>
-              <input
-                type="range"
-                min="16"
-                max="64"
-                value={formData.cartIconSize || 28}
-                onChange={(e) => handleChange({ cartIconSize: Number(e.target.value) })}
-                className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
-              />
-            </div>
           </div>
         </div>
       </section>
 
-      {/* === Section 1.85: Categories Management (إدارة وتخصيص الأقسام) === */}
+      {/* === Section 4: Contact & Social Media Channels === */}
+      {isManagerOrAdmin && (
+        <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xl">🌐</span>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">روابط الاتصال وصفحات السوشيال ميديا الرسمية</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">ربط قنوات الاتصال برقم ثانوي وصفحات الفيسبوك والانستغرام والتيك توك</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">💬 الواتساب الرئيسية:</label>
+              <input
+                type="text"
+                placeholder="07800000000"
+                value={formData.whatsappLink || ""}
+                onChange={(e) => handleChange({ whatsappLink: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">📞 الهاتف الرئيسي:</label>
+              <input
+                type="text"
+                placeholder="07800000000"
+                value={formData.phoneLink || ""}
+                onChange={(e) => handleChange({ phoneLink: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">☎️ الهاتف الثانوي:</label>
+              <input
+                type="text"
+                placeholder="07700000000"
+                value={formData.phoneLink2 || ""}
+                onChange={(e) => handleChange({ phoneLink2: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">📘 صفحة Facebook:</label>
+              <input
+                type="text"
+                placeholder="https://facebook.com/..."
+                value={formData.facebookLink || ""}
+                onChange={(e) => handleChange({ facebookLink: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">📸 حساب Instagram:</label>
+              <input
+                type="text"
+                placeholder="https://instagram.com/..."
+                value={formData.instagramLink || ""}
+                onChange={(e) => handleChange({ instagramLink: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">🎵 حساب TikTok:</label>
+              <input
+                type="text"
+                placeholder="https://tiktok.com/@..."
+                value={formData.tiktokLink || ""}
+                onChange={(e) => handleChange({ tiktokLink: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
+              />
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* === Section 5: Mobile App Share Download Links === */}
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-4 shadow-sm">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xl">📲</span>
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">إعدادات رابط مشاركة وتطبيقات الهاتف الذكي</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">تخصيص روابط التحميل المباشر لتطبيق Android و iOS المعروضة عند استخدام زر المشاركة</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">🤖 رابط تطبيق Android (APK / Play Store):</label>
+            <input
+              type="text"
+              placeholder="https://play.google.com/..."
+              value={formData.androidAppUrl || ""}
+              onChange={(e) => handleChange({ androidAppUrl: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">🍎 رابط تطبيق iOS (App Store):</label>
+            <input
+              type="text"
+              placeholder="https://apps.apple.com/..."
+              value={formData.iosAppUrl || ""}
+              onChange={(e) => handleChange({ iosAppUrl: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">🔗 رابط تحميل عام المباشر:</label>
+            <input
+              type="text"
+              placeholder="https://example.com/app.apk"
+              value={formData.appDownloadUrl || ""}
+              onChange={(e) => handleChange({ appDownloadUrl: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* === Section 6: Categories Management === */}
       <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xl">📁</span>
@@ -337,144 +423,10 @@ export default function SettingsPage() {
         <CategoriesManager />
       </section>
 
-      {/* === Section 1.88: Automated Watermark Tool (أداة العلامة المائية المؤتمتة) === */}
+      {/* === Section 7: Automated Watermark Tool === */}
       <WatermarkSettings />
 
-      {/* === Section 1.9: Footer Customization (تخصيص تذييل الصفحة) === */}
-      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-xl">📐</span>
-          <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">التحكم الكامل بتذييل الصفحة (Footer)</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400">تعديل ارتفاع التذييل والنصوص الثلاثة المعروضة في الأسفل</p>
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">
-            ارتفاع تذييل الصفحة (Height / Vertical Padding): {formData.footerHeight || 120}px
-          </label>
-          <input
-            type="range"
-            min="60"
-            max="300"
-            step="10"
-            value={formData.footerHeight || 120}
-            onChange={(e) => handleChange({ footerHeight: Number(e.target.value) })}
-            className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-              ➡️ نص جهة اليمين بالتذييل:
-            </label>
-            <input
-              type="text"
-              placeholder="مثال: جميع الحقوق محفوظة © 2026"
-              value={formData.footerRightText || ""}
-              onChange={(e) => handleChange({ footerRightText: e.target.value })}
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-              ⏺️ نص الوسط بالتذييل:
-            </label>
-            <input
-              type="text"
-              placeholder="مثال: أفضل المنتجات لخدمتكم"
-              value={formData.footerCenterText || ""}
-              onChange={(e) => handleChange({ footerCenterText: e.target.value })}
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-              ⬅️ نص جهة اليسار بالتذييل:
-            </label>
-            <input
-              type="text"
-              placeholder="مثال: للطلب: 07800000000"
-              value={formData.footerLeftText || ""}
-              onChange={(e) => handleChange({ footerLeftText: e.target.value })}
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm outline-none"
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* === Section 1.5: Contact Links (روابط الاتصال والتواصل) === */}
-      {isManagerOrAdmin && (
-        <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-xl">📞</span>
-            <div>
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">روابط الاتصال والتواصل للإدارة</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">تُستخدم هذه الروابط في نافذة الطلب المباشر للزبائن للتواصل معكم</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-bold text-gray-700 dark:text-gray-300 block mb-1.5 flex items-center gap-2">
-                <span>💬</span> رابط / رقم الواتساب (WhatsApp)
-              </label>
-              <input
-                type="text"
-                placeholder="مثال: 07800000000 أو 9647800000000"
-                value={formData.whatsappLink || ""}
-                onChange={(e) => handleChange({ whatsappLink: e.target.value })}
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-bold text-gray-700 dark:text-gray-300 block mb-1.5 flex items-center gap-2">
-                <span>✈️</span> رابط / يوزر التليكرام (Telegram)
-              </label>
-              <input
-                type="text"
-                placeholder="مثال: https://t.me/username أو @username"
-                value={formData.telegramLink || ""}
-                onChange={(e) => handleChange({ telegramLink: e.target.value })}
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-sky-500 outline-none text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-bold text-gray-700 dark:text-gray-300 block mb-1.5 flex items-center gap-2">
-                <span>⚡</span> رابط الماسنجر (Messenger)
-              </label>
-              <input
-                type="text"
-                placeholder="مثال: https://m.me/page_name أو اسم الصفحة"
-                value={formData.messengerLink || ""}
-                onChange={(e) => handleChange({ messengerLink: e.target.value })}
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-bold text-gray-700 dark:text-gray-300 block mb-1.5 flex items-center gap-2">
-                <span>📞</span> رقم الاتصال المباشر (Phone Call)
-              </label>
-              <input
-                type="text"
-                placeholder="مثال: 07800000000"
-                value={formData.phoneLink || ""}
-                onChange={(e) => handleChange({ phoneLink: e.target.value })}
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-purple-500 outline-none text-sm"
-              />
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* === Section 2: Appearance & Fonts === */}
+      {/* === Section 8: Appearance & Fonts === */}
       <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xl">✏️</span>
@@ -522,7 +474,7 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      {/* === Section 3: Colors & Dark Mode === */}
+      {/* === Section 9: Colors & Dark Mode === */}
       <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xl">🎯</span>
@@ -597,15 +549,12 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      {/* === Section: Delivery Settings (إعدادات التوصيل والشحن) === */}
+      {/* === Section 10: Delivery Settings === */}
       <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-4 shadow-sm">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xl">🚚</span>
           <h2 className="text-lg font-bold text-gray-900 dark:text-white">إعدادات التوصيل والشحن الافتراضية</h2>
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          تحديد القيم الافتراضية لتكلفة التوصيل ومدة التعديل المتوقعة لكافة الطلبات الجديدة.
-        </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
           <div>
@@ -636,7 +585,7 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      {/* === Section 4: Role Themes === */}
+      {/* === Section 11: Role Themes === */}
       <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-xl">👤</span>
@@ -681,7 +630,7 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      {/* === Sticky Action Bar at Bottom of Screen (أزرار الحفظ والإلغاء) === */}
+      {/* === Sticky Action Bar at Bottom of Screen === */}
       <div className="fixed bottom-0 inset-x-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-gray-200 dark:border-gray-800 p-4 z-40 shadow-2xl">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-4" dir="rtl">
           <div className="flex items-center gap-2 text-xs font-semibold text-gray-600 dark:text-gray-300">

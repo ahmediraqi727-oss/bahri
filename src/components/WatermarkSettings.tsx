@@ -143,6 +143,11 @@ export default function WatermarkSettings({ initialConfig, onSave }: WatermarkSe
         }),
       });
 
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        throw new Error("استجابة غير صالحة من السيرفر. يرجى التأكد من تشغيل نقطة النهاية بشكل صحيح.");
+      }
+
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || "فشلت عملية توليد المعاينة");

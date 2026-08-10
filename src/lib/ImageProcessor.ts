@@ -20,8 +20,15 @@ export async function urlToBuffer(input: string): Promise<Buffer> {
     return Buffer.from(base64Data, "base64");
   }
 
+  let fetchUrl = input;
+  // Handle relative URLs (e.g. /logo.jpg or uploads/...)
+  if (input.startsWith("/") || !input.startsWith("http")) {
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+    fetchUrl = `${siteUrl.replace(/\/$/, "")}/${input.replace(/^\//, "")}`;
+  }
+
   // Handle Standard HTTP / HTTPS URL
-  const response = await fetch(input);
+  const response = await fetch(fetchUrl);
   if (!response.ok) {
     throw new Error(`فشل تحميل الصورة من الرابط: ${response.statusText}`);
   }

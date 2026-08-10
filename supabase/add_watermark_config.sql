@@ -1,5 +1,5 @@
 -- ==============================================================================
--- Migration: Add Watermark Configuration & Smart Storage Pathing Support
+-- Migration: Complete Settings Schema, Watermark Config & Storage Pathing Support
 -- ==============================================================================
 
 -- 1. Add watermark_config column (JSONB) to `settings` table if not exists
@@ -34,7 +34,25 @@ BEGIN
     END IF;
 END $$;
 
--- 3. Ensure Storage Bucket `watermarked-products` exists and configure RLS Policies
+-- 3. Add Advanced Theme, Location, Contact Social Media & App Download columns to `settings` table
+ALTER TABLE public.settings 
+ADD COLUMN IF NOT EXISTS default_delivery_fee NUMERIC DEFAULT 5000,
+ADD COLUMN IF NOT EXISTS default_delivery_duration TEXT DEFAULT '2 - 3 أيام عمل',
+ADD COLUMN IF NOT EXISTS custom_themes JSONB DEFAULT '[]'::jsonb,
+ADD COLUMN IF NOT EXISTS active_theme_preset TEXT DEFAULT 'default',
+ADD COLUMN IF NOT EXISTS store_address TEXT DEFAULT 'العراق - بغداد - الشارع التجاري الرئيسي',
+ADD COLUMN IF NOT EXISTS store_map_link TEXT DEFAULT 'https://maps.google.com',
+ADD COLUMN IF NOT EXISTS store_map_embed_url TEXT DEFAULT '',
+ADD COLUMN IF NOT EXISTS facebook_link TEXT DEFAULT '',
+ADD COLUMN IF NOT EXISTS instagram_link TEXT DEFAULT '',
+ADD COLUMN IF NOT EXISTS tiktok_link TEXT DEFAULT '',
+ADD COLUMN IF NOT EXISTS youtube_link TEXT DEFAULT '',
+ADD COLUMN IF NOT EXISTS phone_link2 TEXT DEFAULT '',
+ADD COLUMN IF NOT EXISTS app_download_url TEXT DEFAULT '',
+ADD COLUMN IF NOT EXISTS android_app_url TEXT DEFAULT '',
+ADD COLUMN IF NOT EXISTS ios_app_url TEXT DEFAULT '';
+
+-- 4. Ensure Storage Bucket `watermarked-products` exists and configure RLS Policies
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
     'watermarked-products',
@@ -45,7 +63,7 @@ VALUES (
 )
 ON CONFLICT (id) DO UPDATE SET public = true;
 
--- Ensure public access RLS policy for reading watermarked images
+-- Public Read Watermarked Storage
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -58,7 +76,7 @@ BEGIN
     END IF;
 END $$;
 
--- Ensure insert/update policy for storage objects
+-- Public/Auth Insert Watermarked Storage
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -71,6 +89,7 @@ BEGIN
     END IF;
 END $$;
 
+-- Public/Auth Update Watermarked Storage
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -83,10 +102,5 @@ BEGIN
     END IF;
 END $$;
 
--- 4. Schema Cache Reset & Column Assurance for PostgREST
-ALTER TABLE public.settings 
-ADD COLUMN IF NOT EXISTS default_delivery_fee NUMERIC DEFAULT 0,
-ADD COLUMN IF NOT EXISTS default_delivery_duration TEXT DEFAULT '2 - 3 أيام عمل';
-
--- Notify Supabase PostgREST server to reload schema cache immediately
+-- 5. Notify Supabase PostgREST server to reload schema cache immediately
 NOTIFY pgrst, 'reload schema';

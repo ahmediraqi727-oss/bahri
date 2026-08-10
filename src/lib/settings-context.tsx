@@ -37,6 +37,27 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
     telegramLink: (row.telegram_link as string) || (row.telegram_url as string) || "",
     messengerLink: (row.messenger_link as string) || (row.messenger_url as string) || "",
     phoneLink: (row.phone_link as string) || (row.direct_phone as string) || "07800000000",
+    phoneLink2: (row.phone_link2 as string) || "",
+
+    // Social Media Links
+    facebookLink: (row.facebook_link as string) || "",
+    instagramLink: (row.instagram_link as string) || "",
+    tiktokLink: (row.tiktok_link as string) || "",
+    youtubeLink: (row.youtube_link as string) || "",
+
+    // Store Location & Map
+    storeAddress: (row.store_address as string) || DEFAULT_SETTINGS.storeAddress,
+    storeMapLink: (row.store_map_link as string) || DEFAULT_SETTINGS.storeMapLink,
+    storeMapEmbedUrl: (row.store_map_embed_url as string) || "",
+
+    // App Download Links
+    appDownloadUrl: (row.app_download_url as string) || "",
+    androidAppUrl: (row.android_app_url as string) || "",
+    iosAppUrl: (row.ios_app_url as string) || "",
+
+    // Custom Themes & Active Theme Preset
+    customThemes: (row.custom_themes as any) || [],
+    activeThemePreset: (row.active_theme_preset as string) || "classic-blue",
 
     // Icons & Custom Sizing
     homeIcon: (row.home_icon as string) || "",
@@ -114,6 +135,19 @@ function settingsToRow(settings: SiteSettings): Record<string, unknown> {
     messenger_url: settings.messengerLink || "",
     phone_link: settings.phoneLink || "",
     direct_phone: settings.phoneLink || "",
+    phone_link2: settings.phoneLink2 || "",
+    facebook_link: settings.facebookLink || "",
+    instagram_link: settings.instagramLink || "",
+    tiktok_link: settings.tiktokLink || "",
+    youtube_link: settings.youtubeLink || "",
+    store_address: settings.storeAddress || "",
+    store_map_link: settings.storeMapLink || "",
+    store_map_embed_url: settings.storeMapEmbedUrl || "",
+    app_download_url: settings.appDownloadUrl || "",
+    android_app_url: settings.androidAppUrl || "",
+    ios_app_url: settings.iosAppUrl || "",
+    custom_themes: settings.customThemes || [],
+    active_theme_preset: settings.activeThemePreset || "classic-blue",
     home_icon: settings.homeIcon || "",
     home_icon_size: settings.homeIconSize || 28,
     search_icon: settings.searchIcon || "",

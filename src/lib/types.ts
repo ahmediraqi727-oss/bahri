@@ -34,6 +34,64 @@ export const DEFAULT_WATERMARK_CONFIG: WatermarkConfig = {
   targetBucket: "watermarked-products",
 };
 
+export interface ThemePreset {
+  id: string;
+  name: string;
+  primary: string;
+  secondary: string;
+  accent: string;
+  description: string;
+  isBuiltIn?: boolean;
+}
+
+export const PRESET_THEMES: ThemePreset[] = [
+  {
+    id: "classic-blue",
+    name: "أزرق كلاسيكي Classic Blue",
+    primary: "#2563eb",
+    secondary: "#7c3aed",
+    accent: "#f59e0b",
+    description: "الهوية الرسمية الكلاسيكية المريحة للعين",
+    isBuiltIn: true,
+  },
+  {
+    id: "emerald-pro",
+    name: "زمردي احترافي Emerald Pro",
+    primary: "#059669",
+    secondary: "#065f46",
+    accent: "#f97316",
+    description: "ثيم زاهي وراقٍ يعكس الحيوية والجودة",
+    isBuiltIn: true,
+  },
+  {
+    id: "royal-purple",
+    name: "بنفسجي ملكي Royal Purple",
+    primary: "#7c3aed",
+    secondary: "#5b21b6",
+    accent: "#ec4899",
+    description: "طابع عصري وجذاب ومناسب للتصاميم الحديثة",
+    isBuiltIn: true,
+  },
+  {
+    id: "dark-gold",
+    name: "ذهبي فاخر Dark Gold",
+    primary: "#d97706",
+    secondary: "#92400e",
+    accent: "#3b82f6",
+    description: "ثيم فخم وأنيق يناسب المتجر الفاخر",
+    isBuiltIn: true,
+  },
+  {
+    id: "cyber-neon",
+    name: "سايبر نيون Cyber Neon",
+    primary: "#06b6d4",
+    secondary: "#0e7490",
+    accent: "#a855f7",
+    description: "ثيم عصري جداً بألوان النيون المستقبلي",
+    isBuiltIn: true,
+  },
+];
+
 export interface SiteSettings {
   siteName: string;
   logo: string;
@@ -50,6 +108,23 @@ export interface SiteSettings {
   telegramLink?: string;
   messengerLink?: string;
   phoneLink?: string;
+  phoneLink2?: string;
+  // Social Media Channels
+  facebookLink?: string;
+  instagramLink?: string;
+  tiktokLink?: string;
+  youtubeLink?: string;
+  // Location & Map Info
+  storeAddress?: string;
+  storeMapLink?: string;
+  storeMapEmbedUrl?: string;
+  // App Download Links
+  appDownloadUrl?: string;
+  androidAppUrl?: string;
+  iosAppUrl?: string;
+  // Custom Themes & Active Theme Preset
+  customThemes?: ThemePreset[];
+  activeThemePreset?: string;
   // Header Custom Icons & Sizes
   homeIcon?: string;
   homeIconSize?: number;
@@ -95,6 +170,19 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   telegramLink: "",
   messengerLink: "",
   phoneLink: "07800000000",
+  phoneLink2: "",
+  facebookLink: "",
+  instagramLink: "",
+  tiktokLink: "",
+  youtubeLink: "",
+  storeAddress: "العراق - بغداد - الشارع التجاري الرئيسي",
+  storeMapLink: "https://maps.google.com",
+  storeMapEmbedUrl: "",
+  appDownloadUrl: "",
+  androidAppUrl: "",
+  iosAppUrl: "",
+  customThemes: [],
+  activeThemePreset: "classic-blue",
   homeIcon: "",
   homeIconSize: 28,
   searchIcon: "",
@@ -164,13 +252,18 @@ export function calculateRetailPrice(costPrice: number, profitMargin: number): n
   return Math.round((costPrice + (costPrice * profitMargin) / 100) * 100) / 100;
 }
 
+/**
+ * Returns a stable, deterministic category image.
+ * Manager custom uploaded image is 100% top priority.
+ * Fallbacks are sorted deterministically so category images NEVER shift randomly on refresh!
+ */
 export function getCategoryDisplayImage(cat: CategoryItem, products: Product[]): string {
-  // 1. Manager Custom Uploaded Image (Highest Priority)
+  // 1. Manager Custom Uploaded Image (Top Priority - Strictly Preserved)
   if (cat.image && cat.image.trim()) {
     return cat.image.trim();
   }
 
-  // 2. Dynamic Fallback: Image of First Product tagged under this Category
+  // 2. Deterministic Dynamic Fallback: Top product image tagged under this category
   const catNameLower = cat.name.toLowerCase();
   const categoryProducts = products.filter((p) => {
     if (!p.notes) return false;
@@ -182,13 +275,16 @@ export function getCategoryDisplayImage(cat: CategoryItem, products: Product[]):
     );
   });
 
-  const productWithImage = categoryProducts.find((p) => p.image && p.image.trim());
+  // Sort deterministically by ID to ensure static consistency across page reloads
+  const sortedCatProducts = [...categoryProducts].sort((a, b) => a.id.localeCompare(b.id));
+  const productWithImage = sortedCatProducts.find((p) => p.image && p.image.trim());
   if (productWithImage && productWithImage.image.trim()) {
     return productWithImage.image.trim();
   }
 
-  // 3. Fallback to any product in store with image
-  const globalProductWithImage = products.find((p) => p.image && p.image.trim());
+  // 3. Fallback to any product in store with image (sorted deterministically)
+  const sortedProducts = [...products].sort((a, b) => a.id.localeCompare(b.id));
+  const globalProductWithImage = sortedProducts.find((p) => p.image && p.image.trim());
   if (globalProductWithImage && globalProductWithImage.image.trim()) {
     return globalProductWithImage.image.trim();
   }
@@ -221,4 +317,3 @@ export interface CustomerRecord {
   createdAt: string;
   updatedAt: string;
 }
-
