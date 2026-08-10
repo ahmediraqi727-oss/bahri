@@ -82,3 +82,9 @@ BEGIN
         USING (bucket_id = 'watermarked-products');
     END IF;
 END $$;
+
+-- 4. Schema Cache Reset & Column Assurance for PostgREST
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS default_delivery_duration TEXT DEFAULT '2 - 3 أيام عمل';
+
+-- Notify Supabase PostgREST server to reload schema cache immediately
+NOTIFY pgrst, 'reload schema';
