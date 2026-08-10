@@ -512,19 +512,31 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const updateCategory = useCallback(async (id: string, updates: Partial<CategoryItem>): Promise<CategoryItem> => {
     const row = categoryToRow(updates as Record<string, unknown>);
 
-    // تنفيذ التحديث مباشرة في قاعدة البيانات للقسم المحدّد عبر الـ ID
-    const { data: updatedData, error } = await supabase
-      .from("categories")
-      .update(row)
-      .eq("id", id)
-      .select()
-      .maybeSingle();
-
-    if (error) {
-      console.error("خطأ في تحديث القسم بقاعدة البيانات:", error.message);
+    // ضمان توفر كلا الحقلين في الحمولة المرسلة لقاعدة البيانات
+    if (updates.image !== undefined) {
+      row.image = updates.image;
+      row.image_url = updates.image;
     }
 
-    let finalCat: CategoryItem = updatedData ? rowToCategory(updatedData) : { 
+    let updatedRow: Record<string, unknown> | null = null;
+
+    if (isUUID(id)) {
+      const { data, error } = await supabase.from("categories").update(row).eq("id", id).select().maybeSingle();
+      if (!error && data) {
+        updatedRow = data;
+      }
+    }
+
+    if (!updatedRow && updates.name) {
+      const { data: upsertData } = await supabase
+        .from("categories")
+        .upsert({ ...row, name: updates.name }, { onConflict: "name" })
+        .select()
+        .maybeSingle();
+      if (upsertData) updatedRow = upsertData;
+    }
+
+    const finalCat: CategoryItem = updatedRow ? rowToCategory(updatedRow) : { 
       id, 
       name: updates.name || "", 
       image: updates.image || "", 
@@ -532,17 +544,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       isActive: updates.isActive !== false, 
       keywords: updates.keywords || "" 
     };
-
-    if (!updatedData && updates.name) {
-      const { data: upsertData } = await supabase
-        .from("categories")
-        .upsert({ ...row, name: updates.name }, { onConflict: "name" })
-        .select()
-        .maybeSingle();
-      if (upsertData) {
-        finalCat = rowToCategory(upsertData);
-      }
-    }
 
     setCategories((prev) => {
       const existingIdx = prev.findIndex((c) => c.id === id || c.name.toLowerCase() === finalCat.name.toLowerCase());
@@ -809,9 +810,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     <DataContext.Provider
       value={{
         products, suppliers, categories, loading,
-        addProduct, updateProduct, bulkUpdateProducts, deleteProduct, bulkDeleteProducts,
+        addProduct, updateCategory: updateCategory, updateProduct, bulkUpdateProducts, deleteProduct, bulkDeleteProducts,
         addSupplier, updateSupplier, deleteSupplier,
-        addCategory, updateCategory, deleteCategory, incrementCategoryViews,
+        addCategory, deleteCategory, incrementCategoryViews,
         autoSyncCategoriesFromProducts,
         persistAllCategoriesAndProducts, reloadAllData,
         importProducts, exportAllData, importAllData,

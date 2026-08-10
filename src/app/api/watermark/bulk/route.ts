@@ -1,9 +1,9 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import { processAndUploadWatermarkImage } from "@/lib/ImageProcessor";
 import { WatermarkConfig, WatermarkOptions } from "@/lib/types";
 import { supabase } from "@/lib/supabase-client";
-
-export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
     try {
       body = await req.json();
     } catch {
-      return NextResponse.json({ error: "طلب غير صالح، يرجى تزويد بيانات بصيغة JSON" }, { status: 400 });
+      return NextResponse.json({ error: "بيانات JSON غير صالحة" }, { status: 400 });
     }
 
     const { productIds, items, options, watermarkConfig, revertToOriginal } = body || {};
