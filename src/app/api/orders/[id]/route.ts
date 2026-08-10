@@ -1,8 +1,4 @@
-export const dynamic = "force-static";
-
-export async function generateStaticParams() {
-  return [{ id: "1" }];
-}
+export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase-client";
@@ -13,7 +9,12 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
-    const body = await request.json();
+    let body: any;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "بيانات JSON غير صالحة" }, { status: 400 });
+    }
 
     const {
       customer_name,
@@ -27,7 +28,7 @@ export async function PUT(
       invoice_serial,
       status,
       notes,
-    } = body;
+    } = body || {};
 
     const deliveryTimeValue = delivery_time || delivery_duration || "";
     const deliveryDurationValue = delivery_duration || delivery_time || "";
@@ -74,10 +75,12 @@ export async function GET(
   try {
     const { id } = await params;
     const { data, error } = await supabase.from("orders").select("*").eq("id", id).maybeSingle();
+    
     if (error) {
       console.error("[GET /api/orders/[id]] Supabase Error:", error);
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
+    
     return NextResponse.json({ order: data }, { status: 200 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
