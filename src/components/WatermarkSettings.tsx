@@ -86,28 +86,46 @@ export default function WatermarkSettings({ initialConfig, onSave }: WatermarkSe
   const handleSaveConfig = async () => {
     try {
       setIsSaving(true);
-      if (onSave) {
-        await onSave(config);
+
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+      const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+      // 1. جلب أول سجل من جدول settings لمعرفة الـ ID الحقيقي
+      const { data: existingSettings } = await supabase
+        .from("settings")
+        .select("id")
+        .limit(1)
+        .maybeSingle();
+
+      let updateErr = null;
+
+      if (existingSettings && existingSettings.id) {
+        // 2. إذا وجدنا سجل، نقوم بتحديثه باستخدام الـ ID الخاص به مباشرة
+        const { error } = await supabase
+          .from("settings")
+          .update({ watermark_config: config })
+          .eq("id", existingSettings.id);
+        updateErr = error;
       } else {
-        await updateSettings({ watermarkConfig: config });
+        // 3. إذا لم يكن هناك أي سجل في الجدول، نقوم بإنشائه لأول مرة
+        const { error } = await supabase
+          .from("settings")
+          .insert({ watermark_config: config });
+        updateErr = error;
       }
 
-      // Direct fallback to update watermark_config in settings table
-      try {
-        const { supabase } = await import("@/lib/supabase-client");
-        const existing = await supabase.from("settings").select("id").limit(1).maybeSingle();
-        if (existing?.data?.id) {
-          await supabase
-            .from("settings")
-            .update({ watermark_config: config })
-            .eq("id", existing.data.id);
-        }
-      } catch (directErr) {
-        console.warn("Direct settings update notice:", directErr);
-      }
+      if (updateErr) throw new Error(updateErr.message);
 
-      success("تم الحفظ بنجاح", "تم تحديث إعدادات العلامة المائية وحفظها في القاعدة.");
+      // 4. تحديث الـ Settings Context في التطبيق
+      await updateSettings({ watermarkConfig: config });
+
+      success("تم الحفظ بنجاح", "تم تحديث وحفظ إعدادات العلامة المائية في قاعدة البيانات.");
+      if (onSave) await onSave(config);
+
     } catch (err: any) {
+      console.error("Save Error:", err);
       toastError("فشل الحفظ", err?.message || "حدث خطأ أثناء حفظ الإعدادات.");
     } finally {
       setIsSaving(false);
