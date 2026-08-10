@@ -337,12 +337,43 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addProduct = useCallback(async (product: Omit<Product, "id" | "createdAt" | "updatedAt">) => {
-    const row = productToRow(product as Record<string, unknown>);
+    let finalImageUrl = product.image || "";
+    const originalImageUrl = product.originalImageUrl || product.image || "";
 
-    // Guarantee original_image_url is set for new product
-    if (product.image && !row.original_image_url) {
-      row.original_image_url = product.image;
+    // التحقق مما إذا كان التطبيق التلقائي للعلامة المائية مفعلاً عند إضافة منتج جديد
+    try {
+      if (typeof window !== "undefined") {
+        const cachedSettings = localStorage.getItem("app_site_settings_cache");
+        if (cachedSettings) {
+          const parsed = JSON.parse(cachedSettings);
+          const wmConfig = parsed?.watermarkConfig;
+          if (wmConfig?.enabled && wmConfig?.applyOnUpload && wmConfig?.watermarkUrl && finalImageUrl) {
+            // استدعاء السيرفر لدمج الشعار قبل الحفظ
+            const res = await fetch("/api/watermark", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                imageUrl: finalImageUrl,
+                watermarkConfig: wmConfig,
+                preview: false,
+              }),
+            });
+            const json = await res.json();
+            if (json.success && json.watermarkedUrl) {
+              finalImageUrl = json.watermarkedUrl;
+            }
+          }
+        }
+      }
+    } catch (wmErr) {
+      console.warn("فشل التطبيق التلقائي للعلامة المائية أثناء إضافة المنتج:", wmErr);
     }
+
+    const row = productToRow({
+      ...product,
+      image: finalImageUrl,
+      originalImageUrl: originalImageUrl,
+    } as Record<string, unknown>);
 
     const { data: created, error } = await supabase.from("products").insert(row).select().single();
     if (error) throw error;
