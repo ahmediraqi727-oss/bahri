@@ -81,16 +81,36 @@ export default function WatermarkSettings({ initialConfig, onSave }: WatermarkSe
   };
 
   // ── 1. Save Watermark Settings ─────────────────────────────────────────────
+  const [isSaving, setIsSaving] = useState(false);
+
   const handleSaveConfig = async () => {
     try {
+      setIsSaving(true);
       if (onSave) {
         await onSave(config);
       } else {
         await updateSettings({ watermarkConfig: config });
       }
-      success("تم حفظ الإعدادات بنجاح", "تم تحديث إعدادات العلامة المائية وحفظها في النظام.");
+
+      // Direct fallback to update watermark_config in settings table
+      try {
+        const { supabase } = await import("@/lib/supabase-client");
+        const existing = await supabase.from("settings").select("id").limit(1).maybeSingle();
+        if (existing?.data?.id) {
+          await supabase
+            .from("settings")
+            .update({ watermark_config: config })
+            .eq("id", existing.data.id);
+        }
+      } catch (directErr) {
+        console.warn("Direct settings update notice:", directErr);
+      }
+
+      success("تم الحفظ بنجاح", "تم تحديث إعدادات العلامة المائية وحفظها في القاعدة.");
     } catch (err: any) {
       toastError("فشل الحفظ", err?.message || "حدث خطأ أثناء حفظ الإعدادات.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
