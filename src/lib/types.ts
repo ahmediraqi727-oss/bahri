@@ -20,6 +20,8 @@ export interface WatermarkConfig {
   targetBucket?: string;
 }
 
+export type WatermarkOptions = WatermarkConfig;
+
 export const DEFAULT_WATERMARK_CONFIG: WatermarkConfig = {
   enabled: false,
   watermarkUrl: "",

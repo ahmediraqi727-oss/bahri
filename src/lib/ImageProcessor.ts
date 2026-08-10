@@ -179,3 +179,16 @@ export async function processAndUploadWatermarkImage(
 
   return publicData.publicUrl;
 }
+
+/**
+ * Convenience wrapper for processing an image buffer directly with Sharp and returning the watermarked buffer.
+ */
+export async function processImageWithWatermark(
+  imageBuffer: Buffer,
+  config: WatermarkConfig
+): Promise<Buffer> {
+  const { buffer } = await applyWatermarkToBuffer(imageBuffer, config);
+  return buffer;
+}
+
+export type WatermarkOptions = WatermarkConfig;
