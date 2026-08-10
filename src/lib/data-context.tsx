@@ -21,12 +21,15 @@ export function extractCategoryFromNotes(notes: string): string {
   return "عام";
 }
 
-// دالة مساعدة لتطبيق العلامة المائية مركزياً عند الإضافة أو التعديل أو الاستيراد
+// دالة مساعدة مركزية لتطبيق العلامة المائية مع إشعارات الخطأ لضمان عدم الفشل الصامت
 async function applyWatermarkIfNeeded(imageUrl: string): Promise<string> {
   if (!imageUrl || typeof window === "undefined") return imageUrl;
   try {
     const cachedSettings = localStorage.getItem("app_site_settings_cache");
-    if (!cachedSettings) return imageUrl;
+    if (!cachedSettings) {
+      console.warn("تحذير: لم يتم العثور على إعدادات المتجر في LocalStorage لتطبيق العلامة المائية.");
+      return imageUrl;
+    }
 
     const parsed = JSON.parse(cachedSettings);
     const wmConfig = parsed?.watermarkConfig;
@@ -44,10 +47,12 @@ async function applyWatermarkIfNeeded(imageUrl: string): Promise<string> {
       const json = await res.json();
       if (json.success && json.watermarkedUrl) {
         return json.watermarkedUrl;
+      } else if (json.error) {
+        console.error("فشل دمج العلامة المائية من السيرفر:", json.error);
       }
     }
   } catch (err) {
-    console.warn("خطأ في تطبيق العلامة المائية تلقائياً:", err);
+    console.error("خطأ استثنائي أثناء الاتصال بـ API العلامة المائية:", err);
   }
   return imageUrl;
 }
@@ -114,7 +119,6 @@ export function productToRow(product: Record<string, unknown>): Record<string, u
   } else if ("original_image_url" in product && product.original_image_url !== undefined) {
     row.original_image_url = product.original_image_url || product.image || "";
   } else if ("image" in product && product.image && !("id" in product)) {
-    // New product insertion fallback
     row.original_image_url = product.image;
   }
 
@@ -190,7 +194,6 @@ export function categoryToRow(cat: Record<string, unknown>): Record<string, unkn
   const row: Record<string, unknown> = {};
   if ("name" in cat) row.name = cat.name;
 
-  // توحيد إرسال الحقلين معاً لضمان التوافق التام مع أي بنية لجدول Categories في Supabase
   const imgValue = cat.image !== undefined ? cat.image : (cat.image_url !== undefined ? cat.image_url : "");
   row.image = imgValue;
   row.image_url = imgValue;
@@ -215,7 +218,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const autoSyncCategoriesFromProducts = useCallback(async () => {
     try {
-      // 1. جلب الأقسام الحالية أولاً لمعرفة الصور المخصصة الموجودة مسبقاً وعدم مسحها
       const { data: existingCats } = await supabase.from("categories").select("id, name, image, image_url");
       const existingImageMap = new Map<string, string>();
       if (existingCats) {
@@ -238,7 +240,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         if (catName && catName !== "عام" && catName !== "غير محدد") {
           const existingImg = existingImageMap.get(catName.trim().toLowerCase());
           if (!categoryMap.has(catName)) {
-            // استخدام الصورة المخصصة الموجودة مسبقاً إن وجدت، وإلا صورة المنتج
             categoryMap.set(catName, { 
               name: catName, 
               image: existingImg || (p.image as string) || "" 
@@ -249,26 +250,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       if (categoryMap.size === 0) return [];
 
-      const catRows = Array.from(categoryMap.values()).map((cat, idx) => ({
-        name: cat.name,
-        image: cat.image || "",
-        image_url: cat.image || "",
-        priority: idx + 1,
-        display_order: idx + 1,
-        sort_order: idx + 1,
-        is_active: true,
-        keywords: cat.name,
-      }));
+      const catRows = Array.from(categoryMap.values()).map((cat, idx) => {
+        const existingImg = existingImageMap.get(cat.name.trim().toLowerCase()) || cat.image;
+        return {
+          name: cat.name,
+          image: existingImg,
+          image_url: existingImg,
+          priority: idx + 1,
+          display_order: idx + 1,
+          sort_order: idx + 1,
+          is_active: true,
+          keywords: cat.name,
+        };
+      });
 
       const { error } = await supabase
         .from("categories")
         .upsert(catRows, { onConflict: "name" });
 
       if (error) {
-        console.warn("Bulk category upsert warning, trying individual upserts:", error.message);
-        for (const row of catRows) {
-          await supabase.from("categories").upsert(row, { onConflict: "name" });
-        }
+        console.warn("Bulk category upsert warning:", error.message);
       }
 
       const { data: freshCats } = await supabase.from("categories").select("*").order("priority", { ascending: true });
@@ -300,7 +301,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         if (suppliersRes.data) setSuppliers(loadedSuppliers);
         if (loadedCategories.length > 0) setCategories(loadedCategories);
 
-        // Auto Populate categories if missing
         if (loadedProducts.length > 0) {
           const distinctFromProducts = new Set<string>();
           loadedProducts.forEach((p) => {
@@ -347,7 +347,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     loadData();
 
-    // Supabase Real-Time Listeners
     const channel = supabase
       .channel("public:all_data")
       .on("postgres_changes", { event: "*", schema: "public", table: "categories" }, async () => {
@@ -485,7 +484,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (!error && created) {
       createdRow = created;
     } else if (error) {
-      console.warn("Primary addCategory error, attempting fallback with image_url column:", error.message);
+      console.warn("Primary addCategory error:", error.message);
       const altRow: Record<string, unknown> = { ...row, name: cat.name, image_url: cat.image };
       const { data: altCreated } = await supabase
         .from("categories")
@@ -518,23 +517,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const { data, error } = await supabase.from("categories").update(row).eq("id", id).select().maybeSingle();
       if (!error && data) {
         updatedRow = data;
-      } else if (error) {
-        console.warn("Primary updateCategory error, trying image_url column fallback:", error.message);
-        const altRow: Record<string, unknown> = { ...row };
-        if ("image" in altRow) {
-          altRow.image_url = altRow.image;
-        }
-        const { data: altData } = await supabase.from("categories").update(altRow).eq("id", id).select().maybeSingle();
-        if (altData) updatedRow = altData;
       }
     }
 
-    if (!updatedRow) {
-      const catName = updates.name || "";
+    if (!updatedRow && updates.name) {
+      const catName = updates.name;
+      const { data: existingCat } = await supabase.from("categories").select("id, image, image_url").eq("name", catName).maybeSingle();
+      
+      const targetImage = updates.image !== undefined ? updates.image : (existingCat?.image || existingCat?.image_url || "");
       const upsertRow: Record<string, unknown> = {
         name: catName,
-        image: updates.image !== undefined ? updates.image : "",
-        image_url: updates.image !== undefined ? updates.image : "",
+        image: targetImage,
+        image_url: targetImage,
         priority: Number(updates.priority) || 1,
         display_order: Number(updates.priority) || 1,
         sort_order: Number(updates.priority) || 1,
@@ -542,24 +536,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         keywords: updates.keywords || "",
       };
 
-      const { data: upsertData, error: upsertError } = await supabase
+      const { data: upsertData } = await supabase
         .from("categories")
         .upsert(upsertRow, { onConflict: "name" })
         .select()
         .maybeSingle();
 
-      if (!upsertError && upsertData) {
-        updatedRow = upsertData;
-      } else if (upsertError) {
-        console.warn("Primary category upsert error, trying image_url fallback:", upsertError.message);
-        const altUpsert: Record<string, unknown> = { ...upsertRow, image_url: upsertRow.image };
-        const { data: altUpsertData } = await supabase
-          .from("categories")
-          .upsert(altUpsert, { onConflict: "name" })
-          .select()
-          .maybeSingle();
-        if (altUpsertData) updatedRow = altUpsertData;
-      }
+      if (upsertData) updatedRow = upsertData;
     }
 
     let finalCat: CategoryItem;
@@ -583,11 +566,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const deleteCategory = useCallback(async (id: string) => {
-    const { error } = await supabase.from("categories").delete().eq("id", id);
-    if (error) {
-      setCategories((prev) => prev.filter((c) => c.id !== id));
-      return;
-    }
+    await supabase.from("categories").delete().eq("id", id);
     setCategories((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
@@ -617,11 +596,20 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const persistAllCategoriesAndProducts = useCallback(async (catsToSave: CategoryItem[], prodsToSave: Product[]) => {
     if (catsToSave.length > 0) {
+      const { data: currentCats } = await supabase.from("categories").select("name, image, image_url");
+      const imgMap = new Map<string, string>();
+      currentCats?.forEach(c => {
+        const img = (c.image as string) || (c.image_url as string);
+        if (img) imgMap.set(c.name.trim().toLowerCase(), img);
+      });
+
       const catRows = catsToSave.map((c) => {
+        const existingImg = imgMap.get(c.name.trim().toLowerCase());
+        const finalImg = (c.image && c.image.trim()) ? c.image.trim() : (existingImg || "");
         const r: Record<string, unknown> = {
           name: c.name,
-          image: c.image || "",
-          image_url: c.image || "",
+          image: finalImg,
+          image_url: finalImg,
           priority: Number(c.priority) || 1,
           is_active: c.isActive !== false,
           keywords: c.keywords || "",
@@ -632,21 +620,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         return r;
       });
 
-      const { error: catErr } = await supabase.from("categories").upsert(catRows, { onConflict: "name" });
-      if (catErr) {
-        console.warn("Bulk category upsert warning, trying individual upserts:", catErr.message);
-        for (const r of catRows) {
-          await supabase.from("categories").upsert(r, { onConflict: "name" });
-        }
-      }
+      await supabase.from("categories").upsert(catRows, { onConflict: "name" });
     }
 
     if (prodsToSave.length > 0) {
       const prodRows = prodsToSave.map((p) => productToRow(p as unknown as Record<string, unknown>));
-      const { error: prodErr } = await supabase.from("products").upsert(prodRows);
-      if (prodErr) {
-        console.error("Error persisting products to Supabase:", prodErr);
-      }
+      await supabase.from("products").upsert(prodRows);
     }
 
     await reloadAllData();
@@ -660,7 +639,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     ) => {
       if (!rawItems || rawItems.length === 0) return 0;
 
-      // 1. Deduplicate array in memory while keeping latest row per name
       const uniqueItemsMap = new Map<string, Omit<Product, "id" | "createdAt" | "updatedAt">>();
       rawItems.forEach((item) => {
         if (item.name) {
@@ -672,7 +650,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       });
       const items = Array.from(uniqueItemsMap.values());
 
-      // 2. Collect and upsert categories and extract their IDs (category_id)
+      const { data: existingCatsForImport } = await supabase.from("categories").select("name, image, image_url");
+      const importImgMap = new Map<string, string>();
+      existingCatsForImport?.forEach(c => {
+        const img = (c.image as string) || (c.image_url as string);
+        if (img) importImgMap.set(c.name.trim().toLowerCase(), img);
+      });
+
       const categoryNames = new Set<string>();
       items.forEach((item) => {
         const match = (item.notes || "").match(/الفئة:\s*([^|]+)/);
@@ -684,24 +668,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }
       });
 
-      const categoryIdMap = new Map<string, string>(); // Map (name -> UUID)
+      const categoryIdMap = new Map<string, string>();
 
       if (categoryNames.size > 0) {
-        const catRows = Array.from(categoryNames).map((cName, idx) => ({
-          name: cName,
-          priority: idx + 1,
-          display_order: idx + 1,
-          sort_order: idx + 1,
-          is_active: true,
-          keywords: cName,
-        }));
+        const catRows = Array.from(categoryNames).map((cName, idx) => {
+          const existingImg = importImgMap.get(cName.trim().toLowerCase()) || "";
+          return {
+            name: cName,
+            image: existingImg,
+            image_url: existingImg,
+            priority: idx + 1,
+            display_order: idx + 1,
+            sort_order: idx + 1,
+            is_active: true,
+            keywords: cName,
+          };
+        });
 
-        const { data: catData, error: catErr } = await supabase
+        const { data: catData } = await supabase
           .from("categories")
           .upsert(catRows, { onConflict: "name" })
           .select("id, name");
 
-        if (!catErr && catData) {
+        if (catData) {
           catData.forEach((c) => {
             if (c.id && c.name) {
               categoryIdMap.set(c.name.trim().toLowerCase(), c.id);
@@ -710,7 +699,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // 3. Map products to rows, apply Watermark if enabled, and collect Many-to-Many category relationships
       const productCategoryPairs: { productName: string; categoryId: string }[] = [];
 
       const rows = await Promise.all(
@@ -744,11 +732,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         })
       );
 
-      // 4. Send product rows in batch chunks (CHUNK_SIZE = 50) using upsert by name
       const CHUNK_SIZE = 50;
       let processed = 0;
       const total = rows.length;
-      const createdProductMap = new Map<string, string>(); // Map (cleanName -> product_id)
+      const createdProductMap = new Map<string, string>();
 
       for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
         const chunk = rows.slice(i, i + CHUNK_SIZE);
@@ -759,8 +746,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           .select("id, name");
 
         if (error) {
-          console.error("خطأ Supabase أثناء إدخال الدفعة:", error);
-          throw new Error(`فشل حفظ المنتجات في Supabase: ${error.message} [Code: ${error.code}]`);
+          throw new Error(`فشل حفظ المنتجات في Supabase: ${error.message}`);
         }
 
         if (insertedProducts) {
@@ -777,7 +763,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // 5. Populate Many-to-Many product-category relationships in 'product_categories'
       const junctionRowsToInsert: { product_id: string; category_id: string }[] = [];
       productCategoryPairs.forEach((pair) => {
         const productId = createdProductMap.get(pair.productName.toLowerCase());
@@ -793,26 +778,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         try {
           for (let j = 0; j < junctionRowsToInsert.length; j += CHUNK_SIZE) {
             const jChunk = junctionRowsToInsert.slice(j, j + CHUNK_SIZE);
-            const { error: jErr } = await supabase
+            await supabase
               .from("product_categories")
               .upsert(jChunk, { onConflict: "product_id,category_id", ignoreDuplicates: true });
-
-            if (jErr) {
-              try {
-                await supabase
-                  .from("product_categories")
-                  .insert(jChunk);
-              } catch {
-                // ignore duplicate error if insert fails
-              }
-            }
           }
         } catch (jError) {
-          console.warn("إشعار تحديث الجدول الوسيط (product_categories):", jError);
+          console.warn("تحذير الجدول الوسيط:", jError);
         }
       }
 
-      // 6. Server revalidation
       await reloadAllData();
       return items.length;
     },
