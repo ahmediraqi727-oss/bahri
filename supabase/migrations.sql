@@ -2,6 +2,7 @@
 -- Supabase SQL Migrations — Ahmed Bahri Store
 -- Run this script in: Supabase → SQL Editor
 -- NOTE: Uses "public.users" (not "profiles") — matches project schema
+-- Idempotent: Uses DROP POLICY IF EXISTS to allow safe re-execution
 -- =============================================================
 
 -- =============================================
@@ -23,12 +24,13 @@ CREATE TABLE IF NOT EXISTS public.store_locations (
 
 ALTER TABLE public.store_locations ENABLE ROW LEVEL SECURITY;
 
--- Anyone can read active locations
+-- Drop policy if exists to avoid ERROR 42710
+DROP POLICY IF EXISTS "Public can read store_locations" ON public.store_locations;
 CREATE POLICY "Public can read store_locations"
   ON public.store_locations FOR SELECT
   TO public USING (is_active = true);
 
--- Only managers/admins can write (check via public.users table)
+DROP POLICY IF EXISTS "Managers can manage store_locations" ON public.store_locations;
 CREATE POLICY "Managers can manage store_locations"
   ON public.store_locations FOR ALL
   TO authenticated
@@ -67,10 +69,12 @@ CREATE TABLE IF NOT EXISTS public.team_members (
 
 ALTER TABLE public.team_members ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Public can read visible team_members" ON public.team_members;
 CREATE POLICY "Public can read visible team_members"
   ON public.team_members FOR SELECT
   TO public USING (is_visible = true);
 
+DROP POLICY IF EXISTS "Managers can manage team_members" ON public.team_members;
 CREATE POLICY "Managers can manage team_members"
   ON public.team_members FOR ALL
   TO authenticated
@@ -111,10 +115,12 @@ CREATE TABLE IF NOT EXISTS public.posts (
 
 ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Public can read published posts" ON public.posts;
 CREATE POLICY "Public can read published posts"
   ON public.posts FOR SELECT
   TO public USING (is_published = true);
 
+DROP POLICY IF EXISTS "Managers can manage posts" ON public.posts;
 CREATE POLICY "Managers can manage posts"
   ON public.posts FOR ALL
   TO authenticated
@@ -146,17 +152,17 @@ CREATE TABLE IF NOT EXISTS public.post_comments (
 
 ALTER TABLE public.post_comments ENABLE ROW LEVEL SECURITY;
 
--- Anyone can read approved comments
+DROP POLICY IF EXISTS "Public can read approved comments" ON public.post_comments;
 CREATE POLICY "Public can read approved comments"
   ON public.post_comments FOR SELECT
   TO public USING (is_approved = true);
 
--- Anyone (even anonymous) can post a comment
+DROP POLICY IF EXISTS "Anyone can insert comments" ON public.post_comments;
 CREATE POLICY "Anyone can insert comments"
   ON public.post_comments FOR INSERT
   TO public WITH CHECK (true);
 
--- Managers can moderate (update/delete) comments
+DROP POLICY IF EXISTS "Managers can manage comments" ON public.post_comments;
 CREATE POLICY "Managers can manage comments"
   ON public.post_comments FOR ALL
   TO authenticated
@@ -187,15 +193,19 @@ CREATE TABLE IF NOT EXISTS public.post_reactions (
 
 ALTER TABLE public.post_reactions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Public can read reactions" ON public.post_reactions;
 CREATE POLICY "Public can read reactions"
   ON public.post_reactions FOR SELECT TO public USING (true);
 
+DROP POLICY IF EXISTS "Public can insert reactions" ON public.post_reactions;
 CREATE POLICY "Public can insert reactions"
   ON public.post_reactions FOR INSERT TO public WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Public can update reactions" ON public.post_reactions;
 CREATE POLICY "Public can update reactions"
   ON public.post_reactions FOR UPDATE TO public USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Public can delete reactions" ON public.post_reactions;
 CREATE POLICY "Public can delete reactions"
   ON public.post_reactions FOR DELETE TO public USING (true);
 
@@ -211,3 +221,6 @@ AS $$
   SET views_count = views_count + 1
   WHERE id = post_id;
 $$;
+
+-- Reload schema cache
+NOTIFY pgrst, 'reload schema';
