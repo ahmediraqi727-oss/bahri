@@ -133,8 +133,8 @@ export async function applyWatermarkToBuffer(
   left = Math.max(0, Math.min(left, baseWidth - wmW));
   top = Math.max(0, Math.min(top, baseHeight - wmH));
 
-  // 6. Perform Overlay Compositing with Sharp
-  const processedBuffer = await sharp(baseImageBuffer)
+  // 6. Perform Overlay Compositing directly using pre-opened baseSharp object (Faster performance)
+  const processedBuffer = await baseSharp
     .composite([{ input: finalWmBuffer, left, top }])
     .toBuffer();
 
