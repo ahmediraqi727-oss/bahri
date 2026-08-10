@@ -1,13 +1,12 @@
 -- ==============================================================================
--- MASTER MIGRATION & REPAIR SCRIPT - AHMED BAHRI STORE (FINAL)
--- Run this script in: Supabase Dashboard → SQL Editor
+-- MASTER PRODUCTION SCRIPT - AHMED BAHRI STORE (FINAL & VERIFIED)
 -- ==============================================================================
 
--- 1. تفعيل الإضافات الضرورية
+-- 1. تفعيل الإضافات البرمجية الأساسية
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
--- 2. توحيد وإصلاح جدول settings بكافة الأعمدة المطلوبة ودون تضارب
+-- 2. توحيد جدول settings بالكامل بنوع UUID ومحفظاً لكافة الأعمدة الحديثة
 CREATE TABLE IF NOT EXISTS public.settings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID,
@@ -51,7 +50,7 @@ CREATE TABLE IF NOT EXISTS public.settings (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ضمان وجود الأعمدة في حال كان الجدول موجوداً مسبقاً
+-- ضمان حقن أي أعمدة ناقصة إن وُجد الجدول مسبقاً
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS watermark_config JSONB DEFAULT '{"enabled": false, "watermarkUrl": "", "position": "bottom-right", "customX": 85, "customY": 85, "opacity": 80, "scale": 20, "applyOnUpload": true, "targetBucket": "watermarked-products"}'::jsonb;
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS custom_themes JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS active_theme_preset TEXT DEFAULT 'default';
@@ -70,16 +69,26 @@ ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS android_app_url TEXT DEFAUL
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS ios_app_url TEXT DEFAULT '';
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS original_image_url TEXT;
 
--- إدخال سجل افتراضي للإعدادات إن كان الجدول فارغاً
+-- إدخال السجل الافتراضي للإعدادات إن كان الجدول فارغاً
 INSERT INTO public.settings (site_name)
 SELECT 'موقع أحمد بحري'
 WHERE NOT EXISTS (SELECT 1 FROM public.settings LIMIT 1);
 
--- 3. تفعيل سياسات الأمان الملساء (Smooth RLS) على كافة الجداول لمنع مشاكل الصلاحيات
+-- 3. توحيد جدول categories بمعرف UUID وضمان القيود الفريدة
+CREATE TABLE IF NOT EXISTS public.categories (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL UNIQUE,
+  image TEXT DEFAULT '',
+  priority INT DEFAULT 0,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 4. تفعيل سياسات الأمان الملساء (Smooth RLS) لمنع أي رفض للصلاحيات
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.trash ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.trash ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.suppliers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
@@ -87,14 +96,14 @@ ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow all operations for settings" ON public.settings;
 CREATE POLICY "Allow all operations for settings" ON public.settings FOR ALL USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Allow all operations for categories" ON public.categories;
+CREATE POLICY "Allow all operations for categories" ON public.categories FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all operations for products" ON public.products;
+CREATE POLICY "Allow all operations for products" ON public.products FOR ALL USING (true) WITH CHECK (true);
+
 DROP POLICY IF EXISTS "Allow all operations on trash" ON public.trash;
 CREATE POLICY "Allow all operations on trash" ON public.trash FOR ALL TO public, authenticated, anon USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Allow all operations on products" ON public.products;
-CREATE POLICY "Allow all operations on products" ON public.products FOR ALL TO public, authenticated, anon USING (true) WITH CHECK (true);
-
-DROP POLICY IF EXISTS "Allow all operations on categories" ON public.categories;
-CREATE POLICY "Allow all operations on categories" ON public.categories FOR ALL TO public, authenticated, anon USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Allow all operations on suppliers" ON public.suppliers;
 CREATE POLICY "Allow all operations on suppliers" ON public.suppliers FOR ALL TO public, authenticated, anon USING (true) WITH CHECK (true);
@@ -105,14 +114,14 @@ CREATE POLICY "Allow all operations on orders" ON public.orders FOR ALL TO publi
 DROP POLICY IF EXISTS "Allow all operations on customers" ON public.customers;
 CREATE POLICY "Allow all operations on customers" ON public.customers FOR ALL TO public, authenticated, anon USING (true) WITH CHECK (true);
 
--- 4. منح الصلاحيات الشاملة للأدوار
+-- 5. منح الصلاحيات الشاملة للأدوار
 GRANT ALL ON TABLE public.settings TO authenticated, anon, public;
-GRANT ALL ON TABLE public.trash TO authenticated, anon, public;
-GRANT ALL ON TABLE public.products TO authenticated, anon, public;
 GRANT ALL ON TABLE public.categories TO authenticated, anon, public;
+GRANT ALL ON TABLE public.products TO authenticated, anon, public;
+GRANT ALL ON TABLE public.trash TO authenticated, anon, public;
 GRANT ALL ON TABLE public.suppliers TO authenticated, anon, public;
 GRANT ALL ON TABLE public.orders TO authenticated, anon, public;
 GRANT ALL ON TABLE public.customers TO authenticated, anon, public;
 
--- 5. تحديث الـ Schema Cache في Supabase فوراً
+-- 6. تحديث الـ Schema Cache في Supabase فوراً
 NOTIFY pgrst, 'reload schema';
