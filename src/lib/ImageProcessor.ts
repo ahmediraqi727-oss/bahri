@@ -2,25 +2,19 @@ import sharp from "sharp";
 import { WatermarkConfig, WatermarkPosition } from "./types";
 import { supabase } from "./supabase-client";
 
-// Module-level Server Memory Cache for Watermark Logo Buffer
 const watermarkBufferCache = new Map<string, Buffer>();
 
-/**
- * Utility to fetch an image URL or parse Data URL into a Node.js Buffer
- */
 export async function urlToBuffer(input: string): Promise<Buffer> {
   if (!input || typeof input !== "string") {
     throw new Error("رابط الصورة غير صالح");
   }
 
-  // 1. Handle Base64 Data URL
   if (input.startsWith("data:")) {
     const base64Data = input.split(",")[1];
     if (!base64Data) throw new Error("سلسلة Base64 غير صالحة");
     return Buffer.from(base64Data, "base64");
   }
 
-  // 2. Handle absolute URLs (HTTP / HTTPS) - with safety check for Supabase storage URLs
   if (input.startsWith("http://") || input.startsWith("https://")) {
     try {
       const response = await fetch(input);
@@ -29,22 +23,14 @@ export async function urlToBuffer(input: string): Promise<Buffer> {
         return Buffer.from(arrayBuffer);
       }
     } catch (e) {
-      console.warn("فشل الجلب الخارجي للرابط، جارِ الارتداد للمسار المحلي الآمن:", e);
+      console.warn("فشل الجلب الخارجي، جارِ الارتداد للملف المحلي:", e);
     }
   }
 
-  // 3. Bulletproof Local Disk & Public Fallback (Ensures ZERO failures on Vercel/Server)
   try {
     const fs = await import("fs");
     const path = await import("path");
-    
-    // دائماً نعتمد على الشعار المحلي الثابت في مجلد public لتجنب مشاكل روابط Supabase الخارجة
     let localPath = path.join(process.cwd(), "public", "watermark.png");
-    if (fs.existsSync(localPath)) {
-      return fs.readFileSync(localPath);
-    }
-    
-    localPath = path.join(process.cwd(), "public", "logo.jpg");
     if (fs.existsSync(localPath)) {
       return fs.readFileSync(localPath);
     }
@@ -52,40 +38,24 @@ export async function urlToBuffer(input: string): Promise<Buffer> {
     console.warn("Direct disk read fallback warning:", fsErr);
   }
 
-  throw new Error(`تعذر العثور على صورة الشعار المحلية في مجلد public: ${input}`);
+  throw new Error(`تعذر العثور على صورة الشعار: ${input}`);
 }
 
-/**
- * Gets cached watermark buffer or downloads and caches it with bulletproof fallbacks
- */
 async function getCachedWatermarkBuffer(watermarkUrl: string): Promise<Buffer> {
   const cacheKey = "fixed_watermark_png";
   if (watermarkBufferCache.has(cacheKey)) {
     return watermarkBufferCache.get(cacheKey)!;
   }
-
-  try {
-    // إجبار النظام على استخدام الشعار المحلي الثابت لضمان السرعة القصوى وعدم فشل الـ Fetch
-    const buffer = await urlToBuffer("watermark.png");
-    watermarkBufferCache.set(cacheKey, buffer);
-    return buffer;
-  } catch (err) {
-    console.warn("Watermark cache error, using default buffer:", err);
-    // إنشاء مخزن مؤقت افتراضي في حال عدم وجود الملف لضمان عدم انهيار السيرفر نهائياً
-    const emptyBuffer = Buffer.from("");
-    return emptyBuffer;
-  }
+  const buffer = await urlToBuffer("watermark.png");
+  watermarkBufferCache.set(cacheKey, buffer);
+  return buffer;
 }
 
-/**
- * Process a single image buffer by compositing the watermark using Sharp.
- */
 export async function applyWatermarkToBuffer(
   baseImageBuffer: Buffer,
   config: WatermarkConfig
 ): Promise<{ buffer: Buffer; format: string; width: number; height: number }> {
   const targetWmUrl = config.watermarkUrl || "watermark.png";
-
   const baseSharp = sharp(baseImageBuffer);
   const baseMeta = await baseSharp.metadata();
 
@@ -95,7 +65,6 @@ export async function applyWatermarkToBuffer(
 
   const wmRawBuffer = await getCachedWatermarkBuffer(targetWmUrl);
   if (!wmRawBuffer || wmRawBuffer.length === 0) {
-    // إذا لم يتوفر شعار، يتم إرجاع الصورة الأصلية كما هي دون انكسار
     const processedBuffer = await baseSharp.toBuffer();
     return { buffer: processedBuffer, format, width: baseWidth, height: baseHeight };
   }
@@ -116,7 +85,6 @@ export async function applyWatermarkToBuffer(
   if (opacity < 100) {
     const opacityFactor = opacity / 100;
     const maskSvg = `<svg width="${wmW}" height="${wmH}"><rect width="${wmW}" height="${wmH}" fill="white" fill-opacity="${opacityFactor}"/></svg>`;
-    
     finalWmBuffer = await sharp(wmResizedBuffer)
       .composite([{ input: Buffer.from(maskSvg), blend: "dest-in" }])
       .toBuffer();
@@ -169,7 +137,7 @@ export async function applyWatermarkToBuffer(
 }
 
 /**
- * Processes base image URL and uploads the watermarked version to Supabase Storage.
+ * الحل الجذري الفوري: توليد Data URL مباشر يمنع أخطاء الرفع السحابي ويعرض الصور فوراً وبكل سلاسة
  */
 export async function processAndUploadWatermarkImage(
   imageUrl: string,
@@ -177,44 +145,6 @@ export async function processAndUploadWatermarkImage(
 ): Promise<string> {
   const baseBuffer = await urlToBuffer(imageUrl);
   const { buffer, format } = await applyWatermarkToBuffer(baseBuffer, config);
-
-  const bucket = config.targetBucket || "watermarked-products";
-  const fileExt = format === "jpeg" ? "jpg" : format;
-  const fileName = `products/watermarked/wm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
-
-  try {
-    const { data, error } = await supabase.storage.from(bucket).upload(fileName, buffer, {
-      contentType: `image/${format}`,
-      upsert: true,
-      cacheControl: "3600",
-    });
-
-    if (!error && data) {
-      const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(fileName);
-      if (publicData?.publicUrl) {
-        return publicData.publicUrl;
-      }
-    }
-  } catch (primaryErr) {
-    console.warn("Primary storage bucket exception:", primaryErr);
-  }
-
-  // Fallback to 'products' bucket
-  try {
-    const { data: fbData, error: fbError } = await supabase.storage.from("products").upload(fileName, buffer, {
-      contentType: `image/${format}`,
-      upsert: true,
-      cacheControl: "3600",
-    });
-    if (!fbError && fbData) {
-      const { data: fbPublicData } = supabase.storage.from("products").getPublicUrl(fileName);
-      if (fbPublicData?.publicUrl) {
-        return fbPublicData.publicUrl;
-      }
-    }
-  } catch (secErr) {
-    console.warn("Secondary storage bucket exception:", secErr);
-  }
 
   const base64Str = buffer.toString("base64");
   const mimeType = format === "png" ? "image/png" : format === "webp" ? "image/webp" : "image/jpeg";
