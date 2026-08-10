@@ -92,41 +92,33 @@ export default function WatermarkSettings({ initialConfig, onSave }: WatermarkSe
       const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
       const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-      // 1. جلب أول سجل من جدول settings لمعرفة الـ ID الحقيقي
-      const { data: existingSettings } = await supabase
-        .from("settings")
-        .select("id")
-        .limit(1)
-        .maybeSingle();
+      // البحث عن السجل الحالي وتحديث حقل watermark_config فقط لمنع كسر أي بيانات بالواجهة
+      const { data: existing } = await supabase.from("settings").select("id").limit(1).maybeSingle();
 
-      let updateErr = null;
-
-      if (existingSettings && existingSettings.id) {
-        // 2. إذا وجدنا سجل، نقوم بتحديثه باستخدام الـ ID الخاص به مباشرة
+      let err = null;
+      if (existing?.id) {
         const { error } = await supabase
           .from("settings")
           .update({ watermark_config: config })
-          .eq("id", existingSettings.id);
-        updateErr = error;
+          .eq("id", existing.id);
+        err = error;
       } else {
-        // 3. إذا لم يكن هناك أي سجل في الجدول، نقوم بإنشائه لأول مرة
         const { error } = await supabase
           .from("settings")
           .insert({ watermark_config: config });
-        updateErr = error;
+        err = error;
       }
 
-      if (updateErr) throw new Error(updateErr.message);
+      if (err) throw new Error(err.message);
 
-      // 4. تحديث الـ Settings Context في التطبيق
+      // تحديث سياق التطبيق المحلي بالتغييرات الجديدة
       await updateSettings({ watermarkConfig: config });
 
-      success("تم الحفظ بنجاح", "تم تحديث وحفظ إعدادات العلامة المائية في قاعدة البيانات.");
+      success("تم الحفظ بنجاح", "تم حفظ إعدادات العلامة المائية الخاصة بالصور فقط.");
       if (onSave) await onSave(config);
-
     } catch (err: any) {
-      console.error("Save Error:", err);
-      toastError("فشل الحفظ", err?.message || "حدث خطأ أثناء حفظ الإعدادات.");
+      console.error("Save error:", err);
+      toastError("فشل الحفظ", err?.message || "حدث خطأ غير متوقع.");
     } finally {
       setIsSaving(false);
     }
