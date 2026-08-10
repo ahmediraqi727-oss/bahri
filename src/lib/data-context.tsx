@@ -511,45 +511,37 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const updateCategory = useCallback(async (id: string, updates: Partial<CategoryItem>): Promise<CategoryItem> => {
     const row = categoryToRow(updates as Record<string, unknown>);
-    let updatedRow: Record<string, unknown> | null = null;
 
-    if (isUUID(id)) {
-      const { data, error } = await supabase.from("categories").update(row).eq("id", id).select().maybeSingle();
-      if (!error && data) {
-        updatedRow = data;
-      }
+    // تنفيذ التحديث مباشرة في قاعدة البيانات للقسم المحدّد عبر الـ ID
+    const { data: updatedData, error } = await supabase
+      .from("categories")
+      .update(row)
+      .eq("id", id)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      console.error("خطأ في تحديث القسم بقاعدة البيانات:", error.message);
     }
 
-    if (!updatedRow && updates.name) {
-      const catName = updates.name;
-      const { data: existingCat } = await supabase.from("categories").select("id, image, image_url").eq("name", catName).maybeSingle();
-      
-      const targetImage = updates.image !== undefined ? updates.image : (existingCat?.image || existingCat?.image_url || "");
-      const upsertRow: Record<string, unknown> = {
-        name: catName,
-        image: targetImage,
-        image_url: targetImage,
-        priority: Number(updates.priority) || 1,
-        display_order: Number(updates.priority) || 1,
-        sort_order: Number(updates.priority) || 1,
-        is_active: updates.isActive !== false,
-        keywords: updates.keywords || "",
-      };
+    let finalCat: CategoryItem = updatedData ? rowToCategory(updatedData) : { 
+      id, 
+      name: updates.name || "", 
+      image: updates.image || "", 
+      priority: updates.priority || 1, 
+      isActive: updates.isActive !== false, 
+      keywords: updates.keywords || "" 
+    };
 
+    if (!updatedData && updates.name) {
       const { data: upsertData } = await supabase
         .from("categories")
-        .upsert(upsertRow, { onConflict: "name" })
+        .upsert({ ...row, name: updates.name }, { onConflict: "name" })
         .select()
         .maybeSingle();
-
-      if (upsertData) updatedRow = upsertData;
-    }
-
-    let finalCat: CategoryItem;
-    if (updatedRow) {
-      finalCat = rowToCategory(updatedRow);
-    } else {
-      finalCat = { id, name: updates.name || "", image: updates.image || "", priority: updates.priority || 1, isActive: updates.isActive !== false, keywords: updates.keywords || "" };
+      if (upsertData) {
+        finalCat = rowToCategory(upsertData);
+      }
     }
 
     setCategories((prev) => {
