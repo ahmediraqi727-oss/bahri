@@ -12,22 +12,23 @@ import { hasPermission } from "@/lib/permissions";
 import { getAdminPermissionsConfig } from "@/components/PermissionGate";
 
 const NAV_ITEMS = [
-  { label: "القائمة الرئيسية", href: "/dashboard", icon: "🏠", roles: ["manager", "admin"] as UserRole[] },
+  { label: "الفواتير والطلبات", href: "/dashboard/invoices", icon: "🧾", roles: ["manager", "admin"] as UserRole[] },
+  { label: "لوحة التحكم", href: "/dashboard", icon: "📊", roles: ["manager", "admin"] as UserRole[] },
+  { label: "الإعدادات", href: "/dashboard/settings", icon: "⚙️", roles: ["manager"] as UserRole[] },
+  { label: "إدارة أعضاء الفريق", href: "/dashboard/team", icon: "👥", roles: ["manager"] as UserRole[] },
+  { label: "إدارة المنشورات", href: "/dashboard/posts", icon: "📢", roles: ["manager", "admin"] as UserRole[] },
+  { label: "إدارة الصلاحيات", href: "/dashboard/roles", icon: "🔐", roles: ["manager", "admin"] as UserRole[] },
+  { label: "المنشورات والمقاطع", href: "/posts", icon: "🎬", roles: ["manager", "admin", "customer"] as UserRole[] },
   { label: "المنتجات", href: "/dashboard/products", icon: "📦", roles: ["manager", "admin"] as UserRole[] },
   { label: "الأقسام", href: "/dashboard/categories", icon: "📂", roles: ["manager", "admin"] as UserRole[] },
   { label: "الموردين", href: "/dashboard/suppliers", icon: "🚚", roles: ["manager", "admin"] as UserRole[] },
   { label: "المخزون", href: "/dashboard/inventory", icon: "📊", roles: ["manager", "admin"] as UserRole[] },
-  { label: "الطلبات", href: "/dashboard/orders", icon: "🛒", roles: ["manager", "admin"] as UserRole[] },
-  { label: "الفواتير", href: "/dashboard/invoices", icon: "🧾", roles: ["manager", "admin"] as UserRole[] },
   { label: "التقارير", href: "/dashboard/analytics", icon: "📈", roles: ["manager"] as UserRole[] },
   { label: "الزبائن", href: "/dashboard/customers", icon: "👥", roles: ["manager", "admin"] as UserRole[] },
   { label: "إدارة الحسابات", href: "/dashboard/accounts", icon: "👤", roles: ["manager"] as UserRole[] },
   { label: "سجل الحركات", href: "/dashboard/activity", icon: "📝", roles: ["manager"] as UserRole[] },
   { label: "سلة المهملات", href: "/dashboard/trash", icon: "🗑️", roles: ["manager"] as UserRole[] },
-  { label: "المتجر", href: "/", icon: "🏪", roles: ["manager", "admin", "customer"] as UserRole[] },
-  { label: "صلاحيات الإداري", href: "/dashboard/roles", icon: "🔐", roles: ["manager", "admin"] as UserRole[] },
-  { label: "إعدادات", href: "/dashboard/settings", icon: "⚙️", roles: ["manager"] as UserRole[] },
-  { label: "صور الواجهة", href: "/dashboard/hero-gallery", icon: "🖼️", roles: ["manager"] as UserRole[] },
+  { label: "العودة للمتجر", href: "/", icon: "🏪", roles: ["manager", "admin", "customer"] as UserRole[] },
 ];
 
 const ROLE_LABELS: Record<UserRole, string> = {
@@ -52,10 +53,13 @@ interface StaffUser {
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { settings, setCurrentRole } = useSettings();
+  const { settings, setCurrentRole, toggleDarkMode, toggleEyeProtection } = useSettings();
   const { user, signOut } = useAuth();
   const { logActivity } = useActivityLog();
   const currentRole = settings?.currentRole || "manager";
+  const isDarkMode = settings?.darkMode || false;
+  const isEyeProtection = settings?.eyeProtection || false;
+
   const roleThemes = settings?.roleThemes || {
     manager: { primary: "#1e40af", secondary: "#7c3aed", accent: "#f59e0b" },
     admin: { primary: "#059669", secondary: "#0891b2", accent: "#f97316" },
@@ -91,14 +95,10 @@ export default function Sidebar() {
       const deltaX = touch.clientX - touchStartX.current;
       const deltaY = touch.clientY - touchStartY.current;
 
-      // Ensure horizontal swipe is dominant over vertical scroll
       if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 40) {
-        // RTL Layout: Right edge touch (clientX >= innerWidth - 50) and swipe left (deltaX < -40) opens sidebar
         if (!mobileOpen && touchStartX.current >= window.innerWidth - 50 && deltaX < -40) {
           setMobileOpen(true);
-        }
-        // Swipe Right (deltaX > 40) when open closes sidebar
-        else if (mobileOpen && deltaX > 40) {
+        } else if (mobileOpen && deltaX > 40) {
           setMobileOpen(false);
         }
       }
@@ -184,256 +184,297 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Floating Mobile Sidebar Toggle Button */}
+      {/* Floating Mobile Sidebar Toggle Button (≡) */}
       <button
         onClick={() => setMobileOpen((prev) => !prev)}
-        className="md:hidden fixed top-3 right-3 z-40 p-2.5 bg-white/90 dark:bg-gray-900/90 text-gray-800 dark:text-white rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 backdrop-blur-md flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+        className="md:hidden fixed top-3 right-3 z-40 p-2.5 bg-gray-900/90 text-white rounded-xl shadow-lg border border-gray-700 backdrop-blur-md flex items-center justify-center transition-all hover:scale-105 active:scale-95"
         aria-label="القائمة الجانبية"
         title="فتح/إغلاق القائمة الجانبية"
       >
-        <span className="text-xl font-bold">{mobileOpen ? "✕" : "☰"}</span>
+        <span className="text-xl font-bold">{mobileOpen ? "✕" : "≡"}</span>
       </button>
 
       {/* Mobile Backdrop Overlay */}
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-40 transition-opacity animate-fadeIn"
+          className="md:hidden fixed inset-0 bg-black/70 backdrop-blur-xs z-40 transition-opacity animate-fadeIn"
           onClick={() => setMobileOpen(false)}
         />
       )}
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed md:sticky top-0 right-0 z-50 h-screen w-64 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 flex flex-col transition-transform duration-300 ease-in-out shrink-0 ${
+        className={`fixed md:sticky top-0 right-0 z-50 h-screen w-64 bg-gray-900 border-l border-gray-800 flex flex-col transition-transform duration-300 ease-in-out shrink-0 text-right ${
           mobileOpen ? "translate-x-0 shadow-2xl" : "translate-x-full md:translate-x-0"
         }`}
+        dir="rtl"
       >
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center gap-3 mb-3">
-          <img src="/logo.jpg" alt="شعار أحمد بحري" className="w-10 h-10 rounded-lg object-cover shadow-md" />
-          <h1 className="font-bold text-gray-900 dark:text-white text-sm leading-tight">
-            {settings.siteName}
-          </h1>
-        </div>
-
-        {user && (
-          <div className="mb-3 p-2 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-            <div className="text-xs font-semibold text-gray-900 dark:text-white truncate">{user.fullName || user.email}</div>
-            <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{ROLE_LABELS[user.role]}</div>
-          </div>
-        )}
-
-        {user?.role === "manager" && (
-          <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg">
-            {(["manager", "admin", "customer"] as UserRole[]).map((role) => (
-              <button
-                key={role}
-                onClick={() => setCurrentRole(role)}
-                className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${
-                  currentRole === role
-                    ? "text-white shadow-sm"
-                    : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-                }`}
-                style={currentRole === role ? { backgroundColor: roleThemes[role].primary } : {}}
-              >
-                {ROLE_LABELS[role]}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {visibleItems.map((item) => {
-          const isActive = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                isActive
-                  ? "text-white shadow-md"
-                  : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white"
-              }`}
-              style={isActive ? { backgroundColor: theme.primary } : {}}
-            >
-              <span className="text-lg">{item.icon}</span>
-              <span>{item.label}</span>
-            </Link>
-          );
-        })}
-
-        {user?.role === "manager" && (
-          <div>
+        {/* Top Header */}
+        <div className="p-4 border-b border-gray-800">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-3">
+              <img src="/logo.jpg" alt="شعار أحمد بحري" className="w-10 h-10 rounded-xl object-cover shadow-md border border-gray-700" />
+              <h1 className="font-extrabold text-white text-sm leading-tight">
+                {settings.siteName}
+              </h1>
+            </div>
+            {/* Desktop Menu Toggle Icon (≡) */}
             <button
-              onClick={() => { setStaffOpen(!staffOpen); if (!staffOpen) fetchStaff(); }}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                staffOpen
-                  ? "text-white shadow-md"
-                  : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white"
-              }`}
-              style={staffOpen ? { backgroundColor: theme.primary } : {}}
+              onClick={() => setMobileOpen((prev) => !prev)}
+              className="hidden md:flex p-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors"
+              title="تصغير/تكبير القائمة"
             >
-              <div className="flex items-center gap-3">
-                <span className="text-lg">👥</span>
-                <span>الفريق</span>
-              </div>
-              <svg className={`w-4 h-4 transition-transform ${staffOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
+              <span className="text-lg font-bold">≡</span>
             </button>
-
-            {staffOpen && (
-              <div className="mt-1 mr-4 space-y-1 border-r-2 border-gray-200 dark:border-gray-700 pr-2">
-                {staff.length === 0 ? (
-                  <p className="text-xs text-gray-400 dark:text-gray-500 py-2 px-2">لا يوجد أعضاء</p>
-                ) : (
-                  staff.map((s) => (
-                    <div
-                      key={s.id}
-                      className="group flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
-                          style={{ backgroundColor: ROLE_COLORS[s.role] }}
-                        >
-                          {s.full_name?.charAt(0) || s.email.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold text-gray-900 dark:text-white truncate">{s.full_name || s.email}</p>
-                          <p className="text-[10px] text-gray-400 dark:text-gray-500" style={{ color: ROLE_COLORS[s.role] }}>{ROLE_LABELS[s.role]}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                        <button
-                          onClick={() => { setEditingUser(s); setEditRole(s.role); }}
-                          className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                          title="تعديل الصلاحية"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                        </button>
-                        <button
-                          onClick={() => setConfirmDeleteId(s.id)}
-                          className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                          title="حذف"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
           </div>
-        )}
-      </nav>
 
-      <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
-        <div className="flex items-center gap-2">
-          <div
-            className="w-2 h-2 rounded-full animate-pulse"
-            style={{ backgroundColor: theme.accent }}
-          />
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            الدور الحالي: <span className="font-semibold" style={{ color: theme.primary }}>{ROLE_LABELS[currentRole]}</span>
-          </span>
-        </div>
-        <button
-          onClick={handleLogout}
-          className="w-full py-2 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
-        >
-          تسجيل الخروج
-        </button>
-      </div>
+          {user && (
+            <div className="mb-3 p-2.5 rounded-xl bg-gray-800/80 border border-gray-700/60">
+              <div className="text-xs font-bold text-white truncate">{user.fullName || user.email}</div>
+              <div className="text-[10px] text-gray-400 truncate">{ROLE_LABELS[user.role]}</div>
+            </div>
+          )}
 
-      {/* Edit Role Modal */}
-      {editingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setEditingUser(null)}>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl mx-4" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">تعديل الصلاحية</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{editingUser.full_name || editingUser.email}</p>
-
-            <div className="space-y-2 mb-6">
-              {(["manager", "admin", "customer"] as UserRole[]).map((r) => (
+          {user?.role === "manager" && (
+            <div className="flex gap-1 p-1 bg-gray-800 rounded-xl border border-gray-700/50">
+              {(["manager", "admin", "customer"] as UserRole[]).map((role) => (
                 <button
-                  key={r}
-                  onClick={() => setEditRole(r)}
-                  className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
-                    editRole === r
-                      ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-                      : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+                  key={role}
+                  onClick={() => setCurrentRole(role)}
+                  className={`flex-1 py-1.2 text-xs font-bold rounded-lg transition-all ${
+                    currentRole === role
+                      ? "text-white shadow-md"
+                      : "text-gray-400 hover:text-white"
                   }`}
+                  style={currentRole === role ? { backgroundColor: roleThemes[role].primary } : {}}
                 >
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ backgroundColor: ROLE_COLORS[r] }}>
-                    {r === "manager" ? "👑" : r === "admin" ? "🛡️" : "👤"}
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{ROLE_LABELS[r]}</p>
-                    <p className="text-[10px] text-gray-400">
-                      {r === "manager" ? "صلاحيات كاملة" : r === "admin" ? "إدارة المنتجات والمخزون" : "تسوق فقط"}
-                    </p>
-                  </div>
-                  {editRole === r && (
-                    <svg className="w-5 h-5 text-blue-500 mr-auto" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
-                  )}
+                  {ROLE_LABELS[role]}
                 </button>
               ))}
             </div>
+          )}
+        </div>
 
-            <div className="flex gap-3">
-              <button
-                onClick={() => handleRoleChange(editingUser.id, editRole, editingUser.full_name || editingUser.email)}
-                className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white transition-colors"
-                style={{ backgroundColor: ROLE_COLORS[editRole] }}
+        {/* Navigation Items List */}
+        <nav className="flex-1 p-3 space-y-1 overflow-y-auto custom-scrollbar">
+          {visibleItems.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-extrabold transition-all ${
+                  isActive
+                    ? "text-white shadow-lg bg-blue-600 border border-blue-500 scale-[1.01]"
+                    : "text-gray-300 hover:bg-gray-800 hover:text-white"
+                }`}
+                style={isActive ? { backgroundColor: theme.primary } : {}}
               >
-                حفظ التغيير
-              </button>
+                <span className="text-lg shrink-0">{item.icon}</span>
+                <span className="truncate">{item.label}</span>
+              </Link>
+            );
+          })}
+
+          {user?.role === "manager" && (
+            <div className="pt-1">
               <button
-                onClick={() => setEditingUser(null)}
-                className="flex-1 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+                onClick={() => { setStaffOpen(!staffOpen); if (!staffOpen) fetchStaff(); }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-extrabold transition-all ${
+                  staffOpen
+                    ? "text-white shadow-md bg-gray-800"
+                    : "text-gray-300 hover:bg-gray-800 hover:text-white"
+                }`}
               >
-                إلغاء
+                <div className="flex items-center gap-3">
+                  <span className="text-lg">👥</span>
+                  <span>أعضاء الفريق التفصيلي</span>
+                </div>
+                <svg className={`w-4 h-4 transition-transform ${staffOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
               </button>
+
+              {staffOpen && (
+                <div className="mt-1 mr-4 space-y-1 border-r-2 border-gray-700 pr-2">
+                  {staff.length === 0 ? (
+                    <p className="text-xs text-gray-400 py-2 px-2">لا يوجد أعضاء</p>
+                  ) : (
+                    staff.map((s) => (
+                      <div
+                        key={s.id}
+                        className="group flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-gray-800 transition-colors"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div
+                            className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
+                            style={{ backgroundColor: ROLE_COLORS[s.role] }}
+                          >
+                            {s.full_name?.charAt(0) || s.email.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-white truncate">{s.full_name || s.email}</p>
+                            <p className="text-[10px]" style={{ color: ROLE_COLORS[s.role] }}>{ROLE_LABELS[s.role]}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          <button
+                            onClick={() => { setEditingUser(s); setEditRole(s.role); }}
+                            className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-blue-400 transition-colors"
+                            title="تعديل الصلاحية"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteId(s.id)}
+                            className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-red-400 transition-colors"
+                            title="حذف"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
+          )}
+        </nav>
+
+        {/* Footer Area: Toggles & Logout */}
+        <div className="p-3 border-t border-gray-800 space-y-2 bg-gray-900/90">
+          {/* Day Mode / Dark Mode Toggle */}
+          <button
+            onClick={() => toggleDarkMode()}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-gray-300 hover:text-white bg-gray-800/60 hover:bg-gray-800 border border-gray-700/50 transition-all"
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="text-base">{isDarkMode ? "☀️" : "🌙"}</span>
+              <span>{isDarkMode ? "الوضع النهاري" : "الوضع الداكن"}</span>
+            </div>
+            <span className="text-[10px] text-gray-400 bg-gray-700/60 px-2 py-0.5 rounded-md">
+              {isDarkMode ? "مَفْعَل" : "مُعطّل"}
+            </span>
+          </button>
+
+          {/* Eye Protection Mode Toggle */}
+          <button
+            onClick={() => toggleEyeProtection()}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-gray-300 hover:text-white bg-gray-800/60 hover:bg-gray-800 border border-gray-700/50 transition-all"
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="text-base">👓</span>
+              <span>حماية العين</span>
+            </div>
+            <span className="text-[10px] text-gray-400 bg-gray-700/60 px-2 py-0.5 rounded-md">
+              {isEyeProtection ? "مَفْعَل" : "مُعطّل"}
+            </span>
+          </button>
+
+          {/* Logout Button */}
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 py-2.5 text-xs font-extrabold text-red-400 hover:text-white bg-red-950/40 hover:bg-red-900/60 border border-red-800/40 rounded-xl transition-all shadow-sm"
+          >
+            <span className="text-base">🚪</span>
+            <span>تسجيل الخروج</span>
+          </button>
+
+          {/* Bottom Info Bar */}
+          <div className="flex items-center justify-between pt-1 text-[10px] text-gray-500 font-mono">
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              متصل
+            </span>
+            <span>v1.0.0</span>
           </div>
         </div>
-      )}
 
-      {/* Delete Confirmation Modal */}
-      {confirmDeleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setConfirmDeleteId(null)}>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl mx-4" onClick={(e) => e.stopPropagation()}>
-            <div className="text-center">
-              <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+        {/* Edit Role Modal */}
+        {editingUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs" onClick={() => setEditingUser(null)}>
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl mx-4 text-right" onClick={(e) => e.stopPropagation()} dir="rtl">
+              <h3 className="text-lg font-bold text-white mb-1">تعديل الصلاحية</h3>
+              <p className="text-sm text-gray-400 mb-4">{editingUser.full_name || editingUser.email}</p>
+
+              <div className="space-y-2 mb-6">
+                {(["manager", "admin", "customer"] as UserRole[]).map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => setEditRole(r)}
+                    className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
+                      editRole === r
+                        ? "border-blue-500 bg-blue-900/30"
+                        : "border-gray-800 hover:border-gray-700"
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ backgroundColor: ROLE_COLORS[r] }}>
+                      {r === "manager" ? "👑" : r === "admin" ? "🛡️" : "👤"}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-white">{ROLE_LABELS[r]}</p>
+                      <p className="text-[10px] text-gray-400">
+                        {r === "manager" ? "صلاحيات كاملة" : r === "admin" ? "إدارة المنتجات والمخزون" : "تسوق فقط"}
+                      </p>
+                    </div>
+                    {editRole === r && (
+                      <svg className="w-5 h-5 text-blue-500 mr-auto" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                    )}
+                  </button>
+                ))}
               </div>
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">حذف الحساب</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">هل أنت متأكد من حذف هذا الحساب؟ لا يمكن التراجع.</p>
+
               <div className="flex gap-3">
                 <button
-                  onClick={() => {
-                    const u = staff.find((s) => s.id === confirmDeleteId);
-                    if (u) handleDelete(u.id, u.full_name || u.email);
-                  }}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-colors"
+                  onClick={() => handleRoleChange(editingUser.id, editRole, editingUser.full_name || editingUser.email)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-colors"
+                  style={{ backgroundColor: ROLE_COLORS[editRole] }}
                 >
-                  حذف
+                  حفظ التغيير
                 </button>
                 <button
-                  onClick={() => setConfirmDeleteId(null)}
-                  className="flex-1 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm"
+                  onClick={() => setEditingUser(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-700 text-gray-300 hover:bg-gray-800 transition-colors text-sm font-bold"
                 >
                   إلغاء
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </aside>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {confirmDeleteId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs" onClick={() => setConfirmDeleteId(null)}>
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl mx-4 text-center" onClick={(e) => e.stopPropagation()} dir="rtl">
+              <div className="w-16 h-16 rounded-full bg-red-900/30 flex items-center justify-center mx-auto mb-4 border border-red-800/40">
+                <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+              </div>
+              <h3 className="text-lg font-bold text-white mb-2">حذف الحساب</h3>
+              <p className="text-sm text-gray-400 mb-6">هل أنت متأكد من حذف هذا الحساب؟ لا يمكن التراجع.</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    const u = staff.find((s) => s.id === confirmDeleteId);
+                    if (u) handleDelete(u.id, u.full_name || u.email);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-red-600 hover:bg-red-700 transition-colors"
+                >
+                  حذف
+                </button>
+                <button
+                  onClick={() => setConfirmDeleteId(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-700 text-gray-300 hover:bg-gray-800 transition-colors text-sm font-bold"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </aside>
     </>
   );
 }
