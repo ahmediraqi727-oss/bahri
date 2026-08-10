@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { processAndUploadWatermarkImage } from "@/lib/ImageProcessor";
-import { WatermarkConfig, WatermarkOptions } from "@/lib/types";
+import { WatermarkConfig } from "@/lib/types";
 import { supabase } from "@/lib/supabase-client";
 
 export async function POST(req: NextRequest) {
@@ -15,7 +15,9 @@ export async function POST(req: NextRequest) {
     }
 
     const { productIds, items, options, watermarkConfig, revertToOriginal } = body || {};
-    const effectiveConfig = {
+    
+    // ضبط إعدادات افتراضية آمنة تستخدم رابط الشعار الثابت لتخفيف الضغط على الذاكرة
+    const effectiveConfig: WatermarkConfig = {
       watermarkUrl: "/watermark.png",
       position: "top-left",
       customX: 10,
@@ -25,6 +27,11 @@ export async function POST(req: NextRequest) {
       applyOnUpload: true,
       ...(watermarkConfig || options || {}),
     };
+
+    // إذا كان الشعار المدخل عبارة عن Base64 ضخم، نقوم بإجباره على استخدام المسار الثابت السريع لمنع انهيار الذاكرة
+    if (effectiveConfig.watermarkUrl && effectiveConfig.watermarkUrl.startsWith("data:")) {
+      effectiveConfig.watermarkUrl = "/watermark.png";
+    }
 
     if (!revertToOriginal && (!effectiveConfig.watermarkUrl || effectiveConfig.watermarkUrl.trim() === "")) {
       effectiveConfig.watermarkUrl = "/watermark.png";
@@ -58,44 +65,52 @@ export async function POST(req: NextRequest) {
     let failedCount = 0;
     const results = [];
 
-    for (const item of targetItems) {
-      try {
-        if (revertToOriginal) {
-          const originalUrl = item.original_image_url || item.image;
-          if (originalUrl) {
-            await supabase
-              .from("products")
-              .update({ image: originalUrl, original_image_url: originalUrl, updated_at: new Date().toISOString() })
-              .eq("id", item.id);
-            processedCount++;
-            results.push({ id: item.id, success: true, image: originalUrl });
-          } else {
+    // المعالجة على دفعات (Chunks of 5) لمنع استنزاف ذاكرة الخادم (Memory Safe)
+    const CHUNK_SIZE = 5;
+    for (let i = 0; i < targetItems.length; i += CHUNK_SIZE) {
+      const chunk = targetItems.slice(i, i + CHUNK_SIZE);
+
+      await Promise.all(
+        chunk.map(async (item) => {
+          try {
+            if (revertToOriginal) {
+              const originalUrl = item.original_image_url || item.image;
+              if (originalUrl) {
+                await supabase
+                  .from("products")
+                  .update({ image: originalUrl, original_image_url: originalUrl, updated_at: new Date().toISOString() })
+                  .eq("id", item.id);
+                processedCount++;
+                results.push({ id: item.id, success: true, image: originalUrl });
+              } else {
+                failedCount++;
+                results.push({ id: item.id, success: false, error: "لا توجد صورة أصلية" });
+              }
+            } else {
+              const sourceUrl = item.original_image_url || item.image;
+              if (!sourceUrl) {
+                failedCount++;
+                return;
+              }
+              const newWatermarkedUrl = await processAndUploadWatermarkImage(sourceUrl, effectiveConfig);
+              if (newWatermarkedUrl) {
+                await supabase
+                  .from("products")
+                  .update({ image: newWatermarkedUrl, original_image_url: sourceUrl, updated_at: new Date().toISOString() })
+                  .eq("id", item.id);
+                processedCount++;
+                results.push({ id: item.id, success: true, image: newWatermarkedUrl });
+              } else {
+                failedCount++;
+                results.push({ id: item.id, success: false, error: "فشل المعالجة بمحرك Sharp" });
+              }
+            }
+          } catch (itemErr: any) {
             failedCount++;
-            results.push({ id: item.id, success: false, error: "لا توجد صورة أصلية" });
+            results.push({ id: item.id, success: false, error: itemErr?.message || "خطأ غير معروف" });
           }
-        } else {
-          const sourceUrl = item.original_image_url || item.image;
-          if (!sourceUrl) {
-            failedCount++;
-            continue;
-          }
-          const newWatermarkedUrl = await processAndUploadWatermarkImage(sourceUrl, effectiveConfig);
-          if (newWatermarkedUrl) {
-            await supabase
-              .from("products")
-              .update({ image: newWatermarkedUrl, original_image_url: sourceUrl, updated_at: new Date().toISOString() })
-              .eq("id", item.id);
-            processedCount++;
-            results.push({ id: item.id, success: true, image: newWatermarkedUrl });
-          } else {
-            failedCount++;
-            results.push({ id: item.id, success: false, error: "فشل المعالجة بمحرك Sharp" });
-          }
-        }
-      } catch (itemErr: any) {
-        failedCount++;
-        results.push({ id: item.id, success: false, error: itemErr?.message || "خطأ غير معروف" });
-      }
+        })
+      );
     }
 
     return NextResponse.json({
