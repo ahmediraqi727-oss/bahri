@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { NextRequest, NextResponse } from "next/server";
 import { applyWatermarkToBuffer, processAndUploadWatermarkImage, urlToBuffer } from "@/lib/ImageProcessor";
 import { WatermarkConfig } from "@/lib/types";
