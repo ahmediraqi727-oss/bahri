@@ -19,6 +19,8 @@ const STORAGE_KEY = "app_site_settings_cache";
 
 function rowToSettings(row: Record<string, unknown>): SiteSettings {
   const rt = (row.role_themes as Record<string, Record<string, string>>) || {};
+  const wm = (row.watermark_config as Record<string, any>) || {};
+
   return {
     siteName: (row.site_name as string) || DEFAULT_SETTINGS.siteName,
     logo: (row.logo as string) || "",
@@ -54,6 +56,19 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
     showCategoriesCarousel: row.show_categories_carousel !== undefined ? Boolean(row.show_categories_carousel) : true,
     defaultDeliveryFee: row.default_delivery_fee !== undefined ? Number(row.default_delivery_fee) : 5000,
     defaultDeliveryDuration: (row.default_delivery_duration as string) || "2 - 3 أيام عمل",
+
+    // Watermark Configuration
+    watermarkConfig: {
+      enabled: wm.enabled !== undefined ? Boolean(wm.enabled) : false,
+      watermarkUrl: wm.watermarkUrl || wm.watermark_url || "",
+      position: wm.position || "bottom-right",
+      customX: wm.customX !== undefined ? Number(wm.customX) : (wm.custom_x !== undefined ? Number(wm.custom_x) : 85),
+      customY: wm.customY !== undefined ? Number(wm.customY) : (wm.custom_y !== undefined ? Number(wm.custom_y) : 85),
+      opacity: wm.opacity !== undefined ? Number(wm.opacity) : 80,
+      scale: wm.scale !== undefined ? Number(wm.scale) : 20,
+      applyOnUpload: wm.applyOnUpload !== undefined ? Boolean(wm.applyOnUpload) : (wm.apply_on_upload !== undefined ? Boolean(wm.apply_on_upload) : true),
+      targetBucket: wm.targetBucket || wm.target_bucket || "watermarked-products",
+    },
 
     currentRole: "manager",
     roleThemes: {
@@ -112,6 +127,7 @@ function settingsToRow(settings: SiteSettings): Record<string, unknown> {
     show_categories_carousel: settings.showCategoriesCarousel !== undefined ? settings.showCategoriesCarousel : true,
     default_delivery_fee: settings.defaultDeliveryFee !== undefined ? settings.defaultDeliveryFee : 5000,
     default_delivery_duration: settings.defaultDeliveryDuration || "2 - 3 أيام عمل",
+    watermark_config: settings.watermarkConfig,
     role_themes: settings.roleThemes,
   };
 }

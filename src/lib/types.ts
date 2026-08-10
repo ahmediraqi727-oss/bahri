@@ -6,6 +6,32 @@ export interface RoleTheme {
   accent: string;
 }
 
+export type WatermarkPosition = "top-left" | "top-right" | "bottom-left" | "bottom-right" | "center" | "custom";
+
+export interface WatermarkConfig {
+  enabled: boolean;
+  watermarkUrl: string;
+  position: WatermarkPosition;
+  customX: number; // percentage 0 - 100%
+  customY: number; // percentage 0 - 100%
+  opacity: number; // 0 - 100
+  scale: number;   // 5 - 80 (% of base image width)
+  applyOnUpload: boolean;
+  targetBucket?: string;
+}
+
+export const DEFAULT_WATERMARK_CONFIG: WatermarkConfig = {
+  enabled: false,
+  watermarkUrl: "",
+  position: "bottom-right",
+  customX: 85,
+  customY: 85,
+  opacity: 80,
+  scale: 20,
+  applyOnUpload: true,
+  targetBucket: "watermarked-products",
+};
+
 export interface SiteSettings {
   siteName: string;
   logo: string;
@@ -41,6 +67,8 @@ export interface SiteSettings {
   defaultDeliveryDuration?: string;
   // Eye Protection Mode
   eyeProtection?: boolean;
+  // Watermark Engine Configuration
+  watermarkConfig?: WatermarkConfig;
   roleThemes: {
     manager: RoleTheme;
     admin: RoleTheme;
@@ -78,6 +106,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   showCategoriesCarousel: true,
   defaultDeliveryFee: 5000,
   defaultDeliveryDuration: "2 - 3 أيام عمل",
+  watermarkConfig: DEFAULT_WATERMARK_CONFIG,
   roleThemes: {
     manager: { primary: "#1e40af", secondary: "#7c3aed", accent: "#f59e0b" },
     admin: { primary: "#059669", secondary: "#0891b2", accent: "#f97316" },
@@ -117,6 +146,7 @@ export interface Product {
   id: string;
   name: string;
   image: string;
+  originalImageUrl?: string;
   costPrice: number;
   wholesalePrice: number;
   profitMargin: number;

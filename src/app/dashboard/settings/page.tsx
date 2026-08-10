@@ -9,6 +9,7 @@ import Link from "next/link";
 import ColorPicker from "@/components/ColorPicker";
 import ImageUploader from "@/components/ImageUploader";
 import CategoriesManager from "@/components/CategoriesManager";
+import WatermarkSettings from "@/components/WatermarkSettings";
 import ProfileEditModal from "@/components/ProfileEditModal";
 import { SiteSettings, UserRole } from "@/lib/types";
 
@@ -335,6 +336,9 @@ export default function SettingsPage() {
         </div>
         <CategoriesManager />
       </section>
+
+      {/* === Section 1.88: Automated Watermark Tool (أداة العلامة المائية المؤتمتة) === */}
+      <WatermarkSettings />
 
       {/* === Section 1.9: Footer Customization (تخصيص تذييل الصفحة) === */}
       <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">

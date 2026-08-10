@@ -40,6 +40,9 @@ export default function ImportExportBar() {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [categoryTab, setCategoryTab] = useState<"existing" | "new">("existing");
   const [isImporting, setIsImporting] = useState(false);
+  const [enableWatermarkOnImport, setEnableWatermarkOnImport] = useState<boolean>(
+    settings.watermarkConfig?.applyOnUpload ?? true
+  );
 
   // Restore Duplicate Resolution State
   const [duplicateQueue, setDuplicateQueue] = useState<DuplicatePair[]>([]);
@@ -220,7 +223,51 @@ export default function ImportExportBar() {
         entity: "منتجات",
         details: `استيراد ${count} منتج${overrideCategory ? ` في قسم "${overrideCategory}"` : ""} من ملف ${fileName}`,
       });
-      resolveToast(toastId, "success", `✅ تم استيراد ${count} منتج بنجاح!`, overrideCategory ? `القسم المعيّن: ${overrideCategory}` : undefined);
+      resolveToast(
+        toastId,
+        "success",
+        `✅ تم استيراد ${count} منتج بنجاح!`,
+        enableWatermarkOnImport && settings.watermarkConfig?.watermarkUrl
+          ? "جاري دمج العلامة المائية للصور في الخلفية..."
+          : overrideCategory
+          ? `القسم المعيّن: ${overrideCategory}`
+          : undefined
+      );
+
+      // ── Non-blocking Background Job: Apply Watermark using Sharp API ──────
+      if (enableWatermarkOnImport && settings.watermarkConfig?.watermarkUrl) {
+        (async () => {
+          try {
+            const { data: latestProducts } = await supabase
+              .from("products")
+              .select("id, image, original_image_url")
+              .order("created_at", { ascending: false })
+              .limit(finalRows.length);
+
+            if (latestProducts && latestProducts.length > 0) {
+              const wmToastId = toastLoading(
+                "جاري إضافة العلامة المائية في الخلفية...",
+                `معالجة صور ${latestProducts.length} منتج مستورد عبر السيرفر`
+              );
+
+              await fetch("/api/watermark/bulk", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  items: latestProducts,
+                  watermarkConfig: settings.watermarkConfig,
+                }),
+              });
+
+              await reloadAllData();
+              resolveToast(wmToastId, "success", "🎉 اكتمل إضافة العلامة المائية للصور المستوردة بالخلفية!");
+            }
+          } catch (wmErr) {
+            console.warn("Background watermark job error:", wmErr);
+          }
+        })();
+      }
+
       setCategoryModalOpen(false);
       setMissingDataModalOpen(false);
       setPendingMappedRows([]);
@@ -743,6 +790,27 @@ export default function ImportExportBar() {
                   className="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
               )}
+
+              {/* Watermark Auto Apply Toggle */}
+              <div className="p-3 bg-blue-50/70 dark:bg-blue-950/30 rounded-xl border border-blue-200 dark:border-blue-800 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">💧</span>
+                  <div>
+                    <p className="text-xs font-bold text-blue-900 dark:text-blue-200">
+                      تفعيل العلامة المائية الآلية للصور
+                    </p>
+                    <p className="text-[11px] text-blue-700 dark:text-blue-300">
+                      معالجة خلفية غير حاجبة بواسطة Sharp بعد رفع المنتجات
+                    </p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={enableWatermarkOnImport}
+                  onChange={(e) => setEnableWatermarkOnImport(e.target.checked)}
+                  className="w-5 h-5 accent-blue-600 rounded cursor-pointer"
+                />
+              </div>
 
               {/* Action buttons */}
               <div className="flex flex-col sm:flex-row gap-2 pt-1">
