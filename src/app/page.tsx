@@ -12,6 +12,8 @@ import CategoriesCarousel from "@/components/CategoriesCarousel";
 import GuestWelcomeModal from "@/components/GuestWelcomeModal";
 import ProfileEditModal from "@/components/ProfileEditModal";
 import ProductDetailModal from "@/components/ProductDetailModal";
+import CustomerProductsModal from "@/components/CustomerProductsModal";
+import ContactSupportModal from "@/components/ContactSupportModal";
 import { supabase } from "@/lib/supabase-client";
 import { useLang, Lang } from "@/lib/lang-context";
 import { hasPermission } from "@/lib/permissions";
@@ -78,6 +80,10 @@ export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileEditOpen, setProfileEditOpen] = useState(false);
   const [guestEditOpen, setGuestEditOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
+  const [myProductsOpen, setMyProductsOpen] = useState(false);
+  const [copyNotice, setCopyNotice] = useState(false);
   const [eyeCare, setEyeCare] = useState(false);
   const [fontSize, setFontSize] = useState(16);
   // Per-card quick qty state: productId -> qty
@@ -239,15 +245,24 @@ export default function Home() {
   }, []);
 
   const openMap = () => {
-    const url = storeLocation?.google_maps_url || "https://maps.google.com/?q=أحمد+بحري+متجر";
-    // Detect Capacitor native environment
+    const rawMapUrl =
+      storeLocation?.google_maps_url ||
+      settings.storeMapLink ||
+      settings.storeMapEmbedUrl ||
+      (settings.storeAddress
+        ? `https://maps.google.com/?q=${encodeURIComponent(settings.storeAddress)}`
+        : "https://maps.google.com/?q=أحمد+بحري+متجر");
+
     const isCapacitor = typeof window !== "undefined" && !!(window as typeof window & { Capacitor?: { isNativePlatform: () => boolean } }).Capacitor?.isNativePlatform?.();
-    if (isCapacitor && storeLocation) {
-      // Deep link to native Maps app
-      window.location.href = `geo:${storeLocation.google_maps_url.includes("q=") ? storeLocation.google_maps_url.split("q=")[1] : "33.3128,44.3615"}`;
-    } else {
-      window.open(url, "_blank", "noopener,noreferrer");
+
+    if (isCapacitor && rawMapUrl) {
+      const geoQuery = rawMapUrl.includes("q=") ? rawMapUrl.split("q=")[1] : rawMapUrl.includes("@") ? rawMapUrl.split("@")[1].split(",")[0] : "";
+      if (geoQuery) {
+        window.location.href = `geo:0,0?q=${encodeURIComponent(geoQuery)}`;
+        return;
+      }
     }
+    window.open(rawMapUrl, "_blank", "noopener,noreferrer");
   };
 
   const handleAdd = (product: typeof products[0]) => {
@@ -560,22 +575,35 @@ export default function Home() {
                       {/* Controlled by Manager Settings in Permissions/Settings Page        */}
                       {/* ------------------------------------------------------------------ */}
 
-                      {/* 1. Logos & Identity Button */}
+                      {/* 1. Products Button: "المنتجات" for Admin/Manager, "منتجاتي" for Customers */}
                       {homeVis.showLogos !== false && (
-                        <Link
-                          href="/dashboard/hero-gallery"
-                          onClick={() => setMenuOpen(false)}
-                          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors text-right"
-                        >
-                          <span className="text-xl">🖼️</span>
-                          <div className="flex-1 text-right">
-                            <span className="text-sm font-bold text-blue-700 dark:text-blue-400">الشعارات والتصميم</span>
-                            <p className="text-[11px] text-gray-400 mt-0.5">معرض صور وتصميم الواجهة</p>
-                          </div>
-                        </Link>
+                        (user?.role === "manager" || user?.role === "admin") ? (
+                          <Link
+                            href="/dashboard/products"
+                            onClick={() => setMenuOpen(false)}
+                            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors text-right"
+                          >
+                            <span className="text-xl">📦</span>
+                            <div className="flex-1 text-right">
+                              <span className="text-sm font-bold text-blue-700 dark:text-blue-400">المنتجات</span>
+                              <p className="text-[11px] text-gray-400 mt-0.5">إدارة المنتجات والمخزون</p>
+                            </div>
+                          </Link>
+                        ) : (
+                          <button
+                            onClick={() => { setMyProductsOpen(true); setMenuOpen(false); }}
+                            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors text-right"
+                          >
+                            <span className="text-xl">🛍️</span>
+                            <div className="flex-1 text-right">
+                              <span className="text-sm font-bold text-blue-700 dark:text-blue-400">منتجاتي</span>
+                              <p className="text-[11px] text-gray-400 mt-0.5">المنتجات المشتراة والمفضلة</p>
+                            </div>
+                          </button>
+                        )
                       )}
 
-                      {/* 2. Store Share Button */}
+                      {/* 2. Store Share Button: "المشاركة" */}
                       {homeVis.showShare !== false && (
                         <button
                           onClick={() => { setShareOpen(true); setMenuOpen(false); }}
@@ -583,13 +611,13 @@ export default function Home() {
                         >
                           <span className="text-xl">🔗</span>
                           <div className="flex-1 text-right">
-                            <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400">مشاركة المتجر والتطبيقات</span>
-                            <p className="text-[11px] text-gray-400 mt-0.5">رابط المتجر وتطبيقات الهاتف</p>
+                            <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400">المشاركة</span>
+                            <p className="text-[11px] text-gray-400 mt-0.5">مشاركة رابط المتجر والتطبيق</p>
                           </div>
                         </button>
                       )}
 
-                      {/* 3. Store Map Location Button */}
+                      {/* 3. Database-Driven Store Map Location Button */}
                       {homeVis.showMap !== false && (
                         <button
                           onClick={() => { openMap(); setMenuOpen(false); }}
@@ -598,14 +626,16 @@ export default function Home() {
                           <span className="text-xl">📍</span>
                           <div className="flex-1 text-right">
                             <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">موقعنا على الخريطة</span>
-                            {storeLocation?.city && (
-                              <p className="text-xs text-gray-400 mt-0.5">{storeLocation.city} — {storeLocation.address}</p>
-                            )}
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              {storeLocation?.city
+                                ? `${storeLocation.city} — ${storeLocation.address}`
+                                : (settings.storeAddress || "بغداد، العراق")}
+                            </p>
                           </div>
                         </button>
                       )}
 
-                      {/* 4. Contact & Support Button */}
+                      {/* 4. Direct Admin Contact & Support Button */}
                       {homeVis.showContact !== false && (
                         <button
                           onClick={() => { setContactOpen(true); setMenuOpen(false); }}
@@ -614,7 +644,7 @@ export default function Home() {
                           <span className="text-xl">💬</span>
                           <div className="flex-1 text-right">
                             <span className="text-sm font-bold text-teal-700 dark:text-teal-400">التواصل والدعم الفني</span>
-                            <p className="text-[11px] text-gray-400 mt-0.5">ارسل رسالة مباشرة للإدارة</p>
+                            <p className="text-[11px] text-gray-400 mt-0.5">تواصل مباشر مع الدعم الفني والإدارة</p>
                           </div>
                         </button>
                       )}
@@ -1138,9 +1168,15 @@ export default function Home() {
       {/* Profile Edit Modal */}
       <ProfileEditModal isOpen={profileEditOpen} onClose={() => setProfileEditOpen(false)} />
 
+      {/* My Products / Favorites Modal */}
+      <CustomerProductsModal isOpen={myProductsOpen} onClose={() => setMyProductsOpen(false)} />
+
+      {/* Direct Contact & Technical Support Modal */}
+      <ContactSupportModal isOpen={contactOpen} onClose={() => setContactOpen(false)} />
+
       {/* Store & App Share Modal */}
       {shareOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs" onClick={() => setShareOpen(false)} dir="rtl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4" onClick={() => setShareOpen(false)} dir="rtl">
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl p-6 w-full max-w-md shadow-2xl mx-4 text-right animate-scaleUp" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-4 mb-4">
               <div className="flex items-center gap-3">
@@ -1148,17 +1184,36 @@ export default function Home() {
                   🔗
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-base text-gray-900 dark:text-white">مشاركة المتجر وتطبيقات الهاتف</h3>
-                  <p className="text-xs text-gray-400">شارك رابط الموقع مع أصدقائك أو حَمّل التطبيق</p>
+                  <h3 className="font-extrabold text-base text-gray-900 dark:text-white">المشاركة</h3>
+                  <p className="text-xs text-gray-400">شارك رابط الموقع والتطبيق بسهولة</p>
                 </div>
               </div>
               <button onClick={() => setShareOpen(false)} className="p-2 rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 text-lg">✕</button>
             </div>
 
             <div className="space-y-4">
+              {/* Native Mobile Web Share API trigger if supported */}
+              {typeof navigator !== "undefined" && typeof navigator.share === "function" && (
+                <button
+                  onClick={async () => {
+                    try {
+                      await navigator.share({
+                        title: settings.siteName || "متجر أحمد بحري",
+                        text: `تسوق أفضل المنتجات من متجر ${settings.siteName || "أحمد بحري"}`,
+                        url: typeof window !== "undefined" ? window.location.origin : "",
+                      });
+                    } catch { /* user cancel */ }
+                  }}
+                  className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-md flex items-center justify-center gap-2 transition-transform hover:scale-[1.01]"
+                >
+                  <span>📱</span>
+                  <span>مشاركة فورية عبر تطبيقات الهاتف (Share)</span>
+                </button>
+              )}
+
               {/* Copy Direct Link */}
-              <div className="p-3 bg-gray-50 dark:bg-gray-800/60 rounded-2xl border border-gray-200 dark:border-gray-700/60">
-                <p className="text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">رابط المتجر المباشر</p>
+              <div className="p-3 bg-gray-50 dark:bg-gray-800/60 rounded-2xl border border-gray-200 dark:border-gray-700/60 space-y-2">
+                <p className="text-xs font-bold text-gray-700 dark:text-gray-300">رابط المتجر المباشر</p>
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -1170,20 +1225,26 @@ export default function Home() {
                     onClick={() => {
                       if (typeof window !== "undefined") {
                         navigator.clipboard.writeText(window.location.origin);
-                        alert("تم نسخ رابط المتجر بنجاح! 📋");
+                        setCopyNotice(true);
+                        setTimeout(() => setCopyNotice(false), 2500);
                       }
                     }}
                     className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-all shadow-md whitespace-nowrap"
                   >
-                    نسخ الرابط
+                    {copyNotice ? "✓ تم النسخ!" : "نسخ الرابط"}
                   </button>
                 </div>
+                {copyNotice && (
+                  <p className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                    📋 تم نسخ رابط المتجر إلى المحفظة بنجاح!
+                  </p>
+                )}
               </div>
 
               {/* Social Channels */}
               <div className="grid grid-cols-2 gap-2">
                 <a
-                  href={`https://wa.me/?text=${encodeURIComponent("تسوق أفضل قطع الغيار في متجر أحمد بحري: " + (typeof window !== "undefined" ? window.location.origin : ""))}`}
+                  href={`https://wa.me/?text=${encodeURIComponent("تسوق أفضل المنتجات في متجر أحمد بحري: " + (typeof window !== "undefined" ? window.location.origin : ""))}`}
                   target="_blank"
                   rel="noreferrer"
                   className="flex items-center justify-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 rounded-2xl font-bold text-xs border border-emerald-200 dark:border-emerald-800/40 hover:scale-[1.02] transition-transform"
