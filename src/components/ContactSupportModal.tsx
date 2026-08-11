@@ -57,7 +57,7 @@ export default function ContactSupportModal({ isOpen, onClose }: ContactSupportM
 
       // 2. Also log in notifications hook
       addNotification({
-        type: "contact",
+        type: "info",
         title: `📩 رسالة دعم من: ${name.trim()}`,
         message: message.trim(),
       });

@@ -94,8 +94,6 @@ export default function Home() {
   const [contactPhone, setContactPhone] = useState("");
   const [contactMsg, setContactMsg] = useState("");
   const [contactSent, setContactSent] = useState(false);
-  const [contactOpen, setContactOpen] = useState(false);
-  const [shareOpen, setShareOpen] = useState(false);
   const [heroGallery, setHeroGallery] = useState<{ position: number; image_url: string }[]>([]);
 
   const homeVis = settings?.homeMenuVisibility || {
