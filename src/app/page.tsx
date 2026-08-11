@@ -870,33 +870,60 @@ export default function Home() {
                     </div>
 
                     {/* ── Dual Price Display ── */}
-                    <div className="space-y-1">
-                      <div className="flex items-baseline gap-1.5 flex-wrap">
-                        {hasDiscount ? (
-                          <>
-                            <span className="text-base text-gray-400 dark:text-gray-600 line-through font-medium">
+                    <div className="space-y-1.5">
+
+                      {/* ── Case A: wholesale price exists → show as hero, retail as baseline ── */}
+                      {product.wholesalePrice > 0 && product.wholesalePrice < product.retailPrice ? (
+                        <>
+                          {/* Retail — muted baseline above, always struck-through */}
+                          <div className="flex items-center gap-1">
+                            <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500">
+                              مفرد:
+                            </span>
+                            <span className="text-xs font-bold text-gray-400 dark:text-gray-500 line-through">
                               {product.retailPrice.toLocaleString()}
                             </span>
-                            <span className="text-xl sm:text-2xl font-extrabold text-red-600 dark:text-red-400">
-                              {unitPrice.toLocaleString()}
+                            <span className="text-[10px] text-gray-400 dark:text-gray-500">{t.dinar}</span>
+                          </div>
+
+                          {/* Wholesale — hero price, large, emerald */}
+                          <div className="flex items-baseline gap-1.5 flex-wrap">
+                            <span className="text-[11px] font-extrabold text-emerald-600 dark:text-emerald-400 flex-shrink-0">
+                              جملة:
                             </span>
-                            <span className="text-xs font-normal text-gray-400">{t.dinar}</span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="text-xl sm:text-2xl font-extrabold text-blue-600 dark:text-blue-400">
+                            <span className="text-xl sm:text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 leading-none">
+                              {hasDiscount
+                                ? unitPrice.toLocaleString()
+                                : product.wholesalePrice.toLocaleString()}
+                            </span>
+                            <span className="text-xs font-medium text-emerald-500 dark:text-emerald-500">{t.dinar}</span>
+                            {hasDiscount && (
+                              <span className="px-1.5 py-0.5 rounded-lg text-[10px] font-extrabold bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 leading-none">
+                                -{activeTier.discountPct}%
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        /* ── Case B: no separate wholesale → single retail price in blue ── */
+                        <div className="flex items-baseline gap-1.5 flex-wrap">
+                          {hasDiscount && (
+                            <span className="text-sm text-gray-400 dark:text-gray-600 line-through font-medium">
                               {product.retailPrice.toLocaleString()}
                             </span>
-                            <span className="text-xs font-normal text-gray-400">{t.dinar}</span>
-                          </>
-                        )}
-                      </div>
-                      {/* Wholesale reference price */}
-                      {product.wholesalePrice > 0 && product.wholesalePrice < product.retailPrice && (
-                        <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                          جملة: {product.wholesalePrice.toLocaleString()} {t.dinar}
-                        </p>
+                          )}
+                          <span className="text-xl sm:text-2xl font-extrabold text-blue-600 dark:text-blue-400">
+                            {hasDiscount ? unitPrice.toLocaleString() : product.retailPrice.toLocaleString()}
+                          </span>
+                          <span className="text-xs font-normal text-gray-400">{t.dinar}</span>
+                          {hasDiscount && (
+                            <span className="px-1.5 py-0.5 rounded-lg text-[10px] font-extrabold bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 leading-none">
+                              -{activeTier.discountPct}%
+                            </span>
+                          )}
+                        </div>
                       )}
+
                       {/* Dynamic tier badge instruction */}
                       <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-relaxed">
                         {badgeText}
