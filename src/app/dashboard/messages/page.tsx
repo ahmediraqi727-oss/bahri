@@ -54,10 +54,10 @@ function groupIntoThreads(msgs: Message[]): Thread[] {
     const unread = sorted.filter((m) => !m.is_admin_reply && !m.is_read).length;
     threads.push({
       thread_id: threadId,
-      sender_name: customer.sender_name,
-      sender_phone: customer.sender_phone || null,
-      last_message: last.content,
-      last_at: last.created_at,
+      sender_name: customer?.sender_name || "زائر",
+      sender_phone: customer?.sender_phone || null,
+      last_message: last?.content || "",
+      last_at: last?.created_at || new Date().toISOString(),
       unread_count: unread,
       messages: sorted,
     });
@@ -80,14 +80,13 @@ export default function MessagesPage() {
   const [broadcastSending, setBroadcastSending] = useState(false);
   const [broadcastSent, setBroadcastSent] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [errorState, setErrorState] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
   };
-
-  const [errorState, setErrorState] = useState<string | null>(null);
 
   const loadMessages = useCallback(async () => {
     try {
@@ -97,11 +96,14 @@ export default function MessagesPage() {
         .select("*")
         .order("created_at", { ascending: false })
         .limit(500);
+
       if (error) {
         console.error("Error fetching messages:", error);
         setErrorState(error.message || "حدث خطأ في تحميل الرسائل");
+        setLoading(false);
         return;
       }
+
       const grouped = groupIntoThreads((data || []) as Message[]);
       setThreads(grouped);
     } catch (err: any) {
@@ -127,13 +129,15 @@ export default function MessagesPage() {
         }
       });
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { 
+      supabase.removeChannel(channel); 
+    };
   }, [loadMessages]);
 
   // Scroll to bottom when thread selected or new message
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [selectedThread]);
+  }, [selectedThread?.messages]);
 
   // Mark thread as read when opened
   const openThread = async (thread: Thread) => {
@@ -167,14 +171,23 @@ export default function MessagesPage() {
         })
         .select()
         .single();
+
       if (error) throw error;
-      const updated = { ...selectedThread, messages: [...selectedThread.messages, newMsg as Message], last_message: replyText.trim(), last_at: new Date().toISOString() };
+
+      const updatedMsgs = [...selectedThread.messages, newMsg as Message];
+      const updated = { 
+        ...selectedThread, 
+        messages: updatedMsgs, 
+        last_message: replyText.trim(), 
+        last_at: new Date().toISOString() 
+      };
+
       setSelectedThread(updated);
       setThreads((prev) => prev.map((t) => t.thread_id === updated.thread_id ? updated : t));
       setReplyText("");
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     } catch (err) {
       console.error(err);
+      showToast("❌ فشل إرسال الرد");
     } finally {
       setSending(false);
     }
@@ -182,7 +195,11 @@ export default function MessagesPage() {
 
   const handleDeleteThread = async (threadId: string) => {
     if (!confirm("هل أنت متأكد من حذف هذه المحادثة؟")) return;
-    await supabase.from("messages").delete().eq("thread_id", threadId);
+    const { error } = await supabase.from("messages").delete().eq("thread_id", threadId);
+    if (error) {
+      showToast("❌ فشل الحذف");
+      return;
+    }
     setThreads((prev) => prev.filter((t) => t.thread_id !== threadId));
     if (selectedThread?.thread_id === threadId) setSelectedThread(null);
     showToast("✅ تم حذف المحادثة");
@@ -192,18 +209,28 @@ export default function MessagesPage() {
     if (!broadcastText.trim()) return;
     setBroadcastSending(true);
     try {
-      await supabase.from("messages").insert({
+      const newThreadId = crypto.randomUUID();
+      const { error } = await supabase.from("messages").insert({
         sender_name: user?.fullName || "الإدارة",
         content: `📢 رسالة ترويجية: ${broadcastText.trim()}`,
         is_admin_reply: true,
         is_read: true,
-        thread_id: crypto.randomUUID(),
+        thread_id: newThreadId,
       });
+
+      if (error) throw error;
+
       setBroadcastSent(true);
       showToast("✅ تم إرسال الرسالة الترويجية بنجاح");
-      setTimeout(() => { setBroadcastSent(false); setBroadcastText(""); setBroadcastOpen(false); }, 1500);
+      loadMessages();
+      setTimeout(() => { 
+        setBroadcastSent(false); 
+        setBroadcastText(""); 
+        setBroadcastOpen(false); 
+      }, 1500);
     } catch (err) {
       console.error(err);
+      showToast("❌ فشل الإرسال");
     } finally {
       setBroadcastSending(false);
     }
