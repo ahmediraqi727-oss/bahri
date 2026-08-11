@@ -530,19 +530,7 @@ export default function Home() {
                       {/* BRANCH 3: Session & UI Settings                                    */}
                       {/* ------------------------------------------------------------------ */}
 
-                      {/* Map Location Button (Always Visible) */}
-                      <button
-                        onClick={() => { openMap(); setMenuOpen(false); }}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors text-right"
-                      >
-                        <span className="text-xl">📍</span>
-                        <div className="flex-1 text-right">
-                          <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">موقعنا على الخريطة</span>
-                          {storeLocation?.city && (
-                            <p className="text-xs text-gray-400 mt-0.5">{storeLocation.city} — {storeLocation.address}</p>
-                          )}
-                        </div>
-                      </button>
+
 
                       {/* Posts Page Link (Always Visible) */}
                       <Link
