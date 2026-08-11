@@ -87,28 +87,45 @@ export default function MessagesPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const [errorState, setErrorState] = useState<string | null>(null);
+
   const loadMessages = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("messages")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(500);
-    if (error) { console.error(error); return; }
-    const grouped = groupIntoThreads((data || []) as Message[]);
-    setThreads(grouped);
-    setLoading(false);
+    try {
+      setErrorState(null);
+      const { data, error } = await supabase
+        .from("messages")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (error) {
+        console.error("Error fetching messages:", error);
+        setErrorState(error.message || "حدث خطأ في تحميل الرسائل");
+        return;
+      }
+      const grouped = groupIntoThreads((data || []) as Message[]);
+      setThreads(grouped);
+    } catch (err: any) {
+      console.error("Unexpected fetch error:", err);
+      setErrorState(err?.message || "حدث خطأ غير متوقع");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     loadMessages();
 
-    // Supabase Realtime subscription
+    // Supabase Realtime subscription with status tracking
     const channel = supabase
       .channel("messages-realtime")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, () => {
         loadMessages();
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          console.warn("Realtime subscription error for messages channel");
+        }
+      });
 
     return () => { supabase.removeChannel(channel); };
   }, [loadMessages]);
@@ -273,6 +290,16 @@ export default function MessagesPage() {
               <div className="flex items-center justify-center py-10 text-gray-400 text-sm">
                 <div className="animate-spin w-5 h-5 border-2 border-violet-500 border-t-transparent rounded-full ml-2" />
                 جارٍ التحميل...
+              </div>
+            ) : errorState ? (
+              <div className="p-4 text-center space-y-2">
+                <p className="text-xs text-red-500 font-bold">{errorState}</p>
+                <button
+                  onClick={() => { setLoading(true); loadMessages(); }}
+                  className="px-3 py-1 bg-violet-600 text-white rounded-lg text-xs font-bold"
+                >
+                  إعادة المحاولة 🔄
+                </button>
               </div>
             ) : filteredThreads.length === 0 ? (
               <div className="text-center py-10 text-gray-400 text-sm">
