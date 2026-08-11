@@ -860,8 +860,8 @@ export default function Home() {
                         🔍 عرض التفاصيل
                       </span>
                     </div>
-                    {/* Tier Mode Badge */}
-                    {hasDiscount && (
+                    {/* Tier Mode Badge — shown ONLY when Qty > 1 and tier discount applies */}
+                    {hasDiscount && qty > 1 && (
                       <div className="absolute top-2 right-2">
                         <span className="px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-red-600 text-white shadow-md">
                           -{activeTier.discountPct}%
@@ -881,39 +881,67 @@ export default function Home() {
                       {product.notes && <p className="text-xs text-gray-400 mt-1 line-clamp-1">{product.notes}</p>}
                     </div>
 
-                    {/* ── Dual Price Display (Wholesale - Retail) ── */}
+                    {/* ── Dual Price Display ── */}
                     <div className="space-y-1.5">
-                      <div className="flex items-baseline gap-1.5 flex-wrap">
-                        {/* Prominent Wholesale / Tier Price */}
-                        <span className="text-xl sm:text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">
-                          {wholesalePriceVal.toLocaleString()}
-                        </span>
+                      {qty === 1 || !hasDiscount ? (
+                        /* ── DEFAULT STATE (Qty = 1): Clean side-by-side Wholesale - Retail without strikethroughs or red badges ── */
+                        wholesalePriceVal < product.retailPrice ? (
+                          <div className="flex items-baseline gap-1.5 flex-wrap">
+                            {/* Base Wholesale Price */}
+                            <span className="text-xl sm:text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">
+                              {wholesalePriceVal.toLocaleString()}
+                            </span>
 
-                        {/* Dash Separator */}
-                        <span className="text-sm sm:text-base font-bold text-gray-400 dark:text-gray-500">
-                          -
-                        </span>
+                            {/* Dash Separator */}
+                            <span className="text-sm sm:text-base font-bold text-gray-400 dark:text-gray-500">
+                              -
+                            </span>
 
-                        {/* Base Single / Retail Baseline Price */}
-                        <span className="text-sm sm:text-base font-bold text-gray-400 dark:text-gray-500 line-through">
-                          {product.retailPrice.toLocaleString()}
-                        </span>
+                            {/* Base Single / Retail Price (Clean, NO strikethrough, NO red) */}
+                            <span className="text-sm sm:text-base font-bold text-gray-600 dark:text-gray-300">
+                              {product.retailPrice.toLocaleString()}
+                            </span>
 
-                        {/* Currency */}
-                        <span className="text-xs font-normal text-gray-400">{t.dinar}</span>
+                            {/* Currency */}
+                            <span className="text-xs font-normal text-gray-400">{t.dinar}</span>
+                          </div>
+                        ) : (
+                          /* Single price fallback if wholesale equals retail */
+                          <div className="flex items-baseline gap-1.5 flex-wrap">
+                            <span className="text-xl sm:text-2xl font-extrabold text-blue-600 dark:text-blue-400">
+                              {product.retailPrice.toLocaleString()}
+                            </span>
+                            <span className="text-xs font-normal text-gray-400">{t.dinar}</span>
+                          </div>
+                        )
+                      ) : (
+                        /* ── INTERACTIVE STATE (Qty > 1 & tier discount applies): Dynamic active price with strikethrough & red highlight ── */
+                        <div>
+                          <div className="flex items-baseline gap-1.5 flex-wrap">
+                            {/* Active Discounted Tier Unit Price */}
+                            <span className="text-xl sm:text-2xl font-extrabold text-red-600 dark:text-red-400">
+                              {unitPrice.toLocaleString()}
+                            </span>
 
-                        {hasDiscount && (
-                          <span className="px-1.5 py-0.5 rounded-lg text-[10px] font-extrabold bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 leading-none">
-                            -{activeTier.discountPct}%
-                          </span>
-                        )}
-                      </div>
+                            {/* Base Retail Price (Strikethrough) */}
+                            <span className="text-sm sm:text-base font-bold text-gray-400 dark:text-gray-500 line-through">
+                              {product.retailPrice.toLocaleString()}
+                            </span>
 
-                      {/* Active Qty Tier Price indicator if Qty > 1 */}
-                      {qty > 1 && (
-                        <div className="flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded-md">
-                          <span>سعر ({qty} قطع):</span>
-                          <span className="font-extrabold">{unitPrice.toLocaleString()} {t.dinar}</span>
+                            {/* Currency */}
+                            <span className="text-xs font-normal text-gray-400">{t.dinar}</span>
+
+                            {/* Red Tier Discount Tag */}
+                            <span className="px-1.5 py-0.5 rounded-lg text-[10px] font-extrabold bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 leading-none">
+                              -{activeTier.discountPct}% ({activeTier.label})
+                            </span>
+                          </div>
+
+                          {/* Active Qty Total Summary Banner */}
+                          <div className="mt-1 flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded-md">
+                            <span>إجمالي ({qty} قطع):</span>
+                            <span className="font-extrabold">{(unitPrice * qty).toLocaleString()} {t.dinar}</span>
+                          </div>
                         </div>
                       )}
 
