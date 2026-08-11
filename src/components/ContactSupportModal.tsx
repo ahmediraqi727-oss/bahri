@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useSettings } from "@/lib/settings-context";
 import { useNotifications } from "@/lib/notifications";
 import { supabase } from "@/lib/supabase-client";
+import { useAuth } from "@/lib/auth-context";
 import { smartMatch, type AutoReplyRule } from "@/lib/fuzzy-match";
 
 interface ContactSupportModalProps {
@@ -22,6 +23,7 @@ interface Inquiry {
 export default function ContactSupportModal({ isOpen, onClose }: ContactSupportModalProps) {
   const { settings } = useSettings();
   const { addNotification } = useNotifications();
+  const { user } = useAuth();
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -36,7 +38,7 @@ export default function ContactSupportModal({ isOpen, onClose }: ContactSupportM
   const [selectedCategory, setSelectedCategory] = useState<string>("الكل");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [inquirySearch, setInquirySearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState(""); // debounced value
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   // Auto-reply
   const [autoRules, setAutoRules] = useState<AutoReplyRule[]>([]);
@@ -94,9 +96,12 @@ export default function ContactSupportModal({ isOpen, onClose }: ContactSupportM
     if (!name.trim() || !message.trim()) return;
     setSending(true);
     try {
-      // 1. Save to messages table
       const threadId = crypto.randomUUID();
-      await supabase.from("messages").insert({
+      const customerUserId = user && !user.isGuest && !user.id.startsWith("guest-") ? user.id : null;
+
+      // 1. Save to messages table with proper user mapping and error checking
+      const { error: msgError } = await supabase.from("messages").insert({
+        user_id: customerUserId,
         sender_name: name.trim(),
         sender_phone: phone.trim() || null,
         content: message.trim(),
@@ -104,6 +109,13 @@ export default function ContactSupportModal({ isOpen, onClose }: ContactSupportM
         is_read: false,
         thread_id: threadId,
       });
+
+      if (msgError) {
+        console.error("Supabase message insert error:", msgError);
+        alert("حدث خطأ أثناء إرسال الرسالة، يرجى المحاولة لاحقاً.");
+        setSending(false);
+        return;
+      }
 
       // 2. Fuzzy auto-reply check
       const globalThreshold = (settings as any).auto_reply_threshold ?? 0.9;
@@ -114,6 +126,7 @@ export default function ContactSupportModal({ isOpen, onClose }: ContactSupportM
       }
       if (matched) {
         await supabase.from("messages").insert({
+          user_id: customerUserId,
           sender_name: "الرد التلقائي 🤖",
           content: matched.rule.response_text,
           is_admin_reply: true,
@@ -125,14 +138,12 @@ export default function ContactSupportModal({ isOpen, onClose }: ContactSupportM
         setAutoReplyMsg(matched.rule.response_text);
       }
 
-      // 3. Notify admin bell
+      // 3. Notify admin bell safely (letting DB handle defaults if needed)
       await supabase.from("notifications").insert({
-        id: crypto.randomUUID(),
         type: "message",
         title: `📩 رسالة جديدة من: ${name.trim()}`,
         message: `${message.trim()} (هاتف: ${phone.trim() || "غير محدد"})`,
         read: false,
-        created_at: new Date().toISOString(),
       });
 
       addNotification({
@@ -150,7 +161,7 @@ export default function ContactSupportModal({ isOpen, onClose }: ContactSupportM
         if (!matched) onClose();
       }, matched ? 100 : 1500);
     } catch (err) {
-      console.error("Send contact message error:", err);
+      console.error("Send contact message unexpected error:", err);
     } finally {
       setSending(false);
     }
