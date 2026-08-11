@@ -1,5 +1,9 @@
 export type UserRole = "manager" | "admin" | "customer";
 
+// Re-export pricing engine types so components only need one import
+export type { PricingTier, GlobalPricingConfig, ProductPricingOverride } from "./pricing-engine";
+export { DEFAULT_PRICING_CONFIG } from "./pricing-engine";
+
 export interface RoleTheme {
   primary: string;
   secondary: string;
@@ -148,6 +152,10 @@ export interface SiteSettings {
   watermarkConfig?: WatermarkConfig;
   // Home Menu Custom Visibility Toggles
   homeMenuVisibility?: HomeMenuVisibilitySettings;
+  // ─── Pricing Tiers Engine ───────────────────────────────────
+  pricingTiers?: import("./pricing-engine").GlobalPricingConfig;
+  importMarkupPct?: number;             // % added to cost to derive retail price
+  importWholesaleReductionPct?: number; // % reduced from retail to derive wholesale price
   roleThemes: {
     manager: RoleTheme;
     admin: RoleTheme;
@@ -212,6 +220,18 @@ export const DEFAULT_SETTINGS: SiteSettings = {
     showMap: true,
     showContact: true,
   },
+  // Pricing engine defaults
+  pricingTiers: {
+    mode: "percentage",
+    tiers: [
+      { label: "مفرد",   minQty: 1,  maxQty: 1,     discountPct: 0  },
+      { label: "جملة 1", minQty: 2,  maxQty: 5,     discountPct: 2  },
+      { label: "جملة 2", minQty: 6,  maxQty: 10,    discountPct: 5  },
+      { label: "جملة 3", minQty: 11, maxQty: 99999, discountPct: 10 },
+    ],
+  },
+  importMarkupPct: 10,
+  importWholesaleReductionPct: 10,
   roleThemes: {
     manager: { primary: "#1e40af", secondary: "#7c3aed", accent: "#f59e0b" },
     admin: { primary: "#059669", secondary: "#0891b2", accent: "#f97316" },
@@ -261,6 +281,8 @@ export interface Product {
   notes: string;
   createdAt: string;
   updatedAt: string;
+  // Optional per-product pricing override (loaded from product_pricing_overrides table)
+  pricingOverride?: import("./pricing-engine").ProductPricingOverride | null;
 }
 
 export function calculateRetailPrice(costPrice: number, profitMargin: number): number {

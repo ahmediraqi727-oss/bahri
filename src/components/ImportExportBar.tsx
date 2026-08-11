@@ -12,6 +12,7 @@ import MissingDataModal, { IncompleteImportItem } from "./MissingDataModal";
 import { validateImportColumns } from "@/lib/import-validator";
 import { useToast } from "@/components/ToastProvider";
 import { isUUID } from "@/lib/data-context";
+import { deriveRetailFromCost, deriveWholesaleFromRetail } from "@/lib/pricing-engine";
 
 interface DuplicatePair {
   existing: Product;
@@ -136,8 +137,29 @@ export default function ImportExportBar() {
             Math.round(costPrice + (retailPrice - costPrice) * 0.5)
           );
         } else {
-          wholesalePrice = Math.round(costPrice * 1.15); // +15%
-          retailPrice = Math.round(costPrice * 1.30);    // +30%
+          // ─── Smart Auto-Calc: Case A (only cost price available) ───
+          const markupPct = settings.importMarkupPct ?? 10;
+          const reductionPct = settings.importWholesaleReductionPct ?? 10;
+          // Derive retail from cost + markup
+          retailPrice = deriveRetailFromCost(costPrice, markupPct);
+          // Derive wholesale from retail - reduction
+          wholesalePrice = deriveWholesaleFromRetail(retailPrice, reductionPct);
+        }
+      }
+
+      // ─── Smart Auto-Calc: Case B (retail exists but wholesale missing) ───
+      if (retailPrice > 0 && wholesalePrice <= 0) {
+        const reductionPct = settings.importWholesaleReductionPct ?? 10;
+        wholesalePrice = deriveWholesaleFromRetail(retailPrice, reductionPct);
+      }
+
+      // ─── Smart Auto-Calc: Case A (cost exists but retail missing) ───
+      if (costPrice > 0 && retailPrice <= 0) {
+        const markupPct = settings.importMarkupPct ?? 10;
+        retailPrice = deriveRetailFromCost(costPrice, markupPct);
+        if (wholesalePrice <= 0) {
+          const reductionPct = settings.importWholesaleReductionPct ?? 10;
+          wholesalePrice = deriveWholesaleFromRetail(retailPrice, reductionPct);
         }
       }
 

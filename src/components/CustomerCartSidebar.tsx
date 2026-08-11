@@ -48,10 +48,14 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
     msg += `\n🛍️ *تفاصيل المنتجات المطلوبة:*\n`;
 
     items.forEach((item, index) => {
+      const unitPrice = item.appliedTierPrice ?? item.retailPrice;
       msg += `${index + 1}. *${item.name}*\n`;
       msg += `   • الكمية: ${item.quantity}\n`;
-      msg += `   • السعر الفردي: ${item.retailPrice.toLocaleString()} د.ع\n`;
-      msg += `   • الإجمالي: ${(item.retailPrice * item.quantity).toLocaleString()} د.ع\n`;
+      if (item.appliedTierLabel && item.appliedTierLabel !== "مفرد") {
+        msg += `   • فئة السعر: ${item.appliedTierLabel}\n`;
+      }
+      msg += `   • السعر الفردي: ${unitPrice.toLocaleString()} د.ع\n`;
+      msg += `   • الإجمالي: ${(unitPrice * item.quantity).toLocaleString()} د.ع\n`;
       if (item.image) msg += `   • رابط الصورة: ${item.image}\n`;
     });
 
@@ -255,8 +259,24 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
                         )}
                         <div className="flex-1 min-w-0">
                           <p className="font-bold text-gray-900 dark:text-white text-sm truncate">{item.name}</p>
-                          <p className="text-xs text-blue-600 dark:text-blue-400 font-extrabold mt-0.5">
-                            {item.retailPrice.toLocaleString()} د.ع
+                          {/* Tier label badge */}
+                          {item.appliedTierLabel && item.appliedTierLabel !== "مفرد" && (
+                            <span className="inline-block px-1.5 py-0.5 rounded-md text-[10px] font-extrabold bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 mb-0.5">
+                              🏷️ {item.appliedTierLabel}
+                            </span>
+                          )}
+                          <div className="flex items-center gap-1">
+                            {(item.appliedTierPrice && item.appliedTierPrice < item.retailPrice) && (
+                              <span className="text-xs text-gray-400 line-through">
+                                {item.retailPrice.toLocaleString()}
+                              </span>
+                            )}
+                            <p className="text-xs font-extrabold mt-0.5" style={{ color: item.appliedTierPrice < item.retailPrice ? "#dc2626" : theme.primary }}>
+                              {(item.appliedTierPrice ?? item.retailPrice).toLocaleString()} د.ع
+                            </p>
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 font-bold">
+                            الإجمالي: {((item.appliedTierPrice ?? item.retailPrice) * item.quantity).toLocaleString()} د.ع
                           </p>
                           <div className="flex items-center gap-2 mt-2">
                             <button

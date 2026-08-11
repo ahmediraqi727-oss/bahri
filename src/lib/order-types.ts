@@ -2,8 +2,15 @@ export interface CartItem {
   productId: string;
   name: string;
   image: string;
+  /** Original base retail price (never changes after add-to-cart) */
   retailPrice: number;
+  /** Original wholesale price stored for reference */
+  wholesalePrice?: number;
   quantity: number;
+  /** Resolved unit price after applying the active tier discount */
+  appliedTierPrice: number;
+  /** Human-readable tier label, e.g. "جملة 1 — خصم 2%" */
+  appliedTierLabel: string;
 }
 
 export interface Order {

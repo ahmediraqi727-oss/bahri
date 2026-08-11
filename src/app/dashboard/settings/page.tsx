@@ -12,6 +12,7 @@ import WatermarkSettings from "@/components/WatermarkSettings";
 import ThemeCustomizer from "@/components/ThemeCustomizer";
 import ProfileEditModal from "@/components/ProfileEditModal";
 import { SiteSettings, UserRole } from "@/lib/types";
+import type { PricingTier } from "@/lib/pricing-engine";
 
 const FONT_OPTIONS = [
   { label: "Cairo", value: "Cairo" },
@@ -425,6 +426,171 @@ export default function SettingsPage() {
 
       {/* === Section 7: Automated Watermark Tool === */}
       <WatermarkSettings />
+
+      {/* === Section 7b: Pricing Tiers Engine Dashboard === */}
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-indigo-200 dark:border-indigo-800/40 p-6 space-y-6 shadow-sm" dir="rtl">
+        <div className="flex items-center gap-3 border-b border-indigo-100 dark:border-indigo-800/30 pb-4">
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xl text-white shadow-md flex-shrink-0">
+            🏷️
+          </div>
+          <div>
+            <h2 className="text-lg font-extrabold text-gray-900 dark:text-white">محرك الأسعار والتسعير المتدرج</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">إعداد حدود الكميات ونسب الخصم العالمية لجميع المنتجات</p>
+          </div>
+        </div>
+
+        {/* Import Auto-Calculation Settings */}
+        <div className="bg-amber-50 dark:bg-amber-950/20 rounded-xl p-4 border border-amber-200 dark:border-amber-800/40 space-y-3">
+          <p className="text-sm font-extrabold text-amber-800 dark:text-amber-300 flex items-center gap-2">📥 إعدادات الحساب التلقائي عند الاستيراد</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                نسبة الربح على التكلفة (حساب سعر المفرد)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number" min={0} max={500} step={1}
+                  value={formData.importMarkupPct ?? 10}
+                  onChange={(e) => handleChange({ importMarkupPct: parseFloat(e.target.value) || 10 })}
+                  className="w-24 px-3 py-2 rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-800 text-sm font-extrabold text-amber-700 dark:text-amber-300 outline-none focus:border-amber-500"
+                />
+                <span className="text-sm font-bold text-amber-700 dark:text-amber-300">%</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">سعر المفرد = التكلفة × (1 + {formData.importMarkupPct ?? 10}%)</span>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">
+                نسبة خصم الجملة من المفرد (حساب سعر الجملة)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number" min={0} max={99} step={1}
+                  value={formData.importWholesaleReductionPct ?? 10}
+                  onChange={(e) => handleChange({ importWholesaleReductionPct: parseFloat(e.target.value) || 10 })}
+                  className="w-24 px-3 py-2 rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-800 text-sm font-extrabold text-emerald-700 dark:text-emerald-300 outline-none focus:border-amber-500"
+                />
+                <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300">%</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">الجملة = المفرد × (1 − {formData.importWholesaleReductionPct ?? 10}%)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Global Tier Boundaries Editor */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-extrabold text-gray-700 dark:text-gray-200">🎯 جدول مستويات الخصم العالمي</p>
+            <button
+              onClick={() => {
+                const currentTiers = (formData.pricingTiers?.tiers ?? []);
+                const lastTier = currentTiers[currentTiers.length - 1];
+                const newMin = lastTier ? lastTier.minQty + 10 : 2;
+                handleChange({
+                  pricingTiers: {
+                    mode: "percentage",
+                    tiers: [
+                      ...currentTiers,
+                      { label: `جملة ${currentTiers.length}`, minQty: newMin, maxQty: newMin + 9, discountPct: 0 }
+                    ]
+                  }
+                });
+              }}
+              className="px-3 py-1.5 text-xs font-bold bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 rounded-xl hover:bg-indigo-200 dark:hover:bg-indigo-900/60 transition-colors"
+            >
+              + إضافة مستوى
+            </button>
+          </div>
+
+          {/* Tier Editor Table */}
+          <div className="border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden">
+            <div className="grid grid-cols-5 gap-0 bg-gray-50 dark:bg-gray-800 px-4 py-2 text-[11px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wide border-b border-gray-200 dark:border-gray-700">
+              <span>المستوى</span>
+              <span className="text-center">من (قطعة)</span>
+              <span className="text-center">إلى (قطعة)</span>
+              <span className="text-center">خصم %</span>
+              <span className="text-center">إجراء</span>
+            </div>
+
+            {(formData.pricingTiers?.tiers ?? []).map((tier, idx) => (
+              <div key={idx} className={`grid grid-cols-5 gap-2 items-center px-4 py-3 ${idx % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50/50 dark:bg-gray-800/50"} ${idx > 0 ? "border-t border-gray-100 dark:border-gray-800" : ""}`}>
+                <input
+                  type="text"
+                  value={tier.label}
+                  onChange={(e) => {
+                    const tiers = [...(formData.pricingTiers?.tiers ?? [])];
+                    tiers[idx] = { ...tiers[idx], label: e.target.value };
+                    handleChange({ pricingTiers: { mode: "percentage", tiers } });
+                  }}
+                  className="w-full px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs font-bold text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                />
+                <input
+                  type="number" min={1}
+                  value={tier.minQty}
+                  onChange={(e) => {
+                    const tiers = [...(formData.pricingTiers?.tiers ?? [])];
+                    tiers[idx] = { ...tiers[idx], minQty: parseInt(e.target.value) || 1 };
+                    handleChange({ pricingTiers: { mode: "percentage", tiers } });
+                  }}
+                  className="w-full px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs font-bold text-center text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                />
+                <input
+                  type="number" min={tier.minQty}
+                  value={tier.maxQty >= 99999 ? "" : tier.maxQty}
+                  placeholder="∞"
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value);
+                    const tiers = [...(formData.pricingTiers?.tiers ?? [])];
+                    tiers[idx] = { ...tiers[idx], maxQty: isNaN(v) ? 99999 : v };
+                    handleChange({ pricingTiers: { mode: "percentage", tiers } });
+                  }}
+                  className="w-full px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs font-bold text-center text-gray-900 dark:text-white outline-none focus:border-indigo-500"
+                />
+                <input
+                  type="number" min={0} max={99} step={0.5}
+                  value={tier.discountPct}
+                  onChange={(e) => {
+                    const tiers = [...(formData.pricingTiers?.tiers ?? [])];
+                    tiers[idx] = { ...tiers[idx], discountPct: parseFloat(e.target.value) || 0 };
+                    handleChange({ pricingTiers: { mode: "percentage", tiers } });
+                  }}
+                  className="w-full px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs font-bold text-center text-red-600 dark:text-red-400 outline-none focus:border-indigo-500"
+                />
+                <div className="flex justify-center">
+                  {idx > 0 && (
+                    <button
+                      onClick={() => {
+                        const tiers = [...(formData.pricingTiers?.tiers ?? [])];
+                        tiers.splice(idx, 1);
+                        handleChange({ pricingTiers: { mode: "percentage", tiers } });
+                      }}
+                      className="w-7 h-7 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-xs flex items-center justify-center hover:bg-red-200 transition-colors"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            💡 المستوى الأول (مفرد) هو السعر الأساسي بدون خصم. المستويات التالية تطبق خصماً نسبياً على السعر الأساسي.
+          </p>
+        </div>
+
+        {/* Save Button for Pricing Section */}
+        <div className="flex justify-end pt-2">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className={`px-8 py-2.5 rounded-xl font-extrabold text-sm text-white transition-all shadow-md ${
+              savedSuccess ? "bg-emerald-600" : saving ? "bg-gray-400 cursor-not-allowed" : "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 hover:scale-[1.02]"
+            }`}
+          >
+            {savedSuccess ? "✅ تم الحفظ" : saving ? "جارٍ الحفظ..." : "💾 حفظ إعدادات التسعير"}
+          </button>
+        </div>
+      </section>
 
       {/* === Section 8: Appearance & Fonts === */}
       <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">

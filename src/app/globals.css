@@ -102,6 +102,15 @@ input[type="range"]::-webkit-slider-runnable-track {
   animation: slide-in 0.3s ease-out;
 }
 
+@keyframes scaleUp {
+  from { transform: scale(0.92) translateY(8px); opacity: 0; }
+  to   { transform: scale(1)    translateY(0);   opacity: 1; }
+}
+
+.animate-scaleUp {
+  animation: scaleUp 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
 /* ==========================================================================
    GLOBAL UI/UX RESPONSIVENESS & PREVENT OVERLAP RULES
    ========================================================================== */

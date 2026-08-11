@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { SiteSettings, DEFAULT_SETTINGS, UserRole, RoleTheme } from "./types";
+import { SiteSettings, DEFAULT_SETTINGS, UserRole, RoleTheme, DEFAULT_PRICING_CONFIG } from "./types";
 import { supabase } from "./supabase-client";
 
 interface SettingsContextType {
@@ -100,6 +100,11 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
       showContact: (row.home_menu_visibility as any)?.showContact !== undefined ? Boolean((row.home_menu_visibility as any).showContact) : true,
     },
 
+    // ─ Pricing Tiers Engine ───────────────────────────────────
+    pricingTiers: (row.pricing_tiers as any) || DEFAULT_PRICING_CONFIG,
+    importMarkupPct: row.import_markup_pct != null ? Number(row.import_markup_pct) : 10,
+    importWholesaleReductionPct: row.import_wholesale_reduction_pct != null ? Number(row.import_wholesale_reduction_pct) : 10,
+
     currentRole: "manager",
     roleThemes: {
       manager: {
@@ -172,6 +177,10 @@ function settingsToRow(settings: SiteSettings): Record<string, unknown> {
     default_delivery_duration: settings.defaultDeliveryDuration || "2 - 3 أيام عمل",
     watermark_config: settings.watermarkConfig,
     role_themes: settings.roleThemes,
+    // Pricing Tiers Engine
+    pricing_tiers: settings.pricingTiers || DEFAULT_PRICING_CONFIG,
+    import_markup_pct: settings.importMarkupPct ?? 10,
+    import_wholesale_reduction_pct: settings.importWholesaleReductionPct ?? 10,
   };
 }
 

@@ -254,6 +254,8 @@ export default function OrdersPage() {
             image: prod.image || "",
             retailPrice: prod.retailPrice,
             quantity: 1,
+            appliedTierPrice: prod.retailPrice,
+            appliedTierLabel: "مفرد",
           },
         ];
       }

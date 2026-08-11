@@ -11,10 +11,19 @@ import CustomerCartSidebar from "@/components/CustomerCartSidebar";
 import CategoriesCarousel from "@/components/CategoriesCarousel";
 import GuestWelcomeModal from "@/components/GuestWelcomeModal";
 import ProfileEditModal from "@/components/ProfileEditModal";
+import ProductDetailModal from "@/components/ProductDetailModal";
 import { supabase } from "@/lib/supabase-client";
 import { useLang, Lang } from "@/lib/lang-context";
 import { hasPermission } from "@/lib/permissions";
 import { getAdminPermissionsConfig } from "@/components/PermissionGate";
+import {
+  buildTierBadgeText,
+  buildTierBadgeShort,
+  resolveTierForQty,
+  calculateTierPrice,
+  DEFAULT_PRICING_CONFIG,
+} from "@/lib/pricing-engine";
+import type { Product } from "@/lib/types";
 
 interface StoreLocation {
   id: string;
@@ -48,11 +57,14 @@ interface Post {
 
 export default function Home() {
   const { settings, toggleDarkMode, toggleEyeProtection } = useSettings();
-  const { products, suppliers, categories } = useData();
+  const { products, suppliers, categories, getEffectiveTiers } = useData();
   const { addItem, itemCount } = useCart();
   const { user, signOut, loading: authLoading } = useAuth();
   const { t, lang, setLang } = useLang();
   const theme = settings.roleThemes.customer;
+
+  // Global pricing config from settings
+  const globalPricingConfig = settings.pricingTiers ?? DEFAULT_PRICING_CONFIG;
 
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -68,6 +80,10 @@ export default function Home() {
   const [guestEditOpen, setGuestEditOpen] = useState(false);
   const [eyeCare, setEyeCare] = useState(false);
   const [fontSize, setFontSize] = useState(16);
+  // Per-card quick qty state: productId -> qty
+  const [cardQty, setCardQty] = useState<Record<string, number>>({});
+  // Detail modal
+  const [detailProduct, setDetailProduct] = useState<Product | null>(null);
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [contactMsg, setContactMsg] = useState("");
@@ -235,11 +251,16 @@ export default function Home() {
   };
 
   const handleAdd = (product: typeof products[0]) => {
+    const qty = cardQty[product.id] ?? 1;
+    const tiers = getEffectiveTiers(product.id, globalPricingConfig);
     addItem({
       productId: product.id,
       name: product.name,
       image: product.image,
       retailPrice: product.retailPrice,
+      wholesalePrice: product.wholesalePrice,
+      quantity: qty,
+      tiers,
     });
     setAddedId(product.id);
     setTimeout(() => setAddedId(null), 1200);
@@ -798,41 +819,129 @@ export default function Home() {
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
             {availableProducts.map((product) => {
               const isAdded = addedId === product.id;
+              const effectiveTiers = getEffectiveTiers(product.id, globalPricingConfig);
+              const qty = cardQty[product.id] ?? 1;
+              const activeTier = resolveTierForQty(qty, effectiveTiers);
+              const unitPrice = calculateTierPrice(product.retailPrice, activeTier);
+              const hasDiscount = activeTier.discountPct > 0;
+              const badgeText = buildTierBadgeText(effectiveTiers);
+
               return (
                 <div
                   key={product.id}
                   className="group bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col justify-between"
                   dir="rtl"
                 >
-                  <div className="relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800">
+                  {/* Product Image — click to open detail modal */}
+                  <div
+                    className="relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800 cursor-pointer"
+                    onClick={() => setDetailProduct(product)}
+                  >
                     {product.image ? (
                       <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-5xl text-gray-300">📦</div>
                     )}
+                    {/* Detail View Hint */}
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                      <span className="px-3 py-1.5 rounded-xl bg-white/90 dark:bg-gray-900/90 text-xs font-bold text-gray-700 dark:text-gray-200 shadow-lg backdrop-blur-sm">
+                        🔍 عرض التفاصيل
+                      </span>
+                    </div>
+                    {/* Tier Mode Badge */}
+                    {hasDiscount && (
+                      <div className="absolute top-2 right-2">
+                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-red-600 text-white shadow-md">
+                          -{activeTier.discountPct}%
+                        </span>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                  <div className="p-3 sm:p-4 space-y-3 flex-1 flex flex-col justify-between">
                     <div>
-                      <h3 className="font-bold text-gray-900 dark:text-white text-sm sm:text-base leading-tight line-clamp-2">{product.name}</h3>
-                      {product.notes && <p className="text-xs text-gray-400 mt-1 line-clamp-2">{product.notes}</p>}
+                      <h3
+                        className="font-bold text-gray-900 dark:text-white text-sm leading-tight line-clamp-2 cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        onClick={() => setDetailProduct(product)}
+                      >
+                        {product.name}
+                      </h3>
+                      {product.notes && <p className="text-xs text-gray-400 mt-1 line-clamp-1">{product.notes}</p>}
                     </div>
 
-                    <div className="pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
-                      <div>
-                        <p className="text-xl sm:text-2xl font-extrabold text-blue-600 dark:text-blue-400">
-                          {product.retailPrice.toLocaleString()}
-                          <span className="text-xs font-normal text-gray-400 mr-1">{t.dinar}</span>
+                    {/* ── Dual Price Display ── */}
+                    <div className="space-y-1">
+                      <div className="flex items-baseline gap-1.5 flex-wrap">
+                        {hasDiscount ? (
+                          <>
+                            <span className="text-base text-gray-400 dark:text-gray-600 line-through font-medium">
+                              {product.retailPrice.toLocaleString()}
+                            </span>
+                            <span className="text-xl sm:text-2xl font-extrabold text-red-600 dark:text-red-400">
+                              {unitPrice.toLocaleString()}
+                            </span>
+                            <span className="text-xs font-normal text-gray-400">{t.dinar}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-xl sm:text-2xl font-extrabold text-blue-600 dark:text-blue-400">
+                              {product.retailPrice.toLocaleString()}
+                            </span>
+                            <span className="text-xs font-normal text-gray-400">{t.dinar}</span>
+                          </>
+                        )}
+                      </div>
+                      {/* Wholesale reference price */}
+                      {product.wholesalePrice > 0 && product.wholesalePrice < product.retailPrice && (
+                        <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                          جملة: {product.wholesalePrice.toLocaleString()} {t.dinar}
                         </p>
+                      )}
+                      {/* Dynamic tier badge instruction */}
+                      <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-relaxed">
+                        {badgeText}
+                      </p>
+                    </div>
+
+                    {/* ── Quick Qty Stepper + Add to Cart ── */}
+                    <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-2">
+                      {/* Qty stepper */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-gray-400 flex-shrink-0">الكمية:</span>
+                        <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden flex-1">
+                          <button
+                            onClick={() => setCardQty((prev) => ({ ...prev, [product.id]: Math.max(1, (prev[product.id] ?? 1) - 1) }))}
+                            className="w-7 h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 font-bold text-sm transition-colors flex-shrink-0"
+                          >
+                            −
+                          </button>
+                          <span className="flex-1 text-center text-xs font-extrabold text-gray-900 dark:text-white">
+                            {qty}
+                          </span>
+                          <button
+                            onClick={() => setCardQty((prev) => ({ ...prev, [product.id]: (prev[product.id] ?? 1) + 1 }))}
+                            className="w-7 h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 font-bold text-sm transition-colors flex-shrink-0"
+                          >
+                            +
+                          </button>
+                        </div>
                       </div>
 
+                      {/* Add to Cart button */}
                       <button
                         onClick={() => handleAdd(product)}
                         disabled={isAdded}
-                        className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold text-white transition-all hover:scale-105 active:scale-95 disabled:scale-100 shadow-md"
+                        className="w-full px-3 py-2 rounded-xl text-xs sm:text-sm font-bold text-white transition-all hover:scale-[1.02] active:scale-[0.98] disabled:scale-100 shadow-md"
                         style={{ backgroundColor: isAdded ? "#10b981" : theme.primary }}
                       >
-                        {isAdded ? "✓ تم الإضافة" : "أضف للسلة 🛒"}
+                        {isAdded ? (
+                          <span>✓ تم الإضافة</span>
+                        ) : (
+                          <span>
+                            أضف {qty > 1 ? `${qty} قطع` : ""} للسلة 🛒
+                            {hasDiscount && <span className="mr-1 opacity-80">(-{activeTier.discountPct}%)</span>}
+                          </span>
+                        )}
                       </button>
                     </div>
                   </div>
@@ -842,6 +951,7 @@ export default function Home() {
           </div>
         )}
       </section>
+
 
       {/* ─── Posts: home_bottom position ─── */}
       {homePosts.filter((p) => p.display_position === "home_bottom").length > 0 && (
@@ -964,6 +1074,15 @@ export default function Home() {
 
       {/* Customer Cart Drawer */}
       <CustomerCartSidebar isOpen={cartOpen} onClose={() => setCartOpen(false)} />
+
+      {/* Product Detail Modal with Real-Time Pricing */}
+      {detailProduct && (
+        <ProductDetailModal
+          product={detailProduct}
+          tiers={getEffectiveTiers(detailProduct.id, globalPricingConfig)}
+          onClose={() => setDetailProduct(null)}
+        />
+      )}
 
       {/* Guest Welcome Modal */}
       <GuestWelcomeModal forceOpen={guestEditOpen} onClose={() => setGuestEditOpen(false)} />

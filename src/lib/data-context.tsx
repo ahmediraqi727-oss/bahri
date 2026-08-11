@@ -3,6 +3,14 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { Product, Supplier, CategoryItem } from "./types";
 import { supabase } from "./supabase-client";
+import {
+  ProductPricingOverride,
+  GlobalPricingConfig,
+  PricingTier,
+  DEFAULT_PRICING_CONFIG,
+  overrideFromRow,
+  getEffectiveTiers as engineGetEffectiveTiers,
+} from "./pricing-engine";
 
 export function extractCategoryFromNotes(notes: string): string {
   if (!notes) return "عام";
@@ -80,6 +88,10 @@ interface DataContextType {
   importProducts: (items: Omit<Product, "id" | "createdAt" | "updatedAt">[], onProgress?: (processed: number, total: number) => void) => Promise<number>;
   exportAllData: () => { products: Product[]; suppliers: Supplier[]; categories: CategoryItem[]; exportedAt: string };
   importAllData: (data: { products?: Product[]; suppliers?: Supplier[]; categories?: CategoryItem[] }) => Promise<void>;
+  // ─ Pricing overrides ──────────────────────────────────────────
+  productPricingOverrides: Record<string, ProductPricingOverride>;
+  getEffectiveTiers: (productId: string, globalConfig?: GlobalPricingConfig) => PricingTier[];
+  upsertPricingOverride: (override: ProductPricingOverride) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -214,6 +226,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [categories, setCategories] = useState<CategoryItem[]>([]);
+  const [productPricingOverrides, setProductPricingOverrides] = useState<Record<string, ProductPricingOverride>>({});
   const [loading, setLoading] = useState(true);
 
   const autoSyncCategoriesFromProducts = useCallback(async () => {
@@ -577,14 +590,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const reloadAllData = useCallback(async () => {
-    const [productsRes, suppliersRes, categoriesRes] = await Promise.all([
+    const [productsRes, suppliersRes, categoriesRes, overridesRes] = await Promise.all([
       supabase.from("products").select("*").order("created_at", { ascending: false }),
       supabase.from("suppliers").select("*").order("created_at", { ascending: false }),
       supabase.from("categories").select("*").order("priority", { ascending: true }),
+      supabase.from("product_pricing_overrides").select("*"),
     ]);
     if (productsRes.data) setProducts(productsRes.data.map(rowToProduct));
     if (suppliersRes.data) setSuppliers(suppliersRes.data.map(rowToSupplier));
     if (categoriesRes.data) setCategories(categoriesRes.data.map(rowToCategory));
+    if (overridesRes.data) {
+      const map: Record<string, ProductPricingOverride> = {};
+      overridesRes.data.forEach((row) => {
+        const override = overrideFromRow(row as Record<string, unknown>);
+        map[override.productId] = override;
+      });
+      setProductPricingOverrides(map);
+    }
   }, []);
 
   const persistAllCategoriesAndProducts = useCallback(async (catsToSave: CategoryItem[], prodsToSave: Product[]) => {
@@ -806,6 +828,33 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     await reloadAllData();
   }, [reloadAllData]);
 
+  // ─ Pricing override operations ──────────────────────────────────────────
+
+  const upsertPricingOverride = useCallback(async (override: ProductPricingOverride) => {
+    const { overrideToRow } = await import("./pricing-engine");
+    const row = overrideToRow(override);
+    const { error } = await supabase
+      .from("product_pricing_overrides")
+      .upsert(row, { onConflict: "product_id" });
+    if (error) {
+      console.error("Error upserting pricing override:", error.message);
+      return;
+    }
+    setProductPricingOverrides((prev) => ({
+      ...prev,
+      [override.productId]: override,
+    }));
+  }, []);
+
+  const getEffectiveTiers = useCallback(
+    (productId: string, globalConfig?: GlobalPricingConfig) => {
+      const cfg = globalConfig ?? DEFAULT_PRICING_CONFIG;
+      const override = productPricingOverrides[productId];
+      return engineGetEffectiveTiers(cfg, override);
+    },
+    [productPricingOverrides]
+  );
+
   return (
     <DataContext.Provider
       value={{
@@ -816,6 +865,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         autoSyncCategoriesFromProducts,
         persistAllCategoriesAndProducts, reloadAllData,
         importProducts, exportAllData, importAllData,
+        productPricingOverrides, getEffectiveTiers, upsertPricingOverride,
       }}
     >
       {children}
