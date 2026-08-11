@@ -14,13 +14,28 @@ import { useActivityLog } from "@/lib/activity-log";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 
+import { useSettings } from "@/lib/settings-context";
+
 export default function RolesPage() {
   const { user, loading } = useAuth();
+  const { settings, updateSettings } = useSettings();
   const router = useRouter();
   const [adminPerms, setAdminPerms] = useState<Permission[]>([]);
+  const [homeVis, setHomeVis] = useState({
+    showLogos: true,
+    showShare: true,
+    showMap: true,
+    showContact: true,
+  });
   const [mounted, setMounted] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const { logActivity } = useActivityLog();
+
+  useEffect(() => {
+    if (settings?.homeMenuVisibility) {
+      setHomeVis(settings.homeMenuVisibility);
+    }
+  }, [settings]);
 
   useEffect(() => {
     if (!loading) {
@@ -55,11 +70,28 @@ export default function RolesPage() {
 
   const handleSave = async () => {
     saveAdminPermissionsConfig({ permissions: adminPerms });
+    await updateSettings({ homeMenuVisibility: homeVis });
+
+    // Save to Supabase settings table if manager
+    if (user?.role === "manager") {
+      const { createClient } = await import("@supabase/supabase-js");
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+      const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+      const { data: existing } = await supabase.from("settings").select("id").limit(1).maybeSingle();
+      if (existing?.id) {
+        await supabase.from("settings").update({ home_menu_visibility: homeVis }).eq("id", existing.id);
+      } else {
+        await supabase.from("settings").insert({ home_menu_visibility: homeVis });
+      }
+    }
+
     await logActivity({
       user: "manager",
       action: "update",
       entity: "صلاحيات الإداري",
-      details: `تم تعديل صلاحيات الإداري: ${adminPerms.length} صلاحية مفعلة`,
+      details: `تم تعديل صلاحيات الإداري ورؤية عناصر قائمة الواجهة الرئيسية`,
     });
     setShowSaved(true);
     setTimeout(() => setShowSaved(false), 2000);
@@ -117,6 +149,93 @@ export default function RolesPage() {
               backgroundColor: "var(--primary)",
             }}
           />
+        </div>
+      </div>
+
+      {/* Home Menu Items Visibility Control Card (Managers Only) */}
+      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xl font-bold">
+            🎯
+          </div>
+          <div>
+            <h3 className="font-extrabold text-base text-gray-900 dark:text-white">
+              صلاحيات ورؤية عناصر القائمة المنسدلة للواجهة الرئيسية (Home Page Dropdown)
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              يمكن للمدير إخفاء أو إظهار الأزرار المنقولة حديثاً في قائمة الصفحة الرئيسية حصراً
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+          {/* 1. Logos & Identity */}
+          <div className="flex items-center justify-between p-3.5 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/60">
+            <div className="flex items-center gap-3">
+              <span className="text-xl">🖼️</span>
+              <div>
+                <p className="text-xs font-bold text-gray-900 dark:text-white">الشعارات والتصميم</p>
+                <p className="text-[11px] text-gray-500">إظهار زر المعرض والشعارات بالقائمة</p>
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={homeVis.showLogos}
+              onChange={(e) => setHomeVis((prev) => ({ ...prev, showLogos: e.target.checked }))}
+              className="w-5 h-5 accent-blue-600 cursor-pointer"
+            />
+          </div>
+
+          {/* 2. Store Share & App Links */}
+          <div className="flex items-center justify-between p-3.5 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/60">
+            <div className="flex items-center gap-3">
+              <span className="text-xl">🔗</span>
+              <div>
+                <p className="text-xs font-bold text-gray-900 dark:text-white">مشاركة المتجر والتطبيقات</p>
+                <p className="text-[11px] text-gray-500">إظهار زر مشاركة المتجر بالقائمة</p>
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={homeVis.showShare}
+              onChange={(e) => setHomeVis((prev) => ({ ...prev, showShare: e.target.checked }))}
+              className="w-5 h-5 accent-blue-600 cursor-pointer"
+            />
+          </div>
+
+          {/* 3. Store Map Location */}
+          <div className="flex items-center justify-between p-3.5 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/60">
+            <div className="flex items-center gap-3">
+              <span className="text-xl">📍</span>
+              <div>
+                <p className="text-xs font-bold text-gray-900 dark:text-white">موقعنا على الخريطة</p>
+                <p className="text-[11px] text-gray-500">إظهار زر الخريطة بالقائمة</p>
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={homeVis.showMap}
+              onChange={(e) => setHomeVis((prev) => ({ ...prev, showMap: e.target.checked }))}
+              className="w-5 h-5 accent-blue-600 cursor-pointer"
+            />
+          </div>
+
+          {/* 4. Contact Support */}
+          <div className="flex items-center justify-between p-3.5 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/60">
+            <div className="flex items-center gap-3">
+              <span className="text-xl">💬</span>
+              <div>
+                <p className="text-xs font-bold text-gray-900 dark:text-white">التواصل والدعم الفني</p>
+                <p className="text-[11px] text-gray-500">إظهار زر التواصل بالقائمة</p>
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={homeVis.showContact}
+              onChange={(e) => setHomeVis((prev) => ({ ...prev, showContact: e.target.checked }))}
+              className="w-5 h-5 accent-blue-600 cursor-pointer"
+            />
+          </div>
         </div>
       </div>
 

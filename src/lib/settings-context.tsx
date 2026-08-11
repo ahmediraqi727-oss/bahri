@@ -93,6 +93,13 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
       targetBucket: wm.targetBucket || wm.target_bucket || "watermarked-products",
     },
 
+    homeMenuVisibility: {
+      showLogos: (row.home_menu_visibility as any)?.showLogos !== undefined ? Boolean((row.home_menu_visibility as any).showLogos) : true,
+      showShare: (row.home_menu_visibility as any)?.showShare !== undefined ? Boolean((row.home_menu_visibility as any).showShare) : true,
+      showMap: (row.home_menu_visibility as any)?.showMap !== undefined ? Boolean((row.home_menu_visibility as any).showMap) : true,
+      showContact: (row.home_menu_visibility as any)?.showContact !== undefined ? Boolean((row.home_menu_visibility as any).showContact) : true,
+    },
+
     currentRole: "manager",
     roleThemes: {
       manager: {

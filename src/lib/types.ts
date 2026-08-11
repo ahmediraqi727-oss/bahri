@@ -145,12 +145,20 @@ export interface SiteSettings {
   // Eye Protection Mode
   eyeProtection?: boolean;
   // Watermark Engine Configuration
-  watermarkConfig?: WatermarkConfig;
+  // Home Menu Custom Visibility Toggles
+  homeMenuVisibility?: HomeMenuVisibilitySettings;
   roleThemes: {
     manager: RoleTheme;
     admin: RoleTheme;
     customer: RoleTheme;
   };
+}
+
+export interface HomeMenuVisibilitySettings {
+  showLogos: boolean;
+  showShare: boolean;
+  showMap: boolean;
+  showContact: boolean;
 }
 
 export const DEFAULT_SETTINGS: SiteSettings = {
@@ -197,6 +205,12 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   defaultDeliveryFee: 5000,
   defaultDeliveryDuration: "2 - 3 أيام عمل",
   watermarkConfig: DEFAULT_WATERMARK_CONFIG,
+  homeMenuVisibility: {
+    showLogos: true,
+    showShare: true,
+    showMap: true,
+    showContact: true,
+  },
   roleThemes: {
     manager: { primary: "#1e40af", secondary: "#7c3aed", accent: "#f59e0b" },
     admin: { primary: "#059669", secondary: "#0891b2", accent: "#f97316" },

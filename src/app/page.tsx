@@ -73,7 +73,15 @@ export default function Home() {
   const [contactMsg, setContactMsg] = useState("");
   const [contactSent, setContactSent] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [heroGallery, setHeroGallery] = useState<{ position: number; image_url: string }[]>([]);
+
+  const homeVis = settings?.homeMenuVisibility || {
+    showLogos: true,
+    showShare: true,
+    showMap: true,
+    showContact: true,
+  };
   const [storeLocation, setStoreLocation] = useState<StoreLocation | null>(null);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [homePosts, setHomePosts] = useState<Post[]>([]);
@@ -527,12 +535,70 @@ export default function Home() {
                       <div className="border-t border-gray-100 dark:border-gray-800 my-1" />
 
                       {/* ------------------------------------------------------------------ */}
-                      {/* BRANCH 3: Session & UI Settings                                    */}
+                      {/* BRANCH 3: Home Moved Action Items (Exclusive to Home Page Menu)   */}
+                      {/* Controlled by Manager Settings in Permissions/Settings Page        */}
                       {/* ------------------------------------------------------------------ */}
 
+                      {/* 1. Logos & Identity Button */}
+                      {homeVis.showLogos !== false && (
+                        <Link
+                          href="/dashboard/hero-gallery"
+                          onClick={() => setMenuOpen(false)}
+                          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors text-right"
+                        >
+                          <span className="text-xl">🖼️</span>
+                          <div className="flex-1 text-right">
+                            <span className="text-sm font-bold text-blue-700 dark:text-blue-400">الشعارات والتصميم</span>
+                            <p className="text-[11px] text-gray-400 mt-0.5">معرض صور وتصميم الواجهة</p>
+                          </div>
+                        </Link>
+                      )}
 
+                      {/* 2. Store Share Button */}
+                      {homeVis.showShare !== false && (
+                        <button
+                          onClick={() => { setShareOpen(true); setMenuOpen(false); }}
+                          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors text-right"
+                        >
+                          <span className="text-xl">🔗</span>
+                          <div className="flex-1 text-right">
+                            <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400">مشاركة المتجر والتطبيقات</span>
+                            <p className="text-[11px] text-gray-400 mt-0.5">رابط المتجر وتطبيقات الهاتف</p>
+                          </div>
+                        </button>
+                      )}
 
-                      {/* Posts Page Link (Always Visible) */}
+                      {/* 3. Store Map Location Button */}
+                      {homeVis.showMap !== false && (
+                        <button
+                          onClick={() => { openMap(); setMenuOpen(false); }}
+                          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors text-right"
+                        >
+                          <span className="text-xl">📍</span>
+                          <div className="flex-1 text-right">
+                            <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">موقعنا على الخريطة</span>
+                            {storeLocation?.city && (
+                              <p className="text-xs text-gray-400 mt-0.5">{storeLocation.city} — {storeLocation.address}</p>
+                            )}
+                          </div>
+                        </button>
+                      )}
+
+                      {/* 4. Contact & Support Button */}
+                      {homeVis.showContact !== false && (
+                        <button
+                          onClick={() => { setContactOpen(true); setMenuOpen(false); }}
+                          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-teal-50 dark:hover:bg-teal-950/30 transition-colors text-right"
+                        >
+                          <span className="text-xl">💬</span>
+                          <div className="flex-1 text-right">
+                            <span className="text-sm font-bold text-teal-700 dark:text-teal-400">التواصل والدعم الفني</span>
+                            <p className="text-[11px] text-gray-400 mt-0.5">ارسل رسالة مباشرة للإدارة</p>
+                          </div>
+                        </button>
+                      )}
+
+                      {/* Posts Page Link */}
                       <Link
                         href="/posts"
                         onClick={() => setMenuOpen(false)}
@@ -542,7 +608,7 @@ export default function Home() {
                         <span className="text-sm font-bold text-purple-700 dark:text-purple-400">المنشورات والمقاطع</span>
                       </Link>
 
-                      {/* Logout (Only visible if user is logged in as user or guest) */}
+                      {/* Logout */}
                       {user && (
                         <button
                           onClick={() => { signOut(); setMenuOpen(false); }}
@@ -555,7 +621,7 @@ export default function Home() {
                         </button>
                       )}
 
-                      {/* Dark / Light Mode Toggle (Always Visible) */}
+                      {/* Dark / Light Mode Toggle */}
                       <button
                         onClick={() => toggleDarkMode()}
                         className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-right"
@@ -566,7 +632,7 @@ export default function Home() {
                         </span>
                       </button>
 
-                      {/* Eye Protection Toggle (Always Visible) */}
+                      {/* Eye Protection Toggle */}
                       <button
                         onClick={() => toggleEyeProtection()}
                         className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-right"
@@ -575,15 +641,6 @@ export default function Home() {
                         <span className="text-sm font-bold text-gray-700 dark:text-gray-200">
                           {settings.eyeProtection ? t.eyeCareOff : t.eyeCare}
                         </span>
-                      </button>
-
-                      {/* Help / Contact Support (Always Visible) */}
-                      <button
-                        onClick={() => { setContactOpen(true); setMenuOpen(false); }}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-right"
-                      >
-                        <span className="text-xl">💬</span>
-                        <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{t.help}</span>
                       </button>
                     </div>
                   </div>
@@ -913,6 +970,87 @@ export default function Home() {
 
       {/* Profile Edit Modal */}
       <ProfileEditModal isOpen={profileEditOpen} onClose={() => setProfileEditOpen(false)} />
+
+      {/* Store & App Share Modal */}
+      {shareOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs" onClick={() => setShareOpen(false)} dir="rtl">
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl p-6 w-full max-w-md shadow-2xl mx-4 text-right animate-scaleUp" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-4 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-xl font-bold">
+                  🔗
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-gray-900 dark:text-white">مشاركة المتجر وتطبيقات الهاتف</h3>
+                  <p className="text-xs text-gray-400">شارك رابط الموقع مع أصدقائك أو حَمّل التطبيق</p>
+                </div>
+              </div>
+              <button onClick={() => setShareOpen(false)} className="p-2 rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 text-lg">✕</button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Copy Direct Link */}
+              <div className="p-3 bg-gray-50 dark:bg-gray-800/60 rounded-2xl border border-gray-200 dark:border-gray-700/60">
+                <p className="text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">رابط المتجر المباشر</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={typeof window !== "undefined" ? window.location.origin : "https://ahmed-bahri.vercel.app"}
+                    className="flex-1 px-3 py-2 text-xs font-mono bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl text-gray-800 dark:text-gray-200 outline-none"
+                  />
+                  <button
+                    onClick={() => {
+                      if (typeof window !== "undefined") {
+                        navigator.clipboard.writeText(window.location.origin);
+                        alert("تم نسخ رابط المتجر بنجاح! 📋");
+                      }
+                    }}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-all shadow-md whitespace-nowrap"
+                  >
+                    نسخ الرابط
+                  </button>
+                </div>
+              </div>
+
+              {/* Social Channels */}
+              <div className="grid grid-cols-2 gap-2">
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent("تسوق أفضل قطع الغيار في متجر أحمد بحري: " + (typeof window !== "undefined" ? window.location.origin : ""))}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 rounded-2xl font-bold text-xs border border-emerald-200 dark:border-emerald-800/40 hover:scale-[1.02] transition-transform"
+                >
+                  <span>💬</span> واتساب
+                </a>
+                <a
+                  href={`https://t.me/share/url?url=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "")}&text=${encodeURIComponent("موقع أحمد بحري")}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 rounded-2xl font-bold text-xs border border-blue-200 dark:border-blue-800/40 hover:scale-[1.02] transition-transform"
+                >
+                  <span>✈️</span> تليجرام
+                </a>
+              </div>
+
+              {/* App Downloads if configured */}
+              {(settings.androidAppUrl || settings.iosAppUrl) && (
+                <div className="p-3 bg-gradient-to-br from-indigo-50/50 to-purple-50/50 dark:from-indigo-950/30 dark:to-purple-950/30 rounded-2xl border border-indigo-100 dark:border-indigo-900/40 space-y-2">
+                  <p className="text-xs font-bold text-indigo-900 dark:text-indigo-200">تحميل تطبيق الهاتف الذكي</p>
+                  <div className="flex gap-2">
+                    {settings.androidAppUrl && (
+                      <a href={settings.androidAppUrl} target="_blank" rel="noreferrer" className="flex-1 py-2 bg-emerald-600 text-white rounded-xl font-bold text-xs text-center">🤖 أندرويد</a>
+                    )}
+                    {settings.iosAppUrl && (
+                      <a href={settings.iosAppUrl} target="_blank" rel="noreferrer" className="flex-1 py-2 bg-gray-900 text-white rounded-xl font-bold text-xs text-center">🍎 آيفون</a>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
