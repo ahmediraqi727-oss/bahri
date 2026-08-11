@@ -11,18 +11,20 @@ import { rowToCustomer } from "@/lib/visitor-tracker";
 import DataTableWrapper from "@/components/DataTableWrapper";
 
 type FilterTab = "all" | "known" | "anonymous" | "registered" | "blocked" | "suspicious";
+type SortOption = "latestActive" | "latestCreated" | "mostVisits" | "priority";
 
 export default function CustomersPage() {
   const { settings } = useSettings();
   const { sales } = useSales();
   const { logActivity } = useActivityLog();
-  const theme = settings.roleThemes[settings.currentRole] || { primary: "#2563eb", secondary: "#7c3aed" };
 
   const [customers, setCustomers] = useState<CustomerRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
+  const [sortBy, setSortBy] = useState<SortOption>("latestActive");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   // Detail Modal State
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRecord | null>(null);
@@ -84,7 +86,7 @@ export default function CustomersPage() {
   const processedCustomers = useMemo(() => {
     let list = [...customers];
 
-    // Filter by Tab
+    // 1. Filter by Tab
     if (activeTab === "known") {
       list = list.filter((c) => c.name && !c.name.startsWith("مجهول"));
     } else if (activeTab === "anonymous") {
@@ -97,7 +99,7 @@ export default function CustomersPage() {
       list = list.filter((c) => c.isSuspicious);
     }
 
-    // Filter by Search Query
+    // 2. Filter by Search Query
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter((c) => {
@@ -112,27 +114,37 @@ export default function CustomersPage() {
       });
     }
 
-    // Priority Sorting:
-    // 1. Suspicious & Blocked Users FIRST
-    // 2. Identified / Known Names
-    // 3. Registered Users
-    // 4. Anonymous ("مجهول X")
+    // 3. Sorting Engine: "الأحدث" (Latest active), "الأحدث إنشاءً", "الأكثر زيارة", "الأولويات"
     return list.sort((a, b) => {
-      if (a.isSuspicious && !b.isSuspicious) return -1;
-      if (!a.isSuspicious && b.isSuspicious) return 1;
+      if (sortBy === "latestActive") {
+        const timeA = new Date(a.lastActiveAt || a.createdAt).getTime();
+        const timeB = new Date(b.lastActiveAt || b.createdAt).getTime();
+        return timeB - timeA;
+      }
+      if (sortBy === "latestCreated") {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }
+      if (sortBy === "mostVisits") {
+        return (b.visitCount || 1) - (a.visitCount || 1);
+      }
+      if (sortBy === "priority") {
+        if (a.isSuspicious && !b.isSuspicious) return -1;
+        if (!a.isSuspicious && b.isSuspicious) return 1;
 
-      const aIsAnon = a.name.startsWith("مجهول");
-      const bIsAnon = b.name.startsWith("مجهول");
+        const aIsAnon = a.name.startsWith("مجهول");
+        const bIsAnon = b.name.startsWith("مجهول");
 
-      if (!aIsAnon && bIsAnon) return -1;
-      if (aIsAnon && !bIsAnon) return 1;
+        if (!aIsAnon && bIsAnon) return -1;
+        if (aIsAnon && !bIsAnon) return 1;
 
-      if (a.isRegistered && !b.isRegistered) return -1;
-      if (!a.isRegistered && b.isRegistered) return 1;
+        if (a.isRegistered && !b.isRegistered) return -1;
+        if (!a.isRegistered && b.isRegistered) return 1;
 
-      return new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime();
+        return new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime();
+      }
+      return 0;
     });
-  }, [customers, activeTab, search]);
+  }, [customers, activeTab, search, sortBy]);
 
   // Analytics Stats Counts
   const totalCount = customers.length;
@@ -142,7 +154,7 @@ export default function CustomersPage() {
   const blockedCount = customers.filter((c) => c.isBlocked).length;
   const suspiciousCount = customers.filter((c) => c.isSuspicious).length;
 
-  // Toggle Selection
+  // Multi-Selection Logic
   const toggleSelectAll = () => {
     if (selectedIds.size === processedCustomers.length) {
       setSelectedIds(new Set());
@@ -160,7 +172,7 @@ export default function CustomersPage() {
     });
   };
 
-  // Actions: Block / Unblock Customer
+  // Actions: Block / Unblock Single Customer
   const handleToggleBlock = async (c: CustomerRecord) => {
     const newStatus = !c.isBlocked;
     const { error } = await supabase
@@ -181,6 +193,33 @@ export default function CustomersPage() {
       details: `${newStatus ? "حظر" : "إلغاء حظر"} الزائر/الزبون "${c.name}"`,
     });
 
+    setToastMsg(newStatus ? `🚫 تم حظر الزائر "${c.name}" بنجاح` : `🔓 تم إلغاء حظر الزائر "${c.name}"`);
+    setTimeout(() => setToastMsg(null), 3000);
+    fetchCustomers();
+  };
+
+  // Actions: Clear Suspicious Single Customer
+  const handleClearSingleSuspicious = async (c: CustomerRecord) => {
+    const { error } = await supabase
+      .from("customers")
+      .update({ is_suspicious: false, updated_at: new Date().toISOString() })
+      .eq("id", c.id);
+
+    if (error) {
+      alert(`حدث خطأ أثناء إلغاء النشاط المشبوه: ${error.message}`);
+      return;
+    }
+
+    await logActivity({
+      user: "manager",
+      action: "update",
+      entity: "الزبائن والزوار",
+      entityId: c.id,
+      details: `مسح وتجاهل علم النشاط المشبوه للزائر "${c.name}"`,
+    });
+
+    setToastMsg(`🛡️ تم مسح النشاط المشبوه للزائر "${c.name}" وإعادته لحساب اعتيادي`);
+    setTimeout(() => setToastMsg(null), 3000);
     fetchCustomers();
   };
 
@@ -202,13 +241,20 @@ export default function CustomersPage() {
       details: `حذف بيانات الزائر/الزبون "${c.name}"`,
     });
 
+    setToastMsg(`🗑️ تم حذف بيانات الزائر "${c.name}" بنجاح`);
+    setTimeout(() => setToastMsg(null), 3000);
     fetchCustomers();
   };
 
-  // Actions: Batch Delete Selected Customers
+  // =========================================================================
+  // BULK ACTIONS (Delete, Ban, Ignore Suspicious)
+  // =========================================================================
+
+  // 1. Bulk Delete
   const handleBatchDelete = async () => {
     if (selectedIds.size === 0) return;
-    if (!confirm(`هل أنت تأكد من حذف ${selectedIds.size} زبون/زائر محدد دفعة واحدة؟`)) return;
+    const count = selectedIds.size;
+    if (!confirm(`هل أنت تأكد من حذف ${count} زبون/زائر محدد نهائياً من قاعدة البيانات؟`)) return;
 
     const idsArray = Array.from(selectedIds);
     const { error } = await supabase.from("customers").delete().in("id", idsArray);
@@ -222,9 +268,71 @@ export default function CustomersPage() {
       user: "manager",
       action: "delete",
       entity: "الزبائن والزوار",
-      details: `حذف جماعي لـ ${idsArray.length} زائر وزبون`,
+      details: `حذف جماعي لـ ${count} زائر وزبون`,
     });
 
+    setToastMsg(`🗑️ تم حذف ${count} حساب زائر/زبون بنجاح`);
+    setTimeout(() => setToastMsg(null), 3000);
+    setSelectedIds(new Set());
+    fetchCustomers();
+  };
+
+  // 2. Bulk Ban
+  const handleBatchBan = async () => {
+    if (selectedIds.size === 0) return;
+    const count = selectedIds.size;
+    if (!confirm(`هل أنت تأكد من حظر ${count} حساب زائر/زبون محدد ونقلهم إلى قائمة المحظورين؟`)) return;
+
+    const idsArray = Array.from(selectedIds);
+    const { error } = await supabase
+      .from("customers")
+      .update({ is_blocked: true, updated_at: new Date().toISOString() })
+      .in("id", idsArray);
+
+    if (error) {
+      alert(`حدث خطأ أثناء الحظر الجماعي: ${error.message}`);
+      return;
+    }
+
+    await logActivity({
+      user: "manager",
+      action: "update",
+      entity: "الزبائن والزوار",
+      details: `حظر جماعي لـ ${count} زائر وزبون`,
+    });
+
+    setToastMsg(`🚫 تم حظر ${count} حساب بنجاح ونقلهم إلى قائمة المحظورين`);
+    setTimeout(() => setToastMsg(null), 3000);
+    setSelectedIds(new Set());
+    fetchCustomers();
+  };
+
+  // 3. Bulk Clear / Ignore Suspicious Activity
+  const handleBatchClearSuspicious = async () => {
+    if (selectedIds.size === 0) return;
+    const count = selectedIds.size;
+    if (!confirm(`هل أنت تأكد من إلغاء وتجاهل علم النشاط المشبوه لـ ${count} حساب محدد وإعادتهم لحسابات اعتيادية؟`)) return;
+
+    const idsArray = Array.from(selectedIds);
+    const { error } = await supabase
+      .from("customers")
+      .update({ is_suspicious: false, updated_at: new Date().toISOString() })
+      .in("id", idsArray);
+
+    if (error) {
+      alert(`حدث خطأ أثناء إلغاء النشاط المشبوه الجماعي: ${error.message}`);
+      return;
+    }
+
+    await logActivity({
+      user: "manager",
+      action: "update",
+      entity: "الزبائن والزوار",
+      details: `تجاهل وتطهير النشاط المشبوه لـ ${count} حساب`,
+    });
+
+    setToastMsg(`🛡️ تم مسح وتجاهل النشاط المشبوه لـ ${count} حساب بنجاح`);
+    setTimeout(() => setToastMsg(null), 3000);
     setSelectedIds(new Set());
     fetchCustomers();
   };
@@ -232,6 +340,13 @@ export default function CustomersPage() {
   return (
     <div className="space-y-6" dir="rtl">
       
+      {/* Toast Notification Banner */}
+      {toastMsg && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-blue-500/40 text-xs font-extrabold animate-bounce flex items-center gap-2">
+          <span>{toastMsg}</span>
+        </div>
+      )}
+
       {/* Header & Page Title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -245,19 +360,9 @@ export default function CustomersPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {selectedIds.size > 0 && (
-            <button
-              onClick={handleBatchDelete}
-              className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-1.5 animate-pulse"
-            >
-              <span>🗑️</span>
-              <span>حذف المحدد ({selectedIds.size})</span>
-            </button>
-          )}
-
           <Link
             href="/dashboard/accounts"
-            className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-1.5"
+            className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-1.5 hover:scale-[1.02]"
           >
             <span>🔐</span>
             <span>إدارة الحسابات والصلاحيات</span>
@@ -310,9 +415,63 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      {/* Filter Tabs & Search Bar */}
+      {/* Dynamic Multi-Selection Bulk Action Toolbar */}
+      {selectedIds.size > 0 && (
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-4 shadow-xl border border-blue-500/40 flex flex-wrap items-center justify-between gap-4 animate-slideDown">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-extrabold text-sm">
+              ☑️
+            </div>
+            <div>
+              <h3 className="font-extrabold text-sm sm:text-base">
+                تم تحديد {selectedIds.size} من إجمالي {processedCustomers.length} زائر/زبون
+              </h3>
+              <p className="text-[11px] text-blue-200">اختر أحد الإجراءات الجماعية أدناه للتطبيق الفوري</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+            {/* 1. Delete Button */}
+            <button
+              onClick={handleBatchDelete}
+              className="flex-1 sm:flex-initial px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5"
+            >
+              <span>🗑️</span>
+              <span>حذف المحدد ({selectedIds.size})</span>
+            </button>
+
+            {/* 2. Ban Button */}
+            <button
+              onClick={handleBatchBan}
+              className="flex-1 sm:flex-initial px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5"
+            >
+              <span>🚫</span>
+              <span>حظر المحدد ({selectedIds.size})</span>
+            </button>
+
+            {/* 3. Clear/Ignore Suspicious Activity Button */}
+            <button
+              onClick={handleBatchClearSuspicious}
+              className="flex-1 sm:flex-initial px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5"
+            >
+              <span>🛡️</span>
+              <span>تجاهل النشاط المشبوه ({selectedIds.size})</span>
+            </button>
+
+            {/* Clear Selection */}
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl transition-all"
+            >
+              إلغاء التحديد
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Filter Tabs, Search Bar & Sorting Dropdown */}
       <div className="bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm space-y-4">
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
           
           {/* Tabs */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
@@ -340,16 +499,33 @@ export default function CustomersPage() {
             ))}
           </div>
 
-          {/* Search Bar */}
-          <div className="relative flex-1 max-w-md">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="ابحث بالاسم، الهاتف، المحافظة، نوع الجهاز..."
-              className="w-full px-4 py-2.5 pr-10 border border-gray-300 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <span className="absolute left-3 top-2.5 text-gray-400">🔍</span>
+          <div className="flex items-center gap-2 flex-col sm:flex-row">
+            {/* Sorting Engine Dropdown */}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <span className="text-xs font-bold text-gray-500 dark:text-gray-400 whitespace-nowrap">الفرز حسب:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
+                className="px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer w-full sm:w-auto"
+              >
+                <option value="latestActive">⚡ الأحدث تصفحاً (افتراضي)</option>
+                <option value="latestCreated">🆕 الأحدث إنشاءً وتجسيداً</option>
+                <option value="mostVisits">📊 الأكثر زيارات</option>
+                <option value="priority">⚠️ الأولويات والمشبوه أولاً</option>
+              </select>
+            </div>
+
+            {/* Search Bar */}
+            <div className="relative w-full sm:w-64">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="ابحث بالاسم، الهاتف، المحافظة..."
+                className="w-full px-4 py-2 pr-9 border border-gray-300 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="absolute left-3 top-2 text-gray-400">🔍</span>
+            </div>
           </div>
         </div>
       </div>
@@ -429,7 +605,7 @@ export default function CustomersPage() {
                               {c.isSuspicious ? "⚠️" : isAnon ? "👤" : c.name.charAt(0)}
                             </div>
                             <div>
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span
                                   className={`font-extrabold text-sm ${
                                     c.isSuspicious
@@ -506,6 +682,7 @@ export default function CustomersPage() {
 
                         <td className="p-4 text-center">
                           <div className="flex items-center justify-center gap-1.5">
+                            {/* Detail Button */}
                             <button
                               onClick={() => {
                                 setSelectedCustomer(c);
@@ -517,6 +694,18 @@ export default function CustomersPage() {
                               👁️
                             </button>
 
+                            {/* Clear Suspicious Button (Single) */}
+                            {c.isSuspicious && (
+                              <button
+                                onClick={() => handleClearSingleSuspicious(c)}
+                                className="p-2 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-600 dark:text-emerald-300 rounded-xl transition-colors text-xs font-bold"
+                                title="مسح وتجاهل النشاط المشبوه"
+                              >
+                                🛡️
+                              </button>
+                            )}
+
+                            {/* Block / Unblock Button */}
                             <button
                               onClick={() => handleToggleBlock(c)}
                               className={`p-2 rounded-xl transition-colors text-xs font-bold ${
@@ -529,6 +718,7 @@ export default function CustomersPage() {
                               {c.isBlocked ? "🔓" : "🚫"}
                             </button>
 
+                            {/* Delete Button */}
                             <button
                               onClick={() => handleDeleteSingle(c)}
                               className="p-2 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/60 text-red-600 dark:text-red-300 rounded-xl transition-colors text-xs font-bold"
@@ -680,6 +870,17 @@ export default function CustomersPage() {
                       <span className="whitespace-nowrap">التفاصيل</span>
                     </button>
 
+                    {c.isSuspicious && (
+                      <button
+                        onClick={() => handleClearSingleSuspicious(c)}
+                        className="py-2 px-3 text-xs font-bold text-emerald-600 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 rounded-xl border border-emerald-200 flex items-center justify-center gap-1.5 transition-all min-h-[40px] whitespace-nowrap shrink-0"
+                        title="تجاهل النشاط المشبوه"
+                      >
+                        <span>🛡️</span>
+                        <span>تجاهل المشبوه</span>
+                      </button>
+                    )}
+
                     <button
                       onClick={() => handleToggleBlock(c)}
                       className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center gap-1.5 transition-all min-h-[40px] whitespace-nowrap shrink-0 ${
@@ -732,18 +933,30 @@ export default function CustomersPage() {
               <button onClick={() => setShowDetailModal(false)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
             </div>
 
-            {/* Suspicious Warning Alert Banner */}
+            {/* Suspicious Warning Alert Banner & Ignore Action */}
             {selectedCustomer.isSuspicious && (
-              <div className="p-3 bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 rounded-2xl flex items-start gap-2.5">
-                <span className="text-xl">⚠️</span>
-                <div>
-                  <h4 className="text-xs font-extrabold text-red-700 dark:text-red-300">
-                    تنبيه أمني: تغيير البيانات المتكرر!
-                  </h4>
-                  <p className="text-[11px] text-red-600 dark:text-red-400 mt-0.5">
-                    قام هذا الزائر بتغيير اسمه أو هاتفه أو عنوانه {selectedCustomer.changeCount || selectedCustomer.nameHistory.length} مرات عبر الجلسات المتتابعة.
-                  </p>
+              <div className="p-3 bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 rounded-2xl space-y-2">
+                <div className="flex items-start gap-2.5">
+                  <span className="text-xl">⚠️</span>
+                  <div>
+                    <h4 className="text-xs font-extrabold text-red-700 dark:text-red-300">
+                      تنبيه أمني: تغيير البيانات المتكرر!
+                    </h4>
+                    <p className="text-[11px] text-red-600 dark:text-red-400 mt-0.5">
+                      قام هذا الزائر بتغيير اسمه أو هاتفه أو عنوانه {selectedCustomer.changeCount || selectedCustomer.nameHistory.length} مرات عبر الجلسات المتتابعة.
+                    </p>
+                  </div>
                 </div>
+                <button
+                  onClick={() => {
+                    handleClearSingleSuspicious(selectedCustomer);
+                    setShowDetailModal(false);
+                  }}
+                  className="w-full py-2 bg-emerald-600 text-white font-extrabold text-xs rounded-xl hover:bg-emerald-700 transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                >
+                  <span>🛡️</span>
+                  <span>تجاهل النشاط المشبوه وإعادته لحساب اعتيادي</span>
+                </button>
               </div>
             )}
 
