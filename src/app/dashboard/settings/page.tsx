@@ -37,6 +37,25 @@ const ROLE_COLORS: Record<UserRole, { bg: string; border: string }> = {
   customer: { bg: "bg-pink-50 dark:bg-pink-900/20", border: "border-pink-200 dark:border-pink-800" },
 };
 
+function parseErrorMessage(err: unknown): string {
+  if (!err) return "حدث خطأ غير معروف";
+  if (typeof err === "string") return err;
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object") {
+    const obj = err as Record<string, any>;
+    if (obj.message && typeof obj.message === "string") {
+      return obj.details ? `${obj.message} (${obj.details})` : obj.message;
+    }
+    if (obj.error_description) return String(obj.error_description);
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return String(err);
+    }
+  }
+  return String(err);
+}
+
 export default function SettingsPage() {
   const { settings, updateSettings, loading } = useSettings();
   const { products, reloadAllData } = useData();
@@ -160,7 +179,7 @@ export default function SettingsPage() {
       setTimeout(() => setSavedSuccess(false), 4000);
     } catch (err: unknown) {
       console.error("[Settings Save Failure Details]:", err);
-      const detailedMessage = err instanceof Error ? err.message : String(err);
+      const detailedMessage = parseErrorMessage(err);
       setErrorMsg(`تعذر حفظ الإعدادات في قاعدة البيانات: ${detailedMessage}`);
     } finally {
       setSaving(false);
@@ -216,11 +235,24 @@ export default function SettingsPage() {
         };
       });
 
-      const chunkSize = 100;
-      for (let i = 0; i < updates.length; i += chunkSize) {
-        const chunk = updates.slice(i, i + chunkSize);
-        const { error } = await supabase.from("products").upsert(chunk);
-        if (error) throw error;
+      const batchSize = 20;
+      for (let i = 0; i < updates.length; i += batchSize) {
+        const batch = updates.slice(i, i + batchSize);
+        const results = await Promise.all(
+          batch.map((item) =>
+            supabase
+              .from("products")
+              .update({
+                retail_price: item.retail_price,
+                wholesale_price: item.wholesale_price,
+              })
+              .eq("id", item.id)
+          )
+        );
+
+        for (const res of results) {
+          if (res.error) throw res.error;
+        }
       }
 
       await reloadAllData();
@@ -233,7 +265,7 @@ export default function SettingsPage() {
 
       setBulkBatchResult(`تمت تحديث أسعار ${eligibleProducts.length} منتج بنجاح! يمكنك التراجع في أي وقت.`);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = parseErrorMessage(err);
       console.error("Bulk pricing execution failed:", err);
       alert(`فشل تطبيق الأسعار الدفعية: ${msg}`);
     } finally {
@@ -258,11 +290,24 @@ export default function SettingsPage() {
         wholesale_price: item.wholesalePrice,
       }));
 
-      const chunkSize = 100;
-      for (let i = 0; i < revertRows.length; i += chunkSize) {
-        const chunk = revertRows.slice(i, i + chunkSize);
-        const { error } = await supabase.from("products").upsert(chunk);
-        if (error) throw error;
+      const batchSize = 20;
+      for (let i = 0; i < revertRows.length; i += batchSize) {
+        const batch = revertRows.slice(i, i + batchSize);
+        const results = await Promise.all(
+          batch.map((item) =>
+            supabase
+              .from("products")
+              .update({
+                retail_price: item.retail_price,
+                wholesale_price: item.wholesale_price,
+              })
+              .eq("id", item.id)
+          )
+        );
+
+        for (const res of results) {
+          if (res.error) throw res.error;
+        }
       }
 
       await reloadAllData();
@@ -279,7 +324,7 @@ export default function SettingsPage() {
         localStorage.removeItem("bulk_pricing_undo_backup");
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = parseErrorMessage(err);
       console.error("Revert bulk pricing failed:", err);
       alert(`فشل التراجع عن الأسعار: ${msg}`);
     } finally {
