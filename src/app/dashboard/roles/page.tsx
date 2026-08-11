@@ -93,20 +93,37 @@ export default function RolesPage() {
   // Fetch real team members from Supabase `team_members` and user overrides table
   const loadRealUsersAndOverrides = async () => {
     try {
-      const realUsers: TeamUser[] = [];
+      const usersMap = new Map<string, TeamUser>();
 
-      // 1. Add current authenticated user / active manager if available
+      // 1. Add current authenticated user from session if available
       if (user) {
-        realUsers.push({
-          id: user.id || "mgr-active",
-          name: user.fullName || (user as any).name || "احمد العراقي",
+        const currentUserName = user.fullName || (user as any).name || "احمد العراقي";
+        const currentUserId = user.id || "mgr-active";
+        usersMap.set(currentUserId, {
+          id: currentUserId,
+          name: currentUserName,
           email: user.email || "ahmed.iraqi@bahri.com",
           role: user.role || "manager",
           jobTitle: user.role === "manager" ? "مدير النظام العام" : "إداري النظام",
         });
       }
 
-      // 2. Fetch real team members from database table `team_members`
+      // 2. Add core administrative staff accounts ensuring "احمد العراقي" & "ahmed al adeeb" are always available
+      const coreStaff: TeamUser[] = [
+        { id: "staff-ahmed-iraqi", name: "احمد العراقي", email: "ahmed.iraqi@bahri.com", role: "manager", jobTitle: "مدير المتجر العام" },
+        { id: "staff-ahmed-adeeb", name: "ahmed al adeeb", email: "adeeb@bahri.com", role: "admin", jobTitle: "إداري ومطور النظام" },
+      ];
+
+      coreStaff.forEach((cs) => {
+        const existingByName = Array.from(usersMap.values()).find(
+          (u) => u.name.trim().toLowerCase() === cs.name.trim().toLowerCase()
+        );
+        if (!existingByName) {
+          usersMap.set(cs.id, cs);
+        }
+      });
+
+      // 3. Fetch all active team members from Supabase `team_members` database table
       const { data: teamData } = await supabase
         .from("team_members")
         .select("*")
@@ -114,41 +131,52 @@ export default function RolesPage() {
 
       if (teamData && teamData.length > 0) {
         teamData.forEach((m: any) => {
-          // Avoid duplicate entry for current user if email or ID matches
-          const exists = realUsers.some(
-            (u) => u.id === m.id || (u.email && m.email && u.email.toLowerCase() === m.email.toLowerCase())
-          );
-          if (!exists) {
-            realUsers.push({
-              id: m.id || `team-${m.display_order}`,
-              name: m.full_name || m.name || "عضو فريق العمل",
-              email: m.email || "",
-              role: "admin",
-              jobTitle: m.job_title || "عضو فريق",
-            });
+          const memberName = (m.full_name || m.name || "").trim();
+          if (memberName) {
+            const existingUser = Array.from(usersMap.values()).find(
+              (u) => u.id === m.id || u.name.trim().toLowerCase() === memberName.toLowerCase()
+            );
+
+            if (!existingUser) {
+              usersMap.set(m.id || `team-${m.display_order}`, {
+                id: m.id || `team-${m.display_order}`,
+                name: memberName,
+                email: m.email || "",
+                role: "admin",
+                jobTitle: m.job_title || "عضو فريق العمل",
+              });
+            } else if (m.job_title) {
+              existingUser.jobTitle = m.job_title;
+            }
           }
         });
       }
 
-      // 3. Fetch any registered users with individual overrides from database
+      // 4. Fetch any saved user permission overrides from `user_permission_overrides` database table
       const { data: overrideData } = await supabase.from("user_permission_overrides").select("*");
+      const overridesMap: Record<string, Permission[]> = {};
+
       if (overrideData && overrideData.length > 0) {
-        const overridesMap: Record<string, Permission[]> = {};
         overrideData.forEach((row: any) => {
           overridesMap[row.user_id] = Array.isArray(row.permissions) ? row.permissions : [];
-          if (!realUsers.some((u) => u.id === row.user_id)) {
-            realUsers.push({
-              id: row.user_id,
-              name: row.user_name || "مستخدم ذو صلاحيات مخصصة",
-              email: row.user_email || "",
-              role: "admin",
-              jobTitle: "مخصص فردي",
-            });
+          const overrideName = (row.user_name || "").trim();
+          if (overrideName && !usersMap.has(row.user_id)) {
+            const existingByName = Array.from(usersMap.values()).find(
+              (u) => u.name.trim().toLowerCase() === overrideName.toLowerCase()
+            );
+            if (!existingByName) {
+              usersMap.set(row.user_id, {
+                id: row.user_id,
+                name: overrideName,
+                email: row.user_email || "",
+                role: "admin",
+                jobTitle: "صلاحية مخصصة",
+              });
+            }
           }
         });
         setAllUserOverrides(overridesMap);
       } else if (typeof window !== "undefined") {
-        // Fallback to local storage cache if table is empty
         const cached = localStorage.getItem("user_permission_overrides_cache");
         if (cached) {
           try {
@@ -157,18 +185,14 @@ export default function RolesPage() {
         }
       }
 
-      // 4. Default fallback if database has no team members yet: show real manager & admin identities
-      if (realUsers.length === 0) {
-        realUsers.push(
-          { id: "real-mgr-1", name: "احمد العراقي", email: "ahmed.iraqi@bahri.com", role: "manager", jobTitle: "مدير المتجر" },
-          { id: "real-adm-2", name: "ahmed al adeeb", email: "adeeb@bahri.com", role: "admin", jobTitle: "إداري النظام" }
-        );
-      }
+      const aggregatedList = Array.from(usersMap.values());
+      setUsersList(aggregatedList);
 
-      setUsersList(realUsers);
-      setSelectedUserId(realUsers[0].id);
+      if (aggregatedList.length > 0) {
+        setSelectedUserId((prev) => (aggregatedList.some((u) => u.id === prev) ? prev : aggregatedList[0].id));
+      }
     } catch (err) {
-      console.warn("Failed to load real team members and overrides:", err);
+      console.warn("Failed to aggregate real team members and overrides:", err);
     }
   };
 
