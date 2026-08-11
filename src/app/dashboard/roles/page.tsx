@@ -99,7 +99,7 @@ export default function RolesPage() {
       if (user) {
         realUsers.push({
           id: user.id || "mgr-active",
-          name: user.name || "احمد العراقي",
+          name: user.fullName || (user as any).name || "احمد العراقي",
           email: user.email || "ahmed.iraqi@bahri.com",
           role: user.role || "manager",
           jobTitle: user.role === "manager" ? "مدير النظام العام" : "إداري النظام",
