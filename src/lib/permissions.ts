@@ -34,6 +34,14 @@ export interface AdminPermissionsConfig {
   permissions: Permission[];
 }
 
+export interface UserPermissionOverride {
+  id?: string;
+  userId: string;
+  userEmail?: string;
+  userName?: string;
+  permissions: Permission[];
+}
+
 const MANAGER_PERMISSIONS: Permission[] = [
   "products.view", "products.create", "products.edit", "products.delete",
   "categories.view", "categories.manage",
@@ -107,8 +115,18 @@ export function getRolePermissions(role: UserRole, adminConfig?: AdminPermission
 export function hasPermission(
   role: UserRole,
   permission: Permission,
-  adminConfig?: AdminPermissionsConfig
+  adminConfig?: AdminPermissionsConfig,
+  userOverride?: UserPermissionOverride | Permission[] | null
 ): boolean {
+  // Layer 1: Check Granular Individual User Override first
+  if (userOverride) {
+    const userPerms = Array.isArray(userOverride)
+      ? userOverride
+      : userOverride.permissions || [];
+    return userPerms.includes(permission);
+  }
+
+  // Layer 2: Fallback to Base Role Category Permission
   const perms = getRolePermissions(role, adminConfig);
   return perms.includes(permission);
 }
@@ -116,9 +134,10 @@ export function hasPermission(
 export function hasAnyPermission(
   role: UserRole,
   permissions: Permission[],
-  adminConfig?: AdminPermissionsConfig
+  adminConfig?: AdminPermissionsConfig,
+  userOverride?: UserPermissionOverride | Permission[] | null
 ): boolean {
-  return permissions.some((p) => hasPermission(role, p, adminConfig));
+  return permissions.some((p) => hasPermission(role, p, adminConfig, userOverride));
 }
 
 export function getDefaultAdminPermissions(): Permission[] {
