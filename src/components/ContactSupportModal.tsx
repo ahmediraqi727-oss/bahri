@@ -36,10 +36,17 @@ export default function ContactSupportModal({ isOpen, onClose }: ContactSupportM
   const [selectedCategory, setSelectedCategory] = useState<string>("الكل");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [inquirySearch, setInquirySearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState(""); // debounced value
 
   // Auto-reply
   const [autoRules, setAutoRules] = useState<AutoReplyRule[]>([]);
   const [autoReplyMsg, setAutoReplyMsg] = useState<string | null>(null);
+
+  // Debounce inquiry search — 300ms
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(inquirySearch), 300);
+    return () => clearTimeout(timer);
+  }, [inquirySearch]);
 
   // Load inquiries + auto-reply rules once
   useEffect(() => {
@@ -78,7 +85,7 @@ export default function ContactSupportModal({ isOpen, onClose }: ContactSupportM
   const categories = ["الكل", ...Array.from(new Set(inquiries.map((i) => i.category)))];
   const filteredInquiries = inquiries.filter((i) => {
     const catOk = selectedCategory === "الكل" || i.category === selectedCategory;
-    const searchOk = !inquirySearch || i.question.includes(inquirySearch) || i.answer.includes(inquirySearch);
+    const searchOk = !debouncedSearch || i.question.includes(debouncedSearch) || i.answer.includes(debouncedSearch);
     return catOk && searchOk;
   });
 

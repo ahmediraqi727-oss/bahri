@@ -5,6 +5,10 @@
 -- ==============================================================================
 
 -- ── 1. messages table ─────────────────────────────────────────────────────────
+-- BROADCAST DESIGN NOTE:
+-- Broadcast messages use user_id = NULL and is_admin_reply = TRUE.
+-- A single broadcast row is inserted (no per-user duplication → no DB bloat).
+-- The admin Messages Hub displays these as system-wide announcements.
 CREATE TABLE IF NOT EXISTS public.messages (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id       UUID REFERENCES auth.users(id) ON DELETE SET NULL,
@@ -15,7 +19,7 @@ CREATE TABLE IF NOT EXISTS public.messages (
   is_read       BOOLEAN NOT NULL DEFAULT FALSE,
   auto_replied  BOOLEAN NOT NULL DEFAULT FALSE,
   matched_keyword TEXT DEFAULT NULL,
-  thread_id     UUID DEFAULT NULL,
+  thread_id     UUID DEFAULT NULL,  -- groups replies under same thread
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -24,6 +28,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_is_read    ON public.messages(is_read);
 CREATE INDEX IF NOT EXISTS idx_messages_thread_id  ON public.messages(thread_id);
 CREATE INDEX IF NOT EXISTS idx_messages_user_id    ON public.messages(user_id);
 
+-- RLS
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "messages_admin_all"   ON public.messages;
@@ -47,6 +52,22 @@ CREATE POLICY "messages_insert_all" ON public.messages
 CREATE POLICY "messages_user_select" ON public.messages
   FOR SELECT
   USING (user_id = auth.uid() OR auth.uid() IS NOT NULL);
+
+-- Enable Realtime on messages table
+-- IMPORTANT: This requires the supabase_realtime publication to exist.
+-- If this errors, enable Realtime manually in:
+--   Supabase Dashboard → Database → Replication → select "messages" table
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+    AND tablename = 'messages'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
+  END IF;
+END $$;
+
 
 -- ── 2. inquiries table ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.inquiries (
@@ -82,6 +103,7 @@ CREATE POLICY "inquiries_admin_all" ON public.inquiries
     )
   );
 
+
 -- ── 3. auto_replies table ─────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.auto_replies (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -115,11 +137,13 @@ CREATE POLICY "auto_replies_admin_all" ON public.auto_replies
 CREATE POLICY "auto_replies_public_read" ON public.auto_replies
   FOR SELECT USING (is_active = TRUE);
 
+
 -- ── 4. Global auto-reply toggles in settings ──────────────────────────────────
 ALTER TABLE public.settings
   ADD COLUMN IF NOT EXISTS auto_reply_enabled   BOOLEAN DEFAULT FALSE,
   ADD COLUMN IF NOT EXISTS auto_reply_threshold NUMERIC(4,2) DEFAULT 0.90,
   ADD COLUMN IF NOT EXISTS auto_reply_fallback  TEXT DEFAULT 'شكراً لتواصلك معنا! سيتم الرد عليك من قبل فريقنا في أقرب وقت ممكن.';
+
 
 -- ── 5. SEED DATA — Inquiries ──────────────────────────────────────────────────
 INSERT INTO public.inquiries (category, question, answer, keywords, sort_order) VALUES
@@ -137,6 +161,7 @@ INSERT INTO public.inquiries (category, question, answer, keywords, sort_order) 
 ('معلومات المتجر', 'أين يقع المتجر؟', 'يقع متجرنا في بغداد. اضغط على "موقعنا على الخريطة" في القائمة للوصول الفوري. للزيارة يُنصح بالتنسيق مسبقاً عبر واتساب.', ARRAY['موقع','عنوان','بغداد','location'], 12),
 ('المنتجات', 'هل تتوفر قطع غيار وأجزاء تقنية؟', 'نعم، نتخصص في توفير قطع الغيار والمواد التقنية. أرسل لنا صورة أو اسم القطعة عبر واتساب وسنتحقق من التوفر فوراً.', ARRAY['قطع غيار','أجزاء','spare parts'], 13)
 ON CONFLICT DO NOTHING;
+
 
 -- ── 6. SEED DATA — Auto Replies ───────────────────────────────────────────────
 INSERT INTO public.auto_replies (trigger_keywords, response_text, match_threshold, priority) VALUES

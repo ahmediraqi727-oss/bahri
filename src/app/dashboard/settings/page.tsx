@@ -82,6 +82,7 @@ export default function SettingsPage() {
   const [inquiries, setInquiries] = useState<Array<{ id: string; category: string; question: string; answer: string; keywords: string[]; sort_order: number; is_active: boolean }>>([]);
   const [inquiriesLoading, setInquiriesLoading] = useState(false);
   const [inqSearch, setInqSearch] = useState("");
+  const [inqSearchDebounced, setInqSearchDebounced] = useState(""); // 300ms debounced
   const [inqEditId, setInqEditId] = useState<string | null>(null);
   const [inqForm, setInqForm] = useState({ category: "", question: "", answer: "", keywords: "", sort_order: 0 });
   const [inqSaving, setInqSaving] = useState(false);
@@ -122,6 +123,12 @@ export default function SettingsPage() {
       setFormData(settings);
     }
   }, [settings]);
+
+  // Debounce inquiries search — 300ms to prevent excessive re-renders
+  useEffect(() => {
+    const timer = setTimeout(() => setInqSearchDebounced(inqSearch), 300);
+    return () => clearTimeout(timer);
+  }, [inqSearch]);
 
   // Load inquiries and auto-reply rules
   useEffect(() => {
@@ -1344,7 +1351,7 @@ export default function SettingsPage() {
           <div className="text-center py-6 text-gray-400 text-sm">جارٍ التحميل...</div>
         ) : (
           <div className="space-y-2 max-h-96 overflow-y-auto">
-            {inquiries.filter(i => !inqSearch || i.question.includes(inqSearch) || i.category.includes(inqSearch)).map(inq => (
+            {inquiries.filter(i => !inqSearchDebounced || i.question.includes(inqSearchDebounced) || i.category.includes(inqSearchDebounced)).map(inq => (
               <div key={inq.id} className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${inqSelected.has(inq.id) ? "border-violet-400 bg-violet-50 dark:bg-violet-950/20" : "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40"}`}>
                 <input type="checkbox" checked={inqSelected.has(inq.id)} onChange={(e) => { const s = new Set(inqSelected); e.target.checked ? s.add(inq.id) : s.delete(inq.id); setInqSelected(s); }} className="mt-1 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
