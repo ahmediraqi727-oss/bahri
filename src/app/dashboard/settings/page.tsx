@@ -193,16 +193,20 @@ export default function SettingsPage() {
     const markupPct = formData.importMarkupPct ?? 10;
     const reductionPct = formData.importWholesaleReductionPct ?? 10;
 
-    const eligibleProducts = products.filter((p) => Number(p.costPrice) > 0);
+    // Filter products that have a valid cost price or retail price to work from
+    const eligibleProducts = products.filter(
+      (p) => Number(p.costPrice) > 0 || Number(p.retailPrice) > 0
+    );
 
     if (eligibleProducts.length === 0) {
-      alert("لا توجد منتجات تحتوي على سعر تكلفة أكبر من 0 لتطبيق الأسعار التلقائية عليها.");
+      alert("لا توجد منتجات تحتوي على أسعار لتطبيق الحساب التلقائي عليها.");
       return;
     }
 
     const confirmRun = window.confirm(
-      `هل أنت متأكد من تطبيق الأسعار التلقائية على ${eligibleProducts.length} منتج؟\n` +
-      `(سعر المفرد = التكلفة + ${markupPct}% | سعر الجملة = المفرد - ${reductionPct}%)\n\n` +
+      `هل أنت متأكد من تطبيق الأسعار التلقائية على ${eligibleProducts.length} منتج؟\n\n` +
+      `• سعر المفرد الجديد = التكلفة × (1 + ${markupPct}%)\n` +
+      `• سعر الجملة الجديد = سعر المفرد الجديد × (1 - ${reductionPct}%)\n\n` +
       `سيتم حفظ نسخة احتياطية لإمكانية التراجع فوراً في أي وقت!`
     );
     if (!confirmRun) return;
@@ -210,6 +214,7 @@ export default function SettingsPage() {
     setBulkBatching(true);
     setBulkBatchResult(null);
     try {
+      // 1. Take a safety snapshot BEFORE modifying database
       const snapshot = {
         timestamp: new Date().toISOString(),
         itemsCount: eligibleProducts.length,
@@ -225,16 +230,26 @@ export default function SettingsPage() {
         localStorage.setItem("bulk_pricing_undo_backup", JSON.stringify(snapshot));
       }
 
+      // 2. Strict calculation sequence: Step 1 Retail -> Step 2 Wholesale
       const updates = eligibleProducts.map((p) => {
-        const newRetail = deriveRetailFromCost(p.costPrice, markupPct);
+        const costPrice = Number(p.costPrice) > 0
+          ? Number(p.costPrice)
+          : Math.round(Number(p.retailPrice) / (1 + markupPct / 100));
+
+        // Step 1: Calculate new Retail Price strictly using markup percentage
+        const newRetail = deriveRetailFromCost(costPrice, markupPct);
+
+        // Step 2: Calculate new Wholesale Price strictly using reduction percentage on the NEW retail price
         const newWholesale = deriveWholesaleFromRetail(newRetail, reductionPct);
+
         return {
           id: p.id,
-          retail_price: newRetail,
-          wholesale_price: newWholesale,
+          retail_price: newRetail,       // -> mapped to retail_price column
+          wholesale_price: newWholesale, // -> mapped to wholesale_price column
         };
       });
 
+      // 3. Batch update Supabase products table in parallel chunks of 20
       const batchSize = 20;
       for (let i = 0; i < updates.length; i += batchSize) {
         const batch = updates.slice(i, i + batchSize);
@@ -255,7 +270,19 @@ export default function SettingsPage() {
         }
       }
 
+      // 4. Reload store data from DB
       await reloadAllData();
+
+      // 5. Validation Check: Ensure no updated product's retail price remains equal to cost price
+      const updatedProducts = products.filter((p) => updates.some((u) => u.id === p.id));
+      const equalCostRetailCount = updatedProducts.filter(
+        (p) => p.costPrice > 0 && Math.abs(p.retailPrice - p.costPrice) < 0.01
+      ).length;
+
+      if (equalCostRetailCount > 0) {
+        console.warn(`[Validation Notice]: ${equalCostRetailCount} products have retail price equal to cost price.`);
+      }
+
       await logActivity({
         user: settings.currentRole,
         action: "update",
@@ -263,7 +290,9 @@ export default function SettingsPage() {
         details: `تم تطبيق الأسعار التلقائية على ${eligibleProducts.length} منتج بنسبة ربح ${markupPct}% وخصم جملة ${reductionPct}%`,
       });
 
-      setBulkBatchResult(`تمت تحديث أسعار ${eligibleProducts.length} منتج بنجاح! يمكنك التراجع في أي وقت.`);
+      setBulkBatchResult(
+        `تم تحديث أسعار ${eligibleProducts.length} منتج بنجاح! (المفرد = التكلفة + ${markupPct}% | الجملة = المفرد - ${reductionPct}%). يمكنك التراجع في أي وقت.`
+      );
     } catch (err: unknown) {
       const msg = parseErrorMessage(err);
       console.error("Bulk pricing execution failed:", err);
