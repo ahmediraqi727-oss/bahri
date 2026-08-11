@@ -101,7 +101,17 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
     },
 
     // ─ Pricing Tiers Engine ───────────────────────────────────
-    pricingTiers: (row.pricing_tiers as any) || DEFAULT_PRICING_CONFIG,
+    pricingTiers: (() => {
+      if (!row.pricing_tiers) return DEFAULT_PRICING_CONFIG;
+      if (typeof row.pricing_tiers === "string") {
+        try {
+          return JSON.parse(row.pricing_tiers);
+        } catch {
+          return DEFAULT_PRICING_CONFIG;
+        }
+      }
+      return (row.pricing_tiers as any) || DEFAULT_PRICING_CONFIG;
+    })(),
     importMarkupPct: row.import_markup_pct != null ? Number(row.import_markup_pct) : 10,
     importWholesaleReductionPct: row.import_wholesale_reduction_pct != null ? Number(row.import_wholesale_reduction_pct) : 10,
 
@@ -295,20 +305,31 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       try {
         if (settingsId) {
           const res = await supabase.from("settings").update(row).eq("id", settingsId).select().single();
-          if (res.error) console.warn("Error updating settings DB:", res.error.message);
+          if (res.error) {
+            console.warn("Error updating settings DB:", res.error.message);
+            throw new Error(res.error.message);
+          }
         } else {
           const existing = await supabase.from("settings").select("id").limit(1).maybeSingle();
           if (existing.data?.id) {
             setSettingsId(existing.data.id);
             const res = await supabase.from("settings").update(row).eq("id", existing.data.id).select().single();
-            if (res.error) console.warn("Error updating settings DB:", res.error.message);
+            if (res.error) {
+              console.warn("Error updating settings DB:", res.error.message);
+              throw new Error(res.error.message);
+            }
           } else {
             const res = await supabase.from("settings").insert(row).select().single();
+            if (res.error) {
+              console.warn("Error inserting settings DB:", res.error.message);
+              throw new Error(res.error.message);
+            }
             if (res.data?.id) setSettingsId(res.data.id);
           }
         }
       } catch (err) {
         console.error("Database query exception in updateSettings:", err);
+        throw err;
       }
     },
     [settingsId]

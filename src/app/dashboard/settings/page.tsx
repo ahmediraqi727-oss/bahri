@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useSettings } from "@/lib/settings-context";
 import { useActivityLog } from "@/lib/activity-log";
 import { useAuth } from "@/lib/auth-context";
+import { useData } from "@/lib/data-context";
+import { supabase } from "@/lib/supabase-client";
 import Link from "next/link";
 import ColorPicker from "@/components/ColorPicker";
 import ImageUploader from "@/components/ImageUploader";
@@ -12,7 +14,7 @@ import WatermarkSettings from "@/components/WatermarkSettings";
 import ThemeCustomizer from "@/components/ThemeCustomizer";
 import ProfileEditModal from "@/components/ProfileEditModal";
 import { SiteSettings, UserRole } from "@/lib/types";
-import type { PricingTier } from "@/lib/pricing-engine";
+import { deriveRetailFromCost, deriveWholesaleFromRetail, type PricingTier } from "@/lib/pricing-engine";
 
 const FONT_OPTIONS = [
   { label: "Cairo", value: "Cairo" },
@@ -37,6 +39,7 @@ const ROLE_COLORS: Record<UserRole, { bg: string; border: string }> = {
 
 export default function SettingsPage() {
   const { settings, updateSettings, loading } = useSettings();
+  const { products, reloadAllData } = useData();
   const { logActivity } = useActivityLog();
   const { user, loading: authLoading } = useAuth();
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -45,6 +48,31 @@ export default function SettingsPage() {
   const [formData, setFormData] = useState<SiteSettings>(settings);
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  // Bulk Pricing Batch & Revert State
+  const [bulkBatching, setBulkBatching] = useState(false);
+  const [reverting, setReverting] = useState(false);
+  const [bulkBatchResult, setBulkBatchResult] = useState<string | null>(null);
+  const [backupSnapshot, setBackupSnapshot] = useState<{
+    timestamp: string;
+    itemsCount: number;
+    previousPrices: Array<{ id: string; retailPrice: number; wholesalePrice: number }>;
+  } | null>(null);
+
+  // Restore undo snapshot backup from localStorage if available
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const savedBackup = localStorage.getItem("bulk_pricing_undo_backup");
+        if (savedBackup) {
+          const parsed = JSON.parse(savedBackup);
+          if (parsed && parsed.previousPrices && parsed.previousPrices.length > 0) {
+            setBackupSnapshot(parsed);
+          }
+        }
+      } catch { /* ignore */ }
+    }
+  }, []);
 
   // Sync draft state when settings load
   useEffect(() => {
@@ -136,6 +164,126 @@ export default function SettingsPage() {
       setErrorMsg(`تعذر حفظ الإعدادات في قاعدة البيانات: ${detailedMessage}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // ─── Bulk Pricing Execution & Revert Safety Mechanism ───────────────────
+  const handleApplyBulkPricing = async () => {
+    if (!products || products.length === 0) return;
+
+    const markupPct = formData.importMarkupPct ?? 10;
+    const reductionPct = formData.importWholesaleReductionPct ?? 10;
+
+    const eligibleProducts = products.filter((p) => Number(p.costPrice) > 0);
+
+    if (eligibleProducts.length === 0) {
+      alert("لا توجد منتجات تحتوي على سعر تكلفة أكبر من 0 لتطبيق الأسعار التلقائية عليها.");
+      return;
+    }
+
+    const confirmRun = window.confirm(
+      `هل أنت متأكد من تطبيق الأسعار التلقائية على ${eligibleProducts.length} منتج؟\n` +
+      `(سعر المفرد = التكلفة + ${markupPct}% | سعر الجملة = المفرد - ${reductionPct}%)\n\n` +
+      `سيتم حفظ نسخة احتياطية لإمكانية التراجع فوراً في أي وقت!`
+    );
+    if (!confirmRun) return;
+
+    setBulkBatching(true);
+    setBulkBatchResult(null);
+    try {
+      const snapshot = {
+        timestamp: new Date().toISOString(),
+        itemsCount: eligibleProducts.length,
+        previousPrices: eligibleProducts.map((p) => ({
+          id: p.id,
+          retailPrice: p.retailPrice,
+          wholesalePrice: p.wholesalePrice,
+        })),
+      };
+
+      setBackupSnapshot(snapshot);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("bulk_pricing_undo_backup", JSON.stringify(snapshot));
+      }
+
+      const updates = eligibleProducts.map((p) => {
+        const newRetail = deriveRetailFromCost(p.costPrice, markupPct);
+        const newWholesale = deriveWholesaleFromRetail(newRetail, reductionPct);
+        return {
+          id: p.id,
+          retail_price: newRetail,
+          wholesale_price: newWholesale,
+        };
+      });
+
+      const chunkSize = 100;
+      for (let i = 0; i < updates.length; i += chunkSize) {
+        const chunk = updates.slice(i, i + chunkSize);
+        const { error } = await supabase.from("products").upsert(chunk);
+        if (error) throw error;
+      }
+
+      await reloadAllData();
+      await logActivity({
+        user: settings.currentRole,
+        action: "update",
+        entity: "المنتجات - تسعير تلقائي دفعة واحدة",
+        details: `تم تطبيق الأسعار التلقائية على ${eligibleProducts.length} منتج بنسبة ربح ${markupPct}% وخصم جملة ${reductionPct}%`,
+      });
+
+      setBulkBatchResult(`تمت تحديث أسعار ${eligibleProducts.length} منتج بنجاح! يمكنك التراجع في أي وقت.`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("Bulk pricing execution failed:", err);
+      alert(`فشل تطبيق الأسعار الدفعية: ${msg}`);
+    } finally {
+      setBulkBatching(false);
+    }
+  };
+
+  const handleRevertBulkPricing = async () => {
+    if (!backupSnapshot || !backupSnapshot.previousPrices || backupSnapshot.previousPrices.length === 0) return;
+
+    const confirmRevert = window.confirm(
+      `هل أنت متأكد من التراجع عن آخر عملية تطبيق للأسعار التلقائية وإعادة أسعار ${backupSnapshot.previousPrices.length} منتج إلى حالتها السابقة؟`
+    );
+    if (!confirmRevert) return;
+
+    setReverting(true);
+    setBulkBatchResult(null);
+    try {
+      const revertRows = backupSnapshot.previousPrices.map((item) => ({
+        id: item.id,
+        retail_price: item.retailPrice,
+        wholesale_price: item.wholesalePrice,
+      }));
+
+      const chunkSize = 100;
+      for (let i = 0; i < revertRows.length; i += chunkSize) {
+        const chunk = revertRows.slice(i, i + chunkSize);
+        const { error } = await supabase.from("products").upsert(chunk);
+        if (error) throw error;
+      }
+
+      await reloadAllData();
+      await logActivity({
+        user: settings.currentRole,
+        action: "update",
+        entity: "المنتجات - التراجع عن التسعير التلقائي",
+        details: `تم التراجع عن أحدث عملية تطبيق للأسعار التلقائية وإعادة أسعار ${revertRows.length} منتج إلى حالتها السابقة.`,
+      });
+
+      setBulkBatchResult(`تم التراجع عن أحدث عملية تطبيق وإعادة أسعار ${revertRows.length} منتج إلى حالتها السابقة بنجاح.`);
+      setBackupSnapshot(null);
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("bulk_pricing_undo_backup");
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("Revert bulk pricing failed:", err);
+      alert(`فشل التراجع عن الأسعار: ${msg}`);
+    } finally {
+      setReverting(false);
     }
   };
 
@@ -474,6 +622,54 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* ─── Bulk Pricing Action & Revert Safety Panel ─── */}
+        <div className="bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 text-white rounded-2xl p-5 shadow-lg space-y-4 border border-indigo-700/50">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-2xl">
+                ⚡
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-white">تطبيق الأسعار التلقائية على جميع المنتجات الحالية</h3>
+                <p className="text-xs text-indigo-200 mt-0.5">
+                  تحديث أسعار المفرد والجملة لجميع المنتجات دفعة واحدة بناءً على نسبة الربح ({formData.importMarkupPct ?? 10}%) ونسبة الخصم ({formData.importWholesaleReductionPct ?? 10}%)
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-2 border-t border-white/10 flex-wrap gap-3">
+            <button
+              onClick={handleApplyBulkPricing}
+              disabled={bulkBatching || products.length === 0}
+              className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md transition-all flex items-center gap-2 disabled:opacity-50 hover:scale-[1.01] active:scale-[0.99]"
+            >
+              <span>🚀</span>
+              <span>{bulkBatching ? "جارٍ تطبيق الأسعار على جميع المنتجات..." : "تطبيق الأسعار التلقائية على جميع المنتجات"}</span>
+            </button>
+
+            {/* Revert / Undo Button — active whenever a backup snapshot exists */}
+            {backupSnapshot && (
+              <button
+                onClick={handleRevertBulkPricing}
+                disabled={reverting}
+                className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md transition-all flex items-center gap-2 disabled:opacity-50 hover:scale-[1.01] active:scale-[0.99] animate-pulse"
+              >
+                <span>↩️</span>
+                <span>{reverting ? "جارٍ التراجع عن الأسعار..." : `تراجع عن آخر عملية تطبيق (${backupSnapshot.itemsCount} منتج)`}</span>
+              </button>
+            )}
+          </div>
+
+          {/* Status / Success Banner */}
+          {bulkBatchResult && (
+            <div className="p-3 bg-white/10 rounded-xl text-xs font-bold text-emerald-200 flex items-center justify-between border border-emerald-500/30">
+              <span>✅ {bulkBatchResult}</span>
+              <button onClick={() => setBulkBatchResult(null)} className="text-white/60 hover:text-white px-1">✕</button>
+            </div>
+          )}
         </div>
 
         {/* Global Tier Boundaries Editor */}
