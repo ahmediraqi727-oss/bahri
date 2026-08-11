@@ -8,7 +8,7 @@ import { isUUID } from "./data-context";
 export interface Notification {
   id: string;
   timestamp: string;
-  type: "low_stock" | "out_of_stock" | "info";
+  type: "low_stock" | "out_of_stock" | "info" | "message" | "contact";
   title: string;
   message: string;
   productId?: string;

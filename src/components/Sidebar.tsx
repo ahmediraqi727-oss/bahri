@@ -14,6 +14,7 @@ import { getAdminPermissionsConfig } from "@/components/PermissionGate";
 const NAV_ITEMS = [
   { label: "الفواتير والطلبات", href: "/dashboard/invoices", icon: "🧾", roles: ["manager", "admin"] as UserRole[] },
   { label: "لوحة التحكم", href: "/dashboard", icon: "📊", roles: ["manager", "admin"] as UserRole[] },
+  { label: "الرسائل", href: "/dashboard/messages", icon: "💬", roles: ["manager", "admin"] as UserRole[] },
   { label: "الإعدادات", href: "/dashboard/settings", icon: "⚙️", roles: ["manager"] as UserRole[] },
   { label: "إدارة أعضاء الفريق", href: "/dashboard/team", icon: "👥", roles: ["manager"] as UserRole[] },
   { label: "إدارة المنشورات", href: "/dashboard/posts", icon: "📢", roles: ["manager", "admin"] as UserRole[] },
@@ -75,6 +76,28 @@ export default function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+
+  // Fetch unread message count for sidebar badge
+  useEffect(() => {
+    async function fetchUnread() {
+      try {
+        const { count } = await supabase
+          .from("messages")
+          .select("id", { count: "exact", head: true })
+          .eq("is_read", false)
+          .eq("is_admin_reply", false);
+        setUnreadMessages(count || 0);
+      } catch { /* silently ignore */ }
+    }
+    fetchUnread();
+    const channel = supabase
+      .channel("sidebar-msg-badge")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, fetchUnread)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, fetchUnread)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   // Close mobile sidebar on route navigation
   useEffect(() => {
@@ -271,7 +294,12 @@ export default function Sidebar() {
                 style={isActive ? { backgroundColor: theme.primary } : {}}
               >
                 <span className="text-lg shrink-0">{item.icon}</span>
-                <span className="truncate">{item.label}</span>
+                <span className="truncate flex-1">{item.label}</span>
+                {item.href === "/dashboard/messages" && unreadMessages > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-red-500 text-white flex-shrink-0 animate-pulse">
+                    {unreadMessages}
+                  </span>
+                )}
               </Link>
             );
           })}

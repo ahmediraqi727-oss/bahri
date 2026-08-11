@@ -2,18 +2,23 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useNotifications, Notification } from "@/lib/notifications";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 const TYPE_ICONS: Record<string, string> = {
   low_stock: "⚠️",
   out_of_stock: "🔴",
   info: "ℹ️",
+  message: "💬",
+  contact: "💬",
 };
 
 const TYPE_LABELS: Record<string, string> = {
   low_stock: "تخزين منخفض",
   out_of_stock: "نفاد من المخزون",
   info: "معلومات / طلب",
+  message: "رسالة زبون",
+  contact: "رسالة دعم فني",
 };
 
 function timeAgo(iso: string): string {
@@ -41,12 +46,18 @@ export default function NotificationsBell() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  const router = useRouter();
+
   const handleSelectNotification = (n: Notification) => {
     if (!n.read) {
       markAsRead(n.id);
     }
     setSelectedNotification(n);
     setOpen(false);
+    // Route message/contact notifications to messages hub
+    if (n.type === "message" || n.type === "contact") {
+      router.push("/dashboard/messages");
+    }
   };
 
   return (

@@ -78,6 +78,29 @@ export default function SettingsPage() {
     previousPrices: Array<{ id: string; retailPrice: number; wholesalePrice: number }>;
   } | null>(null);
 
+  // ── Inquiries Management State ───────────────────────────────────────────────
+  const [inquiries, setInquiries] = useState<Array<{ id: string; category: string; question: string; answer: string; keywords: string[]; sort_order: number; is_active: boolean }>>([]);
+  const [inquiriesLoading, setInquiriesLoading] = useState(false);
+  const [inqSearch, setInqSearch] = useState("");
+  const [inqEditId, setInqEditId] = useState<string | null>(null);
+  const [inqForm, setInqForm] = useState({ category: "", question: "", answer: "", keywords: "", sort_order: 0 });
+  const [inqSaving, setInqSaving] = useState(false);
+  const [inqSelected, setInqSelected] = useState<Set<string>>(new Set());
+  const [inqToast, setInqToast] = useState<string | null>(null);
+
+  // ── Auto-Reply Management State ───────────────────────────────────────────────
+  const [autoReplies, setAutoReplies] = useState<Array<{ id: string; trigger_keywords: string[]; response_text: string; match_threshold: number; is_active: boolean; priority: number }>>([]);
+  const [autoRepliesLoading, setAutoRepliesLoading] = useState(false);
+  const [arEditId, setArEditId] = useState<string | null>(null);
+  const [arForm, setArForm] = useState({ trigger_keywords: "", response_text: "", match_threshold: 0.90, priority: 0 });
+  const [arSaving, setArSaving] = useState(false);
+  const [arSelected, setArSelected] = useState<Set<string>>(new Set());
+  const [arToast, setArToast] = useState<string | null>(null);
+  const [arGlobalEnabled, setArGlobalEnabled] = useState(false);
+  const [arGlobalThreshold, setArGlobalThreshold] = useState(0.90);
+  const [arFallback, setArFallback] = useState("شكراً لتواصلك معنا! سيتم الرد عليك من قبل فريقنا في أقرب وقت.");
+  const [arSettingsSaving, setArSettingsSaving] = useState(false);
+
   // Restore undo snapshot backup from localStorage if available
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -99,6 +122,162 @@ export default function SettingsPage() {
       setFormData(settings);
     }
   }, [settings]);
+
+  // Load inquiries and auto-reply rules
+  useEffect(() => {
+    async function loadInquiries() {
+      setInquiriesLoading(true);
+      const { data } = await supabase.from("inquiries").select("*").order("sort_order");
+      if (data) setInquiries(data as any[]);
+      setInquiriesLoading(false);
+    }
+    async function loadAutoReplies() {
+      setAutoRepliesLoading(true);
+      const { data } = await supabase.from("auto_replies").select("*").order("priority", { ascending: false });
+      if (data) setAutoReplies(data as any[]);
+      setAutoRepliesLoading(false);
+    }
+    async function loadArSettings() {
+      const { data } = await supabase.from("settings").select("auto_reply_enabled,auto_reply_threshold,auto_reply_fallback").limit(1).single();
+      if (data) {
+        setArGlobalEnabled(data.auto_reply_enabled ?? false);
+        setArGlobalThreshold(data.auto_reply_threshold ?? 0.90);
+        setArFallback(data.auto_reply_fallback ?? "شكراً لتواصلك معنا!");
+      }
+    }
+    loadInquiries();
+    loadAutoReplies();
+    loadArSettings();
+  }, []);
+
+  const showInqToast = (msg: string) => { setInqToast(msg); setTimeout(() => setInqToast(null), 3000); };
+  const showArToast  = (msg: string) => { setArToast(msg);  setTimeout(() => setArToast(null),  3000); };
+
+  const saveInquiry = async () => {
+    if (!inqForm.question.trim() || !inqForm.answer.trim()) return;
+    setInqSaving(true);
+    const payload = { category: inqForm.category || "عام", question: inqForm.question.trim(), answer: inqForm.answer.trim(), keywords: inqForm.keywords ? inqForm.keywords.split(",").map(k => k.trim()).filter(Boolean) : [], sort_order: inqForm.sort_order, updated_at: new Date().toISOString() };
+    if (inqEditId) {
+      await supabase.from("inquiries").update(payload).eq("id", inqEditId);
+      setInquiries(prev => prev.map(i => i.id === inqEditId ? { ...i, ...payload } : i));
+      showInqToast("✅ تم تحديث الاستفسار");
+    } else {
+      const { data } = await supabase.from("inquiries").insert({ ...payload, is_active: true }).select().single();
+      if (data) setInquiries(prev => [data as any, ...prev]);
+      showInqToast("✅ تم إضافة استفسار جديد");
+    }
+    setInqEditId(null);
+    setInqForm({ category: "", question: "", answer: "", keywords: "", sort_order: 0 });
+    setInqSaving(false);
+  };
+
+  const deleteInquiry = async (id: string) => {
+    await supabase.from("inquiries").delete().eq("id", id);
+    setInquiries(prev => prev.filter(i => i.id !== id));
+    showInqToast("✅ تم حذف الاستفسار");
+  };
+
+  const bulkDeleteInquiries = async () => {
+    if (inqSelected.size === 0 || !confirm(`حذف ${inqSelected.size} استفسارات؟`)) return;
+    const ids = [...inqSelected];
+    await supabase.from("inquiries").delete().in("id", ids);
+    setInquiries(prev => prev.filter(i => !ids.includes(i.id)));
+    setInqSelected(new Set());
+    showInqToast(`✅ تم حذف ${ids.length} استفسار`);
+  };
+
+  const exportInquiries = () => {
+    const blob = new Blob([JSON.stringify(inquiries, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "inquiries.json"; a.click();
+  };
+
+  const importInquiries = async (file: File) => {
+    try {
+      const text = await file.text();
+      const items = JSON.parse(text);
+      if (!Array.isArray(items)) return;
+      for (const item of items) {
+        const { id, created_at, updated_at, ...rest } = item;
+        await supabase.from("inquiries").insert({ ...rest, is_active: true });
+      }
+      const { data } = await supabase.from("inquiries").select("*").order("sort_order");
+      if (data) setInquiries(data as any[]);
+      showInqToast("✅ تم استيراد الاستفسارات بنجاح");
+    } catch { showInqToast("❌ خطأ في قراءة الملف"); }
+  };
+
+  const saveAutoReply = async () => {
+    if (!arForm.response_text.trim() || !arForm.trigger_keywords.trim()) return;
+    setArSaving(true);
+    const payload = { trigger_keywords: arForm.trigger_keywords.split(",").map(k => k.trim()).filter(Boolean), response_text: arForm.response_text.trim(), match_threshold: arForm.match_threshold, priority: arForm.priority, updated_at: new Date().toISOString() };
+    if (arEditId) {
+      await supabase.from("auto_replies").update(payload).eq("id", arEditId);
+      setAutoReplies(prev => prev.map(r => r.id === arEditId ? { ...r, ...payload } : r));
+      showArToast("✅ تم تحديث الرد التلقائي");
+    } else {
+      const { data } = await supabase.from("auto_replies").insert({ ...payload, is_active: true }).select().single();
+      if (data) setAutoReplies(prev => [data as any, ...prev]);
+      showArToast("✅ تم إضافة قاعدة جديدة");
+    }
+    setArEditId(null);
+    setArForm({ trigger_keywords: "", response_text: "", match_threshold: 0.90, priority: 0 });
+    setArSaving(false);
+  };
+
+  const toggleAutoReplyActive = async (id: string, current: boolean) => {
+    await supabase.from("auto_replies").update({ is_active: !current }).eq("id", id);
+    setAutoReplies(prev => prev.map(r => r.id === id ? { ...r, is_active: !current } : r));
+  };
+
+  const deleteAutoReply = async (id: string) => {
+    await supabase.from("auto_replies").delete().eq("id", id);
+    setAutoReplies(prev => prev.filter(r => r.id !== id));
+    showArToast("✅ تم حذف القاعدة");
+  };
+
+  const bulkDeleteAutoReplies = async () => {
+    if (arSelected.size === 0 || !confirm(`حذف ${arSelected.size} قواعد؟`)) return;
+    const ids = [...arSelected];
+    await supabase.from("auto_replies").delete().in("id", ids);
+    setAutoReplies(prev => prev.filter(r => !ids.includes(r.id)));
+    setArSelected(new Set());
+    showArToast(`✅ تم حذف ${ids.length} قواعد`);
+  };
+
+  const exportAutoReplies = () => {
+    const blob = new Blob([JSON.stringify(autoReplies, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "auto_replies.json"; a.click();
+  };
+
+  const importAutoReplies = async (file: File) => {
+    try {
+      const text = await file.text();
+      const items = JSON.parse(text);
+      if (!Array.isArray(items)) return;
+      for (const item of items) {
+        const { id, created_at, updated_at, ...rest } = item;
+        await supabase.from("auto_replies").insert({ ...rest, is_active: true });
+      }
+      const { data } = await supabase.from("auto_replies").select("*").order("priority", { ascending: false });
+      if (data) setAutoReplies(data as any[]);
+      showArToast("✅ تم استيراد القواعد بنجاح");
+    } catch { showArToast("❌ خطأ في قراءة الملف"); }
+  };
+
+  const saveArGlobalSettings = async () => {
+    setArSettingsSaving(true);
+    try {
+      // Use a subquery to get the first settings row id, since SiteSettings type has no id field
+      const { data: settingsRow } = await supabase.from("settings").select("id").limit(1).single();
+      if (settingsRow?.id) {
+        await supabase.from("settings").update({ auto_reply_enabled: arGlobalEnabled, auto_reply_threshold: arGlobalThreshold, auto_reply_fallback: arFallback }).eq("id", settingsRow.id);
+      }
+      showArToast("✅ تم حفظ إعدادات الردود التلقائية");
+    } catch { showArToast("❌ خطأ في الحفظ"); }
+    setArSettingsSaving(false);
+  };
 
   // 🔒 Route Protection: If user is a Customer or Guest, block access to System Settings (403 Unauthorized)
   if (!authLoading && user && (user.role === "customer" || user.isGuest || user.id.startsWith("guest-"))) {
@@ -1111,6 +1290,195 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* ════════════════════════════════════════════════════════════════
+          Section: Inquiries Management (إدارة الاستفسارات)
+      ════════════════════════════════════════════════════════════════ */}
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-5 shadow-sm">
+        {inqToast && <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl text-xs font-bold">{inqToast}</div>}
+
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">📋</span>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">إدارة الاستفسارات الجاهزة</h2>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={exportInquiries} className="px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40 hover:bg-blue-100 transition-colors">⬇️ تصدير JSON</button>
+            <label className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 hover:bg-emerald-100 transition-colors cursor-pointer">
+              ⬆️ استيراد JSON
+              <input type="file" accept=".json" className="hidden" onChange={(e) => { if (e.target.files?.[0]) importInquiries(e.target.files[0]); }} />
+            </label>
+            {inqSelected.size > 0 && <button onClick={bulkDeleteInquiries} className="px-3 py-1.5 rounded-xl text-xs font-bold bg-red-50 dark:bg-red-950/40 text-red-700 border border-red-200 dark:border-red-800/40 hover:bg-red-100 transition-colors">🗑️ حذف المحدد ({inqSelected.size})</button>}
+          </div>
+        </div>
+
+        {/* Search */}
+        <input type="text" placeholder="🔍 بحث في الاستفسارات..." value={inqSearch} onChange={(e) => setInqSearch(e.target.value)}
+          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm text-gray-900 dark:text-white outline-none focus:border-violet-500" />
+
+        {/* Add / Edit Form */}
+        <div className="p-4 bg-violet-50/50 dark:bg-violet-950/20 rounded-2xl border border-violet-200 dark:border-violet-800/40 space-y-3">
+          <p className="text-xs font-extrabold text-violet-800 dark:text-violet-300">{inqEditId ? "✏️ تعديل استفسار" : "➕ إضافة استفسار جديد"}</p>
+          <div className="grid grid-cols-2 gap-2">
+            <input placeholder="الفئة (مثال: طرق الشراء)" value={inqForm.category} onChange={(e) => setInqForm(p => ({ ...p, category: e.target.value }))}
+              className="px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-900 dark:text-white outline-none focus:border-violet-500" />
+            <input type="number" placeholder="ترتيب العرض" value={inqForm.sort_order} onChange={(e) => setInqForm(p => ({ ...p, sort_order: parseInt(e.target.value) || 0 }))}
+              className="px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-900 dark:text-white outline-none focus:border-violet-500" />
+          </div>
+          <input placeholder="نص السؤال..." value={inqForm.question} onChange={(e) => setInqForm(p => ({ ...p, question: e.target.value }))}
+            className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-900 dark:text-white outline-none focus:border-violet-500" />
+          <textarea rows={3} placeholder="نص الإجابة..." value={inqForm.answer} onChange={(e) => setInqForm(p => ({ ...p, answer: e.target.value }))}
+            className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-900 dark:text-white outline-none focus:border-violet-500 resize-none" />
+          <input placeholder="كلمات مفتاحية (مفصولة بفاصلة)" value={inqForm.keywords} onChange={(e) => setInqForm(p => ({ ...p, keywords: e.target.value }))}
+            className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-900 dark:text-white outline-none focus:border-violet-500" />
+          <div className="flex gap-2">
+            <button onClick={saveInquiry} disabled={inqSaving} className="flex-1 py-2 rounded-xl text-xs font-extrabold text-white bg-violet-600 hover:bg-violet-700 disabled:bg-gray-400 transition-colors">
+              {inqSaving ? "جارٍ الحفظ..." : inqEditId ? "حفظ التعديلات" : "إضافة الاستفسار"}
+            </button>
+            {inqEditId && <button onClick={() => { setInqEditId(null); setInqForm({ category: "", question: "", answer: "", keywords: "", sort_order: 0 }); }} className="px-4 py-2 rounded-xl text-xs font-bold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 transition-colors">إلغاء</button>}
+          </div>
+        </div>
+
+        {/* Inquiries Table */}
+        {inquiriesLoading ? (
+          <div className="text-center py-6 text-gray-400 text-sm">جارٍ التحميل...</div>
+        ) : (
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {inquiries.filter(i => !inqSearch || i.question.includes(inqSearch) || i.category.includes(inqSearch)).map(inq => (
+              <div key={inq.id} className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${inqSelected.has(inq.id) ? "border-violet-400 bg-violet-50 dark:bg-violet-950/20" : "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40"}`}>
+                <input type="checkbox" checked={inqSelected.has(inq.id)} onChange={(e) => { const s = new Set(inqSelected); e.target.checked ? s.add(inq.id) : s.delete(inq.id); setInqSelected(s); }} className="mt-1 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300">{inq.category}</span>
+                    <p className="text-xs font-bold text-gray-800 dark:text-gray-100 truncate">{inq.question}</p>
+                  </div>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{inq.answer}</p>
+                </div>
+                <div className="flex gap-1 flex-shrink-0">
+                  <button onClick={() => { setInqEditId(inq.id); setInqForm({ category: inq.category, question: inq.question, answer: inq.answer, keywords: (inq.keywords || []).join(", "), sort_order: inq.sort_order }); }} className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors text-xs">✏️</button>
+                  <button onClick={() => deleteInquiry(inq.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors text-xs">🗑️</button>
+                </div>
+              </div>
+            ))}
+            {inquiries.length === 0 && <div className="text-center py-6 text-gray-400 text-sm">لا توجد استفسارات بعد — أضف أول استفسار أعلاه</div>}
+          </div>
+        )}
+      </section>
+
+      {/* ════════════════════════════════════════════════════════════════
+          Section: Auto-Reply Engine (محرك الردود التلقائية)
+      ════════════════════════════════════════════════════════════════ */}
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-5 shadow-sm">
+        {arToast && <div className="fixed top-28 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl text-xs font-bold">{arToast}</div>}
+
+        <div className="flex items-center gap-2">
+          <span className="text-xl">🤖</span>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">محرك الردود التلقائية</h2>
+        </div>
+
+        {/* Global Settings Panel */}
+        <div className="p-4 bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-200 dark:border-emerald-800/40 space-y-4">
+          <p className="text-xs font-extrabold text-emerald-800 dark:text-emerald-300">⚙️ الإعدادات العامة لمحرك الردود</p>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-bold text-gray-800 dark:text-gray-100">تفعيل الردود التلقائية</p>
+              <p className="text-xs text-gray-400">عند التفعيل يرد النظام تلقائياً على رسائل الزبائن</p>
+            </div>
+            <button onClick={() => setArGlobalEnabled(!arGlobalEnabled)}
+              className={`relative w-12 h-6 rounded-full transition-colors ${arGlobalEnabled ? "bg-emerald-500" : "bg-gray-300 dark:bg-gray-600"}`}>
+              <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${arGlobalEnabled ? "translate-x-6" : "translate-x-0.5"}`} />
+            </button>
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-gray-700 dark:text-gray-300">عتبة التشابه: {Math.round(arGlobalThreshold * 100)}%</label>
+            </div>
+            <input type="range" min={50} max={100} step={1} value={Math.round(arGlobalThreshold * 100)} onChange={(e) => setArGlobalThreshold(parseInt(e.target.value) / 100)}
+              className="w-full accent-emerald-500" />
+            <div className="flex justify-between text-[10px] text-gray-400">
+              <span>50% (مرن)</span><span>75% (متوازن)</span><span>100% (صارم)</span>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-700 dark:text-gray-300">رسالة الرد الاحتياطي (عند عدم وجود تطابق):</label>
+            <textarea rows={2} value={arFallback} onChange={(e) => setArFallback(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-900 dark:text-white outline-none focus:border-emerald-500 resize-none" />
+          </div>
+
+          <button onClick={saveArGlobalSettings} disabled={arSettingsSaving} className="w-full py-2 rounded-xl text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 transition-colors">
+            {arSettingsSaving ? "جارٍ الحفظ..." : "💾 حفظ إعدادات الردود التلقائية"}
+          </button>
+        </div>
+
+        {/* Actions Row */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={exportAutoReplies} className="px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40 hover:bg-blue-100 transition-colors">⬇️ تصدير JSON</button>
+          <label className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 hover:bg-emerald-100 transition-colors cursor-pointer">
+            ⬆️ استيراد JSON
+            <input type="file" accept=".json" className="hidden" onChange={(e) => { if (e.target.files?.[0]) importAutoReplies(e.target.files[0]); }} />
+          </label>
+          {arSelected.size > 0 && <button onClick={bulkDeleteAutoReplies} className="px-3 py-1.5 rounded-xl text-xs font-bold bg-red-50 dark:bg-red-950/40 text-red-700 border border-red-200 dark:border-red-800/40 hover:bg-red-100 transition-colors">🗑️ حذف المحدد ({arSelected.size})</button>}
+        </div>
+
+        {/* Add/Edit Rule Form */}
+        <div className="p-4 bg-indigo-50/50 dark:bg-indigo-950/20 rounded-2xl border border-indigo-200 dark:border-indigo-800/40 space-y-3">
+          <p className="text-xs font-extrabold text-indigo-800 dark:text-indigo-300">{arEditId ? "✏️ تعديل قاعدة" : "➕ إضافة قاعدة رد تلقائي"}</p>
+          <input placeholder="كلمات مفتاحية للتشغيل (مفصولة بفاصلة)" value={arForm.trigger_keywords} onChange={(e) => setArForm(p => ({ ...p, trigger_keywords: e.target.value }))}
+            className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-900 dark:text-white outline-none focus:border-indigo-500" />
+          <textarea rows={3} placeholder="نص الرد التلقائي..." value={arForm.response_text} onChange={(e) => setArForm(p => ({ ...p, response_text: e.target.value }))}
+            className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-900 dark:text-white outline-none focus:border-indigo-500 resize-none" />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] font-bold text-gray-500 mb-1 block">عتبة التشابه: {Math.round(arForm.match_threshold * 100)}%</label>
+              <input type="range" min={50} max={100} step={1} value={Math.round(arForm.match_threshold * 100)} onChange={(e) => setArForm(p => ({ ...p, match_threshold: parseInt(e.target.value) / 100 }))}
+                className="w-full accent-indigo-500" />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-gray-500 mb-1 block">الأولوية</label>
+              <input type="number" value={arForm.priority} onChange={(e) => setArForm(p => ({ ...p, priority: parseInt(e.target.value) || 0 }))}
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs text-gray-900 dark:text-white outline-none focus:border-indigo-500" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={saveAutoReply} disabled={arSaving} className="flex-1 py-2 rounded-xl text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 transition-colors">
+              {arSaving ? "جارٍ الحفظ..." : arEditId ? "حفظ التعديلات" : "إضافة القاعدة"}
+            </button>
+            {arEditId && <button onClick={() => { setArEditId(null); setArForm({ trigger_keywords: "", response_text: "", match_threshold: 0.90, priority: 0 }); }} className="px-4 py-2 rounded-xl text-xs font-bold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 transition-colors">إلغاء</button>}
+          </div>
+        </div>
+
+        {/* Auto-Reply Rules Table */}
+        {autoRepliesLoading ? (
+          <div className="text-center py-6 text-gray-400 text-sm">جارٍ التحميل...</div>
+        ) : (
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {autoReplies.map(rule => (
+              <div key={rule.id} className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${arSelected.has(rule.id) ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-950/20" : rule.is_active ? "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40" : "border-gray-200 dark:border-gray-700 bg-gray-100/50 dark:bg-gray-800/20 opacity-60"}`}>
+                <input type="checkbox" checked={arSelected.has(rule.id)} onChange={(e) => { const s = new Set(arSelected); e.target.checked ? s.add(rule.id) : s.delete(rule.id); setArSelected(s); }} className="mt-1 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    {rule.trigger_keywords.map(kw => (<span key={kw} className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">{kw}</span>))}
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-gray-100 dark:bg-gray-800 text-gray-500">{Math.round(rule.match_threshold * 100)}%</span>
+                  </div>
+                  <p className="text-[11px] text-gray-600 dark:text-gray-300 line-clamp-2">{rule.response_text}</p>
+                </div>
+                <div className="flex gap-1 flex-shrink-0 items-start">
+                  <button onClick={() => toggleAutoReplyActive(rule.id, rule.is_active)}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-colors ${rule.is_active ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300" : "bg-gray-100 dark:bg-gray-800 text-gray-500"}`}>
+                    {rule.is_active ? "مفعّل" : "معطّل"}
+                  </button>
+                  <button onClick={() => { setArEditId(rule.id); setArForm({ trigger_keywords: rule.trigger_keywords.join(", "), response_text: rule.response_text, match_threshold: rule.match_threshold, priority: rule.priority }); }} className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors text-xs">✏️</button>
+                  <button onClick={() => deleteAutoReply(rule.id)} className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors text-xs">🗑️</button>
+                </div>
+              </div>
+            ))}
+            {autoReplies.length === 0 && <div className="text-center py-6 text-gray-400 text-sm">لا توجد قواعد ردود تلقائية — أضف أول قاعدة أعلاه</div>}
+          </div>
+        )}
+      </section>
 
       {/* Profile Edit Modal */}
       <ProfileEditModal isOpen={profileModalOpen} onClose={() => setProfileModalOpen(false)} />
