@@ -145,6 +145,7 @@ export interface SiteSettings {
   // Eye Protection Mode
   eyeProtection?: boolean;
   // Watermark Engine Configuration
+  watermarkConfig?: WatermarkConfig;
   // Home Menu Custom Visibility Toggles
   homeMenuVisibility?: HomeMenuVisibilitySettings;
   roleThemes: {
