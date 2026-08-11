@@ -12,7 +12,10 @@ import CategoriesCarousel from "@/components/CategoriesCarousel";
 import GuestWelcomeModal from "@/components/GuestWelcomeModal";
 import ProfileEditModal from "@/components/ProfileEditModal";
 import ProductDetailModal from "@/components/ProductDetailModal";
-import CustomerProductsModal from "@/components/CustomerProductsModal";
+import CustomerProductsModal, {
+  getFavoriteProductIds,
+  toggleFavoriteProductId,
+} from "@/components/CustomerProductsModal";
 import ContactSupportModal from "@/components/ContactSupportModal";
 import { supabase } from "@/lib/supabase-client";
 import { useLang, Lang } from "@/lib/lang-context";
@@ -88,6 +91,27 @@ export default function Home() {
   const [fontSize, setFontSize] = useState(16);
   // Per-card quick qty state: productId -> qty
   const [cardQty, setCardQty] = useState<Record<string, number>>({});
+  // Favorites / Wishlist State
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
+  const [favToast, setFavToast] = useState<string | null>(null);
+
+  // Sync Wishlist / Favorites state
+  useEffect(() => {
+    setFavoriteIds(getFavoriteProductIds());
+    const handleUpdated = (e: CustomEvent<string[]>) => {
+      setFavoriteIds(e.detail || []);
+    };
+    window.addEventListener("favorites_updated" as any, handleUpdated);
+    return () => window.removeEventListener("favorites_updated" as any, handleUpdated);
+  }, []);
+
+  const handleToggleFavorite = (productId: string, productName: string) => {
+    const updated = toggleFavoriteProductId(productId);
+    const isFavNow = updated.includes(productId);
+    setFavoriteIds(updated);
+    setFavToast(isFavNow ? `❤️ تمت إضافة "${productName}" إلى المفضلة` : `💔 تم إزالة "${productName}" من المفضلة`);
+    setTimeout(() => setFavToast(null), 2500);
+  };
   // Detail modal
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
   const [contactName, setContactName] = useState("");
@@ -281,6 +305,13 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors" style={{ fontFamily: settings.fontFamily }}>
+      
+      {/* Wishlist Toast Notification */}
+      {favToast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white px-5 py-3 rounded-2xl shadow-2xl backdrop-blur-md border border-rose-500/40 text-xs font-extrabold animate-bounce flex items-center gap-2">
+          <span>{favToast}</span>
+        </div>
+      )}
       
       {/* Sticky Responsive Header */}
       <nav className="sticky top-0 z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 shadow-sm transition-colors">
@@ -865,6 +896,7 @@ export default function Home() {
                   : lowestTierPrice < product.retailPrice
                   ? lowestTierPrice
                   : Math.round(product.retailPrice * 0.9);
+              const isFav = favoriteIds.includes(product.id);
 
               return (
                 <div
@@ -882,6 +914,23 @@ export default function Home() {
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-5xl text-gray-300">📦</div>
                     )}
+
+                    {/* Top Left Floating Wishlist Heart Badge */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleFavorite(product.id, product.name);
+                      }}
+                      className={`absolute top-2 left-2 z-10 w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-md backdrop-blur-xs transition-all transform active:scale-125 ${
+                        isFav
+                          ? "bg-white/90 text-rose-600 shadow-rose-200 border border-rose-200"
+                          : "bg-white/70 text-gray-400 hover:text-rose-500 hover:bg-white"
+                      }`}
+                      title={isFav ? "إزالة من المفضلة" : "إضافة للمفضلة"}
+                    >
+                      {isFav ? "❤️" : "🤍"}
+                    </button>
+
                     {/* Detail View Hint */}
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
                       <span className="px-3 py-1.5 rounded-xl bg-white/90 dark:bg-gray-900/90 text-xs font-bold text-gray-700 dark:text-gray-200 shadow-lg backdrop-blur-sm">
@@ -979,7 +1028,7 @@ export default function Home() {
                       </p>
                     </div>
 
-                    {/* ── Quick Qty Stepper + Add to Cart ── */}
+                    {/* ── Quick Qty Stepper + Add to Cart + Wishlist Heart ── */}
                     <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-2">
                       {/* Qty stepper */}
                       <div className="flex items-center gap-1.5">
@@ -1003,22 +1052,39 @@ export default function Home() {
                         </div>
                       </div>
 
-                      {/* Add to Cart button */}
-                      <button
-                        onClick={() => handleAdd(product)}
-                        disabled={isAdded}
-                        className="w-full px-3 py-2 rounded-xl text-xs sm:text-sm font-bold text-white transition-all hover:scale-[1.02] active:scale-[0.98] disabled:scale-100 shadow-md"
-                        style={{ backgroundColor: isAdded ? "#10b981" : theme.primary }}
-                      >
-                        {isAdded ? (
-                          <span>✓ تم الإضافة</span>
-                        ) : (
-                          <span>
-                            أضف {qty > 1 ? `${qty} قطع` : ""} للسلة 🛒
-                            {hasDiscount && <span className="mr-1 opacity-80">(-{activeTier.discountPct}%)</span>}
-                          </span>
-                        )}
-                      </button>
+                      {/* Action Row: Add to Cart + Wishlist Heart button */}
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleAdd(product)}
+                          disabled={isAdded}
+                          className="flex-1 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold text-white transition-all hover:scale-[1.02] active:scale-[0.98] disabled:scale-100 shadow-md min-h-[40px] flex items-center justify-center gap-1"
+                          style={{ backgroundColor: isAdded ? "#10b981" : theme.primary }}
+                        >
+                          {isAdded ? (
+                            <span>✓ تم الإضافة</span>
+                          ) : (
+                            <span>
+                              أضف {qty > 1 ? `${qty} قطع` : ""} للسلة 🛒
+                              {hasDiscount && <span className="mr-1 opacity-80">(-{activeTier.discountPct}%)</span>}
+                            </span>
+                          )}
+                        </button>
+
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleFavorite(product.id, product.name);
+                          }}
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg transition-all transform active:scale-125 border shadow-sm shrink-0 ${
+                            isFav
+                              ? "bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800/80 text-rose-600 dark:text-rose-400 scale-105"
+                              : "bg-gray-50 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-rose-500 hover:bg-rose-50/50"
+                          }`}
+                          title={isFav ? "إزالة من المفضلة" : "إضافة للمفضلة"}
+                        >
+                          {isFav ? "❤️" : "🤍"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
