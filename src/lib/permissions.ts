@@ -34,6 +34,10 @@ export interface AdminPermissionsConfig {
   permissions: Permission[];
 }
 
+export interface CustomerPermissionsConfig {
+  permissions: Permission[];
+}
+
 export interface UserPermissionOverride {
   id?: string;
   userId: string;
@@ -101,14 +105,18 @@ export const PERMISSION_LABELS: Record<Permission, { label: string; category: st
   "permissions.manage": { label: "إدارة صلاحيات الأدوار", category: "النظام" },
 };
 
-export function getRolePermissions(role: UserRole, adminConfig?: AdminPermissionsConfig): Permission[] {
+export function getRolePermissions(
+  role: UserRole,
+  adminConfig?: AdminPermissionsConfig,
+  customerConfig?: CustomerPermissionsConfig
+): Permission[] {
   switch (role) {
     case "manager":
       return MANAGER_PERMISSIONS;
     case "admin":
       return adminConfig?.permissions || DEFAULT_ADMIN_PERMISSIONS;
     case "customer":
-      return CUSTOMER_PERMISSIONS;
+      return customerConfig?.permissions || CUSTOMER_PERMISSIONS;
   }
 }
 
@@ -142,6 +150,24 @@ export function hasAnyPermission(
 
 export function getDefaultAdminPermissions(): Permission[] {
   return [...DEFAULT_ADMIN_PERMISSIONS];
+}
+
+export function getDefaultCustomerPermissions(): Permission[] {
+  return [...CUSTOMER_PERMISSIONS];
+}
+
+export function getCustomerPermissionsConfig(): CustomerPermissionsConfig | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const stored = localStorage.getItem("ahmed-bahri-customer-perms");
+    if (stored) return JSON.parse(stored);
+  } catch { /* ignore */ }
+  return undefined;
+}
+
+export function saveCustomerPermissionsConfig(config: CustomerPermissionsConfig) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem("ahmed-bahri-customer-perms", JSON.stringify(config));
 }
 
 export function getAllPermissionCategories(): string[] {

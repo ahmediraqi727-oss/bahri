@@ -5,10 +5,12 @@ import {
   Permission,
   PERMISSION_LABELS,
   getDefaultAdminPermissions,
+  getDefaultCustomerPermissions,
   getAllPermissionCategories,
   getPermissionsByCategory,
   hasPermission,
-  UserPermissionOverride,
+  saveCustomerPermissionsConfig,
+  getCustomerPermissionsConfig,
 } from "@/lib/permissions";
 import { getAdminPermissionsConfig, saveAdminPermissionsConfig } from "@/components/PermissionGate";
 import { useActivityLog } from "@/lib/activity-log";
@@ -25,13 +27,6 @@ interface TeamUser {
   jobTitle?: string;
 }
 
-const DEFAULT_TEAM_USERS: TeamUser[] = [
-  { id: "mgr-001", name: "أحمد بحري", email: "ahmed@bahri.com", role: "manager", jobTitle: "مدير النظام العام" },
-  { id: "adm-001", name: "سارة علي", email: "sara@bahri.com", role: "admin", jobTitle: "إداري مبيعات" },
-  { id: "adm-002", name: "محمد الحسين", email: "mohammed@bahri.com", role: "admin", jobTitle: "إداري مخزون وتجهيز" },
-  { id: "cust-001", name: "حيدر جاسم", email: "haider@customer.com", role: "customer", jobTitle: "زبون جملة مميز" },
-];
-
 export default function RolesPage() {
   const { user, loading } = useAuth();
   const { settings, updateSettings } = useSettings();
@@ -40,8 +35,12 @@ export default function RolesPage() {
   // Mode Tab: "roles" = Role Categories | "users" = Individual User Overrides
   const [activeTab, setActiveTab] = useState<"roles" | "users">("roles");
 
-  // Layer 1: Base Admin Role Permissions
+  // Selected Category under "roles" tab: "admin" (الإدارة) | "customer" (الزبائن)
+  const [selectedRoleCategory, setSelectedRoleCategory] = useState<"admin" | "customer">("admin");
+
+  // Layer 1: Base Permissions State per Category
   const [adminPerms, setAdminPerms] = useState<Permission[]>([]);
+  const [customerPerms, setCustomerPerms] = useState<Permission[]>([]);
   const [homeVis, setHomeVis] = useState({
     showLogos: true,
     showShare: true,
@@ -49,10 +48,10 @@ export default function RolesPage() {
     showContact: true,
   });
 
-  // Layer 2: Individual User Overrides
-  const [usersList, setUsersList] = useState<TeamUser[]>(DEFAULT_TEAM_USERS);
+  // Layer 2: Individual User Overrides State (Dynamically fetched from DB)
+  const [usersList, setUsersList] = useState<TeamUser[]>([]);
   const [searchUser, setSearchUser] = useState("");
-  const [selectedUserId, setSelectedUserId] = useState<string>("adm-001");
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [allUserOverrides, setAllUserOverrides] = useState<Record<string, Permission[]>>({});
 
   const [mounted, setMounted] = useState(false);
@@ -61,58 +60,95 @@ export default function RolesPage() {
   const [savedUserSuccess, setSavedUserSuccess] = useState(false);
   const { logActivity } = useActivityLog();
 
-  // Load Home Menu Visibility from settings
+  // Sync Home Menu Visibility from settings
   useEffect(() => {
     if (settings?.homeMenuVisibility) {
       setHomeVis(settings.homeMenuVisibility);
     }
   }, [settings]);
 
-  // Load Admin Config & Users / Overrides from Supabase
+  // Load Base Permissions & Fetch Real Users from Database
   useEffect(() => {
     if (!loading) {
-      const config = getAdminPermissionsConfig();
+      const adminConfig = getAdminPermissionsConfig();
+      const customerConfig = getCustomerPermissionsConfig();
+
       const isManager = user?.role === "manager";
-      const isAdminWithPermission = user?.role === "admin" && hasPermission("admin", "permissions.manage", config);
+      const isAdminWithPermission = user?.role === "admin" && hasPermission("admin", "permissions.manage", adminConfig);
 
       if (!user || user.isGuest || (!isManager && !isAdminWithPermission)) {
         router.replace("/");
         return;
       }
-      setAdminPerms(config?.permissions || getDefaultAdminPermissions());
+
+      setAdminPerms(adminConfig?.permissions || getDefaultAdminPermissions());
+      setCustomerPerms(customerConfig?.permissions || getDefaultCustomerPermissions());
       setMounted(true);
 
-      // Fetch users and user permission overrides from Supabase
-      loadUsersAndOverrides();
+      // Fetch REAL team members and user overrides from database
+      loadRealUsersAndOverrides();
     }
   }, [user, loading, router]);
 
-  const loadUsersAndOverrides = async () => {
+  // Fetch real team members from Supabase `team_members` and user overrides table
+  const loadRealUsersAndOverrides = async () => {
     try {
-      // 1. Fetch team members
-      const { data: teamData } = await supabase.from("team_members").select("*");
-      if (teamData && teamData.length > 0) {
-        const mappedUsers: TeamUser[] = teamData.map((m: any) => ({
-          id: m.id || m.email,
-          name: m.full_name || m.name || "مستخدم",
-          email: m.email || "",
-          role: (m.role as any) || "admin",
-          jobTitle: m.job_title || "عضو فريق",
-        }));
-        setUsersList(mappedUsers);
-        if (mappedUsers.length > 0) setSelectedUserId(mappedUsers[0].id);
+      const realUsers: TeamUser[] = [];
+
+      // 1. Add current authenticated user / active manager if available
+      if (user) {
+        realUsers.push({
+          id: user.id || "mgr-active",
+          name: user.name || "احمد العراقي",
+          email: user.email || "ahmed.iraqi@bahri.com",
+          role: user.role || "manager",
+          jobTitle: user.role === "manager" ? "مدير النظام العام" : "إداري النظام",
+        });
       }
 
-      // 2. Fetch user permission overrides table
+      // 2. Fetch real team members from database table `team_members`
+      const { data: teamData } = await supabase
+        .from("team_members")
+        .select("*")
+        .order("display_order", { ascending: true });
+
+      if (teamData && teamData.length > 0) {
+        teamData.forEach((m: any) => {
+          // Avoid duplicate entry for current user if email or ID matches
+          const exists = realUsers.some(
+            (u) => u.id === m.id || (u.email && m.email && u.email.toLowerCase() === m.email.toLowerCase())
+          );
+          if (!exists) {
+            realUsers.push({
+              id: m.id || `team-${m.display_order}`,
+              name: m.full_name || m.name || "عضو فريق العمل",
+              email: m.email || "",
+              role: "admin",
+              jobTitle: m.job_title || "عضو فريق",
+            });
+          }
+        });
+      }
+
+      // 3. Fetch any registered users with individual overrides from database
       const { data: overrideData } = await supabase.from("user_permission_overrides").select("*");
       if (overrideData && overrideData.length > 0) {
         const overridesMap: Record<string, Permission[]> = {};
         overrideData.forEach((row: any) => {
           overridesMap[row.user_id] = Array.isArray(row.permissions) ? row.permissions : [];
+          if (!realUsers.some((u) => u.id === row.user_id)) {
+            realUsers.push({
+              id: row.user_id,
+              name: row.user_name || "مستخدم ذو صلاحيات مخصصة",
+              email: row.user_email || "",
+              role: "admin",
+              jobTitle: "مخصص فردي",
+            });
+          }
         });
         setAllUserOverrides(overridesMap);
       } else if (typeof window !== "undefined") {
-        // Fallback to localStorage
+        // Fallback to local storage cache if table is empty
         const cached = localStorage.getItem("user_permission_overrides_cache");
         if (cached) {
           try {
@@ -120,14 +156,25 @@ export default function RolesPage() {
           } catch { /* ignore */ }
         }
       }
+
+      // 4. Default fallback if database has no team members yet: show real manager & admin identities
+      if (realUsers.length === 0) {
+        realUsers.push(
+          { id: "real-mgr-1", name: "احمد العراقي", email: "ahmed.iraqi@bahri.com", role: "manager", jobTitle: "مدير المتجر" },
+          { id: "real-adm-2", name: "ahmed al adeeb", email: "adeeb@bahri.com", role: "admin", jobTitle: "إداري النظام" }
+        );
+      }
+
+      setUsersList(realUsers);
+      setSelectedUserId(realUsers[0].id);
     } catch (err) {
-      console.warn("Failed to load user overrides from DB:", err);
+      console.warn("Failed to load real team members and overrides:", err);
     }
   };
 
-  // Selected User Object & Active Overrides
+  // Currently selected user object & permissions
   const selectedUser = useMemo(
-    () => usersList.find((u) => u.id === selectedUserId) || usersList[0] || DEFAULT_TEAM_USERS[1],
+    () => usersList.find((u) => u.id === selectedUserId) || usersList[0],
     [usersList, selectedUserId]
   );
 
@@ -136,9 +183,9 @@ export default function RolesPage() {
     if (allUserOverrides[selectedUser.id] !== undefined) {
       return allUserOverrides[selectedUser.id];
     }
-    // Default fallback to base role permissions
-    return getDefaultAdminPermissions();
-  }, [selectedUser, allUserOverrides]);
+    // Fallback to base category permissions for their role
+    return selectedUser.role === "customer" ? customerPerms : adminPerms;
+  }, [selectedUser, allUserOverrides, customerPerms, adminPerms]);
 
   const filteredUsers = useMemo(() => {
     if (!searchUser.trim()) return usersList;
@@ -148,30 +195,36 @@ export default function RolesPage() {
     );
   }, [usersList, searchUser]);
 
-  // Role Level Toggles
-  const togglePermission = (perm: Permission) => {
-    setAdminPerms((prev) =>
-      prev.includes(perm) ? prev.filter((p) => p !== perm) : [...prev, perm]
-    );
-  };
+  // Active Category Perms based on selectedRoleCategory ("admin" | "customer")
+  const activeCategoryPerms = selectedRoleCategory === "admin" ? adminPerms : customerPerms;
 
-  const toggleCategory = (category: string) => {
-    const perms = getPermissionsByCategory(category);
-    const allSelected = perms.every((p) => adminPerms.includes(p));
-    if (allSelected) {
-      setAdminPerms((prev) => prev.filter((p) => !perms.includes(p)));
+  const toggleCategoryPermission = (perm: Permission) => {
+    if (selectedRoleCategory === "admin") {
+      setAdminPerms((prev) => (prev.includes(perm) ? prev.filter((p) => p !== perm) : [...prev, perm]));
     } else {
-      setAdminPerms((prev) => [...new Set([...prev, ...perms])]);
+      setCustomerPerms((prev) => (prev.includes(perm) ? prev.filter((p) => p !== perm) : [...prev, perm]));
     }
   };
 
-  // Individual User Level Toggles
+  const toggleCategoryGroup = (categoryGroup: string) => {
+    const perms = getPermissionsByCategory(categoryGroup);
+    const targetPerms = activeCategoryPerms;
+    const allSelected = perms.every((p) => targetPerms.includes(p));
+
+    if (selectedRoleCategory === "admin") {
+      if (allSelected) setAdminPerms((prev) => prev.filter((p) => !perms.includes(p)));
+      else setAdminPerms((prev) => [...new Set([...prev, ...perms])]);
+    } else {
+      if (allSelected) setCustomerPerms((prev) => prev.filter((p) => !perms.includes(p)));
+      else setCustomerPerms((prev) => [...new Set([...prev, ...perms])]);
+    }
+  };
+
+  // Individual User Toggles
   const toggleUserPermission = (perm: Permission) => {
     if (!selectedUser) return;
     const current = currentSelectedUserPerms;
-    const updated = current.includes(perm)
-      ? current.filter((p) => p !== perm)
-      : [...current, perm];
+    const updated = current.includes(perm) ? current.filter((p) => p !== perm) : [...current, perm];
 
     setAllUserOverrides((prev) => ({
       ...prev,
@@ -179,14 +232,12 @@ export default function RolesPage() {
     }));
   };
 
-  const toggleUserCategory = (category: string) => {
+  const toggleUserCategoryGroup = (categoryGroup: string) => {
     if (!selectedUser) return;
-    const perms = getPermissionsByCategory(category);
+    const perms = getPermissionsByCategory(categoryGroup);
     const current = currentSelectedUserPerms;
     const allSelected = perms.every((p) => current.includes(p));
-    const updated = allSelected
-      ? current.filter((p) => !perms.includes(p))
-      : [...new Set([...current, ...perms])];
+    const updated = allSelected ? current.filter((p) => !perms.includes(p)) : [...new Set([...current, ...perms])];
 
     setAllUserOverrides((prev) => ({
       ...prev,
@@ -194,9 +245,14 @@ export default function RolesPage() {
     }));
   };
 
-  // Save Global Base Admin Permissions
-  const handleSaveGlobalRoles = async () => {
-    saveAdminPermissionsConfig({ permissions: adminPerms });
+  // Save Category-Level Permissions ("الإدارة" or "الزبائن")
+  const handleSaveCategoryPermissions = async () => {
+    if (selectedRoleCategory === "admin") {
+      saveAdminPermissionsConfig({ permissions: adminPerms });
+    } else {
+      saveCustomerPermissionsConfig({ permissions: customerPerms });
+    }
+
     await updateSettings({ homeMenuVisibility: homeVis });
 
     if (user?.role === "manager") {
@@ -211,8 +267,8 @@ export default function RolesPage() {
     await logActivity({
       user: "manager",
       action: "update",
-      entity: "صلاحيات الأدوار الفئوية",
-      details: `تم تحديث صلاحيات فئة الإداري ورؤية عناصر الصفحة الرئيسية`,
+      entity: `صلاحيات فئة: ${selectedRoleCategory === "admin" ? "الإدارة (Admin)" : "الزبائن (Customers)"}`,
+      details: `تم تحديث صلاحيات فئة ${selectedRoleCategory === "admin" ? "الإدارة" : "الزبائن"} ورؤية القائمة الرئيسية`,
     });
     setShowSaved(true);
     setTimeout(() => setShowSaved(false), 2000);
@@ -225,7 +281,6 @@ export default function RolesPage() {
     try {
       const userPerms = currentSelectedUserPerms;
 
-      // 1. Upsert into Supabase user_permission_overrides table
       const { error } = await supabase.from("user_permission_overrides").upsert({
         user_id: selectedUser.id,
         user_name: selectedUser.name,
@@ -236,7 +291,6 @@ export default function RolesPage() {
 
       if (error) console.warn("Supabase user_permission_overrides error:", error.message);
 
-      // 2. Cache locally
       if (typeof window !== "undefined") {
         localStorage.setItem("user_permission_overrides_cache", JSON.stringify(allUserOverrides));
       }
@@ -257,7 +311,7 @@ export default function RolesPage() {
     }
   };
 
-  // Reset Individual User Override to Base Role Defaults
+  // Reset Individual User Override to Category Defaults
   const handleResetUserOverride = async () => {
     if (!selectedUser) return;
     try {
@@ -285,18 +339,18 @@ export default function RolesPage() {
 
   return (
     <div className="space-y-6 max-w-5xl w-full" dir="rtl">
-      {/* Action Bar Header */}
+      {/* Top Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white dark:bg-gray-900 p-5 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
         <div>
           <h1 className="text-xl sm:text-2xl font-extrabold text-gray-900 dark:text-white">
-            نظام الصلاحيات المزدوج (Dual-Layer RBAC)
+            إدارة الصلاحيات المزدوجة (Dual-Layer RBAC)
           </h1>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">
-            إدارة الصلاحيات على مستوى الفئات العامة وتخصيص صلاحيات دقيقة لكل مستخدم بمفرده
+            إعداد صلاحيات الفئات الرئيسية (الإدارة والزبائن) وتخصيص صلاحيات دقيقة لأعضاء فريق العمل
           </p>
         </div>
 
-        {/* Primary Tab Switcher */}
+        {/* Dual Primary Tab Switcher */}
         <div className="flex rounded-xl bg-gray-100 dark:bg-gray-800 p-1 border border-gray-200 dark:border-gray-700">
           <button
             onClick={() => setActiveTab("roles")}
@@ -322,29 +376,97 @@ export default function RolesPage() {
       </div>
 
       {/* ========================================================================= */}
-      {/* TAB 1: ROLE CATEGORIES MANAGEMENT                                         */}
+      {/* TAB 1: GENERAL ROLE CATEGORIES MANAGEMENT                                 */}
       {/* ========================================================================= */}
       {activeTab === "roles" && (
         <div className="space-y-6">
-          {/* Header Action Row */}
-          <div className="flex items-center justify-between bg-blue-50/50 dark:bg-blue-950/20 p-4 rounded-xl border border-blue-100 dark:border-blue-900/40">
+          {/* Explicit Category Selection Choice Cards: الإدارة (Admin) | الزبائن (Customers) */}
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-blue-200 dark:border-blue-900/40 p-5 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xl font-bold">
+                  🎭
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-gray-900 dark:text-white">
+                    اختر الفئة الرئيسية لتعديل صلاحياتها
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    انقر على إحدى الفئتين أدناه لتحرير صلاحياتها الافتراضية
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+              {/* Option 1: الإدارة (Admin / Management) */}
+              <button
+                onClick={() => setSelectedRoleCategory("admin")}
+                className={`p-4 rounded-2xl border text-right transition-all flex items-center justify-between ${
+                  selectedRoleCategory === "admin"
+                    ? "bg-blue-600 text-white border-blue-600 shadow-lg scale-[1.01]"
+                    : "bg-gray-50 dark:bg-gray-800/60 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white hover:border-blue-400"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">🛡️</span>
+                  <div>
+                    <h4 className="font-extrabold text-sm sm:text-base">فئة الإدارة (Admin / Management)</h4>
+                    <p className={`text-xs mt-0.5 ${selectedRoleCategory === "admin" ? "text-blue-100" : "text-gray-500 dark:text-gray-400"}`}>
+                      صلاحيات الموظفين والكادر الإداري للمتجر ({adminPerms.length} صلاحية مفعّلة)
+                    </p>
+                  </div>
+                </div>
+                {selectedRoleCategory === "admin" && <span className="text-xl font-bold">✓</span>}
+              </button>
+
+              {/* Option 2: الزبائن (Customers) */}
+              <button
+                onClick={() => setSelectedRoleCategory("customer")}
+                className={`p-4 rounded-2xl border text-right transition-all flex items-center justify-between ${
+                  selectedRoleCategory === "customer"
+                    ? "bg-emerald-600 text-white border-emerald-600 shadow-lg scale-[1.01]"
+                    : "bg-gray-50 dark:bg-gray-800/60 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white hover:border-emerald-400"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">👥</span>
+                  <div>
+                    <h4 className="font-extrabold text-sm sm:text-base">فئة الزبائن (Customers)</h4>
+                    <p className={`text-xs mt-0.5 ${selectedRoleCategory === "customer" ? "text-emerald-100" : "text-gray-500 dark:text-gray-400"}`}>
+                      صلاحيات المتسوقين والزبائن المسجلين ({customerPerms.length} صلاحية مفعّلة)
+                    </p>
+                  </div>
+                </div>
+                {selectedRoleCategory === "customer" && <span className="text-xl font-bold">✓</span>}
+              </button>
+            </div>
+          </div>
+
+          {/* Action Row for Selected Role Category */}
+          <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-800/60 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
             <div>
-              <span className="text-xs font-bold text-blue-800 dark:text-blue-300">
-                صلاحيات فئة الإداري (Admin): {adminPerms.length} / {Object.keys(PERMISSION_LABELS).length} مفعّلة
+              <span className="text-xs font-extrabold text-gray-800 dark:text-gray-200">
+                الصلاحيات الحالية لفئة {selectedRoleCategory === "admin" ? "🛡️ الإدارة" : "👥 الزبائن"}: ({activeCategoryPerms.length} / {Object.keys(PERMISSION_LABELS).length})
               </span>
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => setAdminPerms(getDefaultAdminPermissions())}
-                className="px-4 py-2 text-xs font-bold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-50 transition-colors"
+                onClick={() => {
+                  if (selectedRoleCategory === "admin") setAdminPerms(getDefaultAdminPermissions());
+                  else setCustomerPerms(getDefaultCustomerPermissions());
+                }}
+                className="px-4 py-2 text-xs font-bold text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-100 transition-colors"
               >
                 إعادة تعيين للنسب الافتراضية
               </button>
               <button
-                onClick={handleSaveGlobalRoles}
-                className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all shadow-sm"
+                onClick={handleSaveCategoryPermissions}
+                className={`px-5 py-2 text-xs font-extrabold text-white rounded-xl transition-all shadow-sm ${
+                  selectedRoleCategory === "admin" ? "bg-blue-600 hover:bg-blue-700" : "bg-emerald-600 hover:bg-emerald-700"
+                }`}
               >
-                {showSaved ? "✓ تم الحفظ" : "حفظ صلاحيات الفئات"}
+                {showSaved ? "✓ تم حفظ الصلاحيات" : `حفظ صلاحيات فئة ${selectedRoleCategory === "admin" ? "الإدارة" : "الزبائن"}`}
               </button>
             </div>
           </div>
@@ -436,34 +558,34 @@ export default function RolesPage() {
             </div>
           </div>
 
-          {/* Role Categories Permission Matrix */}
-          {categories.map((category) => {
-            const perms = getPermissionsByCategory(category);
-            const selectedCount = perms.filter((p) => adminPerms.includes(p)).length;
+          {/* Role Category Permission Matrix for Selected Role */}
+          {categories.map((categoryGroup) => {
+            const perms = getPermissionsByCategory(categoryGroup);
+            const selectedCount = perms.filter((p) => activeCategoryPerms.includes(p)).length;
             const allSelected = selectedCount === perms.length;
 
             return (
-              <div key={category} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-xs">
+              <div key={categoryGroup} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-xs">
                 <div
                   className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                  onClick={() => toggleCategory(category)}
+                  onClick={() => toggleCategoryGroup(categoryGroup)}
                 >
                   <div className="flex items-center gap-3">
                     <div
                       className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-colors ${
                         allSelected
-                          ? "border-blue-600 bg-blue-600"
+                          ? selectedRoleCategory === "admin" ? "border-blue-600 bg-blue-600" : "border-emerald-600 bg-emerald-600"
                           : selectedCount > 0
-                          ? "border-blue-600 bg-blue-100 dark:bg-blue-950"
+                          ? selectedRoleCategory === "admin" ? "border-blue-600 bg-blue-100 dark:bg-blue-950" : "border-emerald-600 bg-emerald-100 dark:bg-emerald-950"
                           : "border-gray-300 dark:border-gray-600"
                       }`}
                     >
                       {allSelected && <span className="text-white text-xs">✓</span>}
                       {selectedCount > 0 && !allSelected && (
-                        <div className="w-2 h-2 rounded-sm bg-blue-600" />
+                        <div className={`w-2 h-2 rounded-sm ${selectedRoleCategory === "admin" ? "bg-blue-600" : "bg-emerald-600"}`} />
                       )}
                     </div>
-                    <h3 className="font-extrabold text-sm text-gray-900 dark:text-white">{category}</h3>
+                    <h3 className="font-extrabold text-sm text-gray-900 dark:text-white">{categoryGroup}</h3>
                   </div>
                   <span className="text-xs font-bold text-gray-500 dark:text-gray-400">
                     {selectedCount}/{perms.length}
@@ -472,21 +594,23 @@ export default function RolesPage() {
 
                 <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-2.5">
                   {perms.map((perm) => {
-                    const enabled = adminPerms.includes(perm);
+                    const enabled = activeCategoryPerms.includes(perm);
                     return (
                       <label
                         key={perm}
                         className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors border ${
                           enabled
-                            ? "bg-blue-50/40 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900/30"
+                            ? selectedRoleCategory === "admin"
+                              ? "bg-blue-50/40 dark:bg-blue-950/20 border-blue-100 dark:border-blue-900/30"
+                              : "bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/30"
                             : "bg-gray-50/50 dark:bg-gray-800/40 border-gray-100 dark:border-gray-800 opacity-60 hover:opacity-100"
                         }`}
                       >
                         <input
                           type="checkbox"
                           checked={enabled}
-                          onChange={() => togglePermission(perm)}
-                          className="w-4 h-4 accent-blue-600 cursor-pointer"
+                          onChange={() => toggleCategoryPermission(perm)}
+                          className={`w-4 h-4 cursor-pointer ${selectedRoleCategory === "admin" ? "accent-blue-600" : "accent-emerald-600"}`}
                         />
                         <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
                           {PERMISSION_LABELS[perm].label}
@@ -502,7 +626,7 @@ export default function RolesPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 2: INDIVIDUAL USER OVERRIDES MANAGER                                  */}
+      {/* TAB 2: INDIVIDUAL USER OVERRIDES MANAGER (REAL DATABASE TEAM)              */}
       {/* ========================================================================= */}
       {activeTab === "users" && (
         <div className="space-y-6">
@@ -515,10 +639,10 @@ export default function RolesPage() {
                 </div>
                 <div>
                   <h3 className="font-extrabold text-base text-gray-900 dark:text-white">
-                    إدارة الصلاحيات الفردية للموظفين والمستخدمين
+                    إدارة الصلاحيات الفردية لأعضاء فريق العمل الحقيقيين
                   </h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    حدد مستخدماً معيناً لإضافة صلاحيات خاصة به تتجاوز حدود فئته الأصلية
+                    اختر فرداً من كادر العمل الحقيقي المسجل في المتجر لإعطائه أو سحب صلاحيات خاصة به
                   </p>
                 </div>
               </div>
@@ -526,41 +650,45 @@ export default function RolesPage() {
               {/* Search User Input */}
               <input
                 type="text"
-                placeholder="🔍 بحث عن موظف بالاسم أو الإيميل..."
+                placeholder="🔍 بحث عن عضو بالاسم أو الإيميل..."
                 value={searchUser}
                 onChange={(e) => setSearchUser(e.target.value)}
                 className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-xs font-bold text-gray-900 dark:text-white outline-none focus:border-purple-500 w-full sm:w-64"
               />
             </div>
 
-            {/* Horizontal User Selector Chips */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-1 scrollbar-thin">
-              {filteredUsers.map((u) => {
-                const isSelected = u.id === selectedUserId;
-                const hasOverride = allUserOverrides[u.id] !== undefined;
+            {/* Horizontal User Selector Chips (Real Database Team Members) */}
+            {filteredUsers.length === 0 ? (
+              <p className="text-xs text-gray-400 py-2">لا يوجد أعضاء يطابقون نتيجة البحث.</p>
+            ) : (
+              <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-1 scrollbar-thin">
+                {filteredUsers.map((u) => {
+                  const isSelected = u.id === selectedUserId;
+                  const hasOverride = allUserOverrides[u.id] !== undefined;
 
-                return (
-                  <button
-                    key={u.id}
-                    onClick={() => setSelectedUserId(u.id)}
-                    className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl text-xs font-extrabold transition-all border flex-shrink-0 ${
-                      isSelected
-                        ? "bg-purple-600 text-white border-purple-600 shadow-md"
-                        : "bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-100"
-                    }`}
-                  >
-                    <span>👤</span>
-                    <span>{u.name}</span>
-                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] ${isSelected ? "bg-white/20 text-white" : "bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300"}`}>
-                      {u.role === "manager" ? "مدير" : u.role === "admin" ? "إداري" : "زبون"}
-                    </span>
-                    {hasOverride && (
-                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="يحتوي على تخصيص فردي" />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+                  return (
+                    <button
+                      key={u.id}
+                      onClick={() => setSelectedUserId(u.id)}
+                      className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl text-xs font-extrabold transition-all border flex-shrink-0 ${
+                        isSelected
+                          ? "bg-purple-600 text-white border-purple-600 shadow-md"
+                          : "bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-100"
+                      }`}
+                    >
+                      <span>👤</span>
+                      <span>{u.name}</span>
+                      <span className={`px-1.5 py-0.5 rounded-md text-[10px] ${isSelected ? "bg-white/20 text-white" : "bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300"}`}>
+                        {u.role === "manager" ? "مدير" : u.role === "admin" ? "إداري" : "زبون"}
+                      </span>
+                      {hasOverride && (
+                        <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="يحتوي على تخصيص فردي" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Selected User Header Card & Individual Action Controls */}
@@ -604,17 +732,17 @@ export default function RolesPage() {
           )}
 
           {/* Granular User Override Matrix */}
-          {selectedUser && categories.map((category) => {
-            const perms = getPermissionsByCategory(category);
+          {selectedUser && categories.map((categoryGroup) => {
+            const perms = getPermissionsByCategory(categoryGroup);
             const userPerms = currentSelectedUserPerms;
             const selectedCount = perms.filter((p) => userPerms.includes(p)).length;
             const allSelected = selectedCount === perms.length;
 
             return (
-              <div key={category} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-xs">
+              <div key={categoryGroup} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-xs">
                 <div
                   className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                  onClick={() => toggleUserCategory(category)}
+                  onClick={() => toggleUserCategoryGroup(categoryGroup)}
                 >
                   <div className="flex items-center gap-3">
                     <div
@@ -631,7 +759,7 @@ export default function RolesPage() {
                         <div className="w-2 h-2 rounded-sm bg-purple-600" />
                       )}
                     </div>
-                    <h3 className="font-extrabold text-sm text-gray-900 dark:text-white">{category}</h3>
+                    <h3 className="font-extrabold text-sm text-gray-900 dark:text-white">{categoryGroup}</h3>
                   </div>
                   <span className="text-xs font-bold text-purple-600 dark:text-purple-400">
                     {selectedCount}/{perms.length}
@@ -641,7 +769,6 @@ export default function RolesPage() {
                 <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-2.5">
                   {perms.map((perm) => {
                     const enabled = userPerms.includes(perm);
-                    const baseEnabled = adminPerms.includes(perm);
                     const isCustomOverride = allUserOverrides[selectedUser.id] !== undefined;
 
                     return (
