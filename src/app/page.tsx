@@ -961,22 +961,6 @@ export default function Home() {
                       <div className="w-full h-full flex items-center justify-center text-5xl text-gray-300">📦</div>
                     )}
 
-                    {/* Top Left Floating Wishlist Heart Badge */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleToggleFavorite(product.id, product.name);
-                      }}
-                      className={`absolute top-2 left-2 z-10 w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-md backdrop-blur-xs transition-all transform active:scale-125 ${
-                        isFav
-                          ? "bg-white/90 text-rose-600 shadow-rose-200 border border-rose-200"
-                          : "bg-white/70 text-gray-400 hover:text-rose-500 hover:bg-white"
-                      }`}
-                      title={isFav ? "إزالة من المفضلة" : "إضافة للمفضلة"}
-                    >
-                      {isFav ? "❤️" : "🤍"}
-                    </button>
-
                     {/* Detail View Hint */}
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
                       <span className="px-3 py-1.5 rounded-xl bg-white/90 dark:bg-gray-900/90 text-xs font-bold text-gray-700 dark:text-gray-200 shadow-lg backdrop-blur-sm">
@@ -1121,10 +1105,10 @@ export default function Home() {
                             e.stopPropagation();
                             handleToggleFavorite(product.id, product.name);
                           }}
-                          className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg transition-all transform active:scale-125 border shadow-sm shrink-0 ${
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg transition-all transform active:scale-125 border shrink-0 ${
                             isFav
-                              ? "bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800/80 text-rose-600 dark:text-rose-400 scale-105"
-                              : "bg-gray-50 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-rose-500 hover:bg-rose-50/50"
+                              ? "bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800/80 text-rose-600 dark:text-rose-400 scale-105 shadow-sm shadow-rose-100 dark:shadow-none"
+                              : "bg-gray-50 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-rose-500 hover:bg-rose-50/50 hover:border-rose-200"
                           }`}
                           title={isFav ? "إزالة من المفضلة" : "إضافة للمفضلة"}
                         >
