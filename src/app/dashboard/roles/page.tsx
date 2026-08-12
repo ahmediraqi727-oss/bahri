@@ -47,6 +47,11 @@ export default function RolesPage() {
     showMap: true,
     showContact: true,
   });
+  const [notifCatPerms, setNotifCatPerms] = useState({
+    allowReplies: true,
+    allowOffers: true,
+    allowPosts: true,
+  });
 
   // Layer 2: Individual User Overrides State (Dynamically fetched from DB)
   const [usersList, setUsersList] = useState<TeamUser[]>([]);
@@ -57,17 +62,8 @@ export default function RolesPage() {
   const [mounted, setMounted] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const [savingUser, setSavingUser] = useState(false);
-  const [homeVis, setHomeVis] = useState({
-    showLogos: true,
-    showShare: true,
-    showMap: true,
-    showContact: true,
-  });
-  const [notifCatPerms, setNotifCatPerms] = useState({
-    allowReplies: true,
-    allowOffers: true,
-    allowPosts: true,
-  });
+  const [savedUserSuccess, setSavedUserSuccess] = useState(false);
+  const { logActivity } = useActivityLog();
 
   // Sync Home Menu Visibility and Notification Category Permissions from settings
   useEffect(() => {
