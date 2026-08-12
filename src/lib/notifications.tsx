@@ -37,42 +37,38 @@ const NotificationsContext = createContext<NotificationsContextType | undefined>
 const MUTE_STORAGE_KEY = "customer_notification_mute_until";
 const MUTE_DURATION_KEY = "customer_notification_mute_duration";
 
-const GUEST_SESSION_ID_KEY = "store_guest_session_id";
-const GUEST_SESSION_TIME_KEY = "store_guest_session_time";
-const SESSION_EXPIRATION_MS = 24 * 60 * 60 * 1000; // 24 Hours
+const GUEST_STORAGE_KEY = "ahmed_bahri_guest_session";
+const GUEST_TIME_KEY = "ahmed_bahri_guest_time";
 
 /**
- * دالة للحصول على معرف جلسة الضيف الفريد المؤقت (صالح لمدة 24 ساعة)
- * يتم تجديد المعرف تلقائياً إذا انتهت الـ 24 ساعة لضمان الخصوصية
+ * دالة للحصول على معرف جلسة الضيف الفريد وصالح لمدة 24 ساعة فقط
+ * يتم تجديد المعرف وحذف القديم تلقائياً بعد مرور 24 ساعة لضمان الخصوصية
  */
 export function getOrCreateGuestSessionId(): string {
   if (typeof window === "undefined") return "";
 
-  const storedId = localStorage.getItem(GUEST_SESSION_ID_KEY);
-  const storedTime = localStorage.getItem(GUEST_SESSION_TIME_KEY);
   const now = Date.now();
+  const savedTime = localStorage.getItem(GUEST_TIME_KEY);
+  let sessionId = localStorage.getItem(GUEST_STORAGE_KEY);
 
-  if (storedId && storedTime) {
-    const elapsed = now - Number(storedTime);
-    if (elapsed < SESSION_EXPIRATION_MS) {
-      return storedId;
-    }
+  if (!sessionId || !savedTime || now - Number(savedTime) > 24 * 60 * 60 * 1000) {
+    sessionId = "guest_" + Math.random().toString(36).substring(2) + now.toString(36);
+    localStorage.setItem(GUEST_STORAGE_KEY, sessionId);
+    localStorage.setItem(GUEST_TIME_KEY, now.toString());
   }
 
-  // إنشاء session_id جديد وتحديث تاريخ الإنشاء
-  const newSessionId = "guest_" + Math.random().toString(36).substring(2) + now.toString(36);
-  localStorage.setItem(GUEST_SESSION_ID_KEY, newSessionId);
-  localStorage.setItem(GUEST_SESSION_TIME_KEY, now.toString());
-  return newSessionId;
+  return sessionId;
 }
 
 /**
- * دالة مسح معرف جلسة الضيف بعد ترقية الحساب بنجاح
+ * مسح جلسة الضيف المؤقتة بعد دمجها بالحساب الرسمي
  */
 export function clearGuestSessionId(): void {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(GUEST_SESSION_ID_KEY);
-  localStorage.removeItem(GUEST_SESSION_TIME_KEY);
+  localStorage.removeItem(GUEST_STORAGE_KEY);
+  localStorage.removeItem(GUEST_TIME_KEY);
+  localStorage.removeItem("store_guest_session_id");
+  localStorage.removeItem("store_guest_session_time");
 }
 
 export function playNotificationChime(soundUrl?: string, volume = 0.8) {

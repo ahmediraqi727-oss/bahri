@@ -200,11 +200,8 @@ CREATE INDEX IF NOT EXISTS idx_messages_session_id ON public.messages(session_id
 CREATE INDEX IF NOT EXISTS idx_notifications_session_id ON public.notifications(session_id);
 
 -- 8. دالة RPC لنقل وترقية كافة بيانات ورسائل الضيف إلى الحساب الرسمي الجديد عند التسجيل
-CREATE OR REPLACE FUNCTION public.upgrade_guest_to_user(
-  p_session_id TEXT,
-  p_user_id UUID
-)
-RETURNS VOID
+CREATE OR REPLACE FUNCTION public.upgrade_guest_to_user(p_session_id TEXT, p_user_id UUID)
+RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
@@ -213,16 +210,15 @@ BEGIN
     RETURN;
   END IF;
 
-  -- 1. نقل الرسائل الخاصة بالجلسة إلى user_id وتعديل is_guest
-  UPDATE public.messages
-  SET user_id = p_user_id,
-      is_guest = FALSE
-  WHERE session_id = p_session_id OR (user_id IS NULL AND sender_phone = p_session_id);
-
-  -- 2. نقل الإشعارات الخاصة بالجلسة إلى user_id
+  -- نقل الإشعارات المؤقتة إلى الحساب الرسمي الدائم
   UPDATE public.notifications
-  SET user_id = p_user_id
-  WHERE session_id = p_session_id;
+  SET user_id = p_user_id, session_id = NULL
+  WHERE session_id = p_session_id AND user_id IS NULL;
+
+  -- نقل الرسائل المؤقتة إلى الحساب الرسمي الدائم
+  UPDATE public.messages
+  SET user_id = p_user_id, session_id = NULL, is_guest = FALSE
+  WHERE (session_id = p_session_id OR sender_phone = p_session_id) AND user_id IS NULL;
 END;
 $$;
 
