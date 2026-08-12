@@ -143,11 +143,40 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     async function load() {
       try {
         let query = supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(100);
-        if (user?.id && isUUID(user.id)) {
-          query = query.eq("user_id", user.id);
+
+        const isAdmin = user && (user.role === "manager" || user.role === "admin");
+
+        if (isAdmin) {
+          // Admins & Managers see all notifications (internal logs, stock alerts, user messages, broadcasts)
+          if (user?.id && isUUID(user.id)) {
+            query = query.or(`user_id.eq.${user.id},user_id.is.null`);
+          }
+        } else {
+          // Customers & Guests: STRICT ISOLATION & SCOPING
+          // Only query notifications belonging strictly to their own user_id or public broadcasts
+          if (user?.id && isUUID(user.id)) {
+            query = query.or(`user_id.eq.${user.id},user_id.is.null`);
+          } else {
+            query = query.is("user_id", null);
+          }
+          // Strictly exclude admin internal logs, stock alerts, and other users' support tickets
+          query = query.not("type", "in", '("low_stock","out_of_stock","contact","admin_log","system")');
         }
+
         const { data } = await query;
-        if (data) setNotifications(data.map(rowToNotification));
+        if (data) {
+          const parsed = data.map(rowToNotification);
+          // Double-check client-side isolation safety filter for non-admin accounts
+          if (!isAdmin) {
+            const safeFiltered = parsed.filter((n) => {
+              const isAdminOnlyType = ["low_stock", "out_of_stock", "contact"].includes(n.type);
+              return !isAdminOnlyType;
+            });
+            setNotifications(safeFiltered);
+          } else {
+            setNotifications(parsed);
+          }
+        }
       } catch {
         // Fallback gracefully on query error
       } finally {
@@ -155,7 +184,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       }
     }
     load();
-  }, [user?.id]);
+  }, [user?.id, user?.role]);
 
   const addNotification = useCallback(async (n: Omit<Notification, "id" | "timestamp" | "read">) => {
     const row = {

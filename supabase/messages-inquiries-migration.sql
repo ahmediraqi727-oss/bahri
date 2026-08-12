@@ -126,12 +126,13 @@ DO $$
 BEGIN
   IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'settings') THEN
     ALTER TABLE public.settings
-      ADD COLUMN IF NOT EXISTS auto_reply_enabled     BOOLEAN DEFAULT FALSE,
-      ADD COLUMN IF NOT EXISTS auto_reply_threshold   NUMERIC(4,2) DEFAULT 0.90,
-      ADD COLUMN IF NOT EXISTS auto_reply_fallback    TEXT DEFAULT 'شكراً لتواصلك معنا! سيتم الرد عليك من قبل فريقنا في أقرب وقت ممكن.',
-      ADD COLUMN IF NOT EXISTS notification_sound_url TEXT DEFAULT '/sounds/chime.mp3',
-      ADD COLUMN IF NOT EXISTS notification_volume    NUMERIC(3,2) DEFAULT 0.80,
-      ADD COLUMN IF NOT EXISTS default_mute_duration  INTEGER DEFAULT 1;
+      ADD COLUMN IF NOT EXISTS auto_reply_enabled              BOOLEAN DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS auto_reply_threshold            NUMERIC(4,2) DEFAULT 0.90,
+      ADD COLUMN IF NOT EXISTS auto_reply_fallback             TEXT DEFAULT 'شكراً لتواصلك معنا! سيتم الرد عليك من قبل فريقنا في أقرب وقت ممكن.',
+      ADD COLUMN IF NOT EXISTS notification_sound_url          TEXT DEFAULT '/sounds/chime.mp3',
+      ADD COLUMN IF NOT EXISTS notification_volume             NUMERIC(3,2) DEFAULT 0.80,
+      ADD COLUMN IF NOT EXISTS default_mute_duration           INTEGER DEFAULT 1,
+      ADD COLUMN IF NOT EXISTS customer_notification_categories JSONB DEFAULT '{"allowReplies":true,"allowOffers":true,"allowPosts":true}';
   END IF;
 END $$;
 
@@ -161,3 +162,33 @@ INSERT INTO public.auto_replies (trigger_keywords, response_text, match_threshol
 (ARRAY['ضمان','إرجاع','استبدال','warranty','return'], 'نضمن جودة جميع منتجاتنا ✅ نقبل الإرجاع خلال 7 أيام من الاستلام في حال وجود عيب مصنعي.', 0.85, 7),
 (ARRAY['دفع','تحويل','كاش','payment','pay','زين كاش'], 'طرق الدفع: 💵 الدفع عند الاستلام | 🏦 تحويل بنكي | 📱 زين كاش / آسياسيل كاش', 0.85, 6)
 ON CONFLICT DO NOTHING;
+
+
+-- ── 7. STRICT NOTIFICATIONS RLS SECURITY ───────────────────────────────────────
+-- Fixes permission leak where customers could view internal admin logs & other users' support tickets
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow all operations on notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Users can view own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "notifications_admin_all" ON public.notifications;
+DROP POLICY IF EXISTS "notifications_customer_select" ON public.notifications;
+
+-- Admins and Managers can view and manage all notifications
+CREATE POLICY "notifications_admin_all" ON public.notifications
+  FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid()
+      AND profiles.role IN ('manager', 'admin')
+    )
+  );
+
+-- Customers and Guests can ONLY select non-admin notification categories
+-- and ONLY notifications tied to their own user_id OR public broadcasts (user_id IS NULL)
+CREATE POLICY "notifications_customer_select" ON public.notifications
+  FOR SELECT
+  USING (
+    (user_id = auth.uid() OR user_id IS NULL)
+    AND type NOT IN ('low_stock', 'out_of_stock', 'contact', 'admin_log', 'system')
+  );

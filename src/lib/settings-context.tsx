@@ -63,6 +63,11 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
     notificationSoundUrl: (row.notification_sound_url as string) || "/sounds/chime.mp3",
     notificationVolume: row.notification_volume !== undefined ? Number(row.notification_volume) : 0.8,
     defaultMuteDuration: row.default_mute_duration !== undefined ? Number(row.default_mute_duration) : 1,
+    customerNotificationCategories: (row.customer_notification_categories as any) || {
+      allowReplies: true,
+      allowOffers: true,
+      allowPosts: true,
+    },
 
     // Icons & Custom Sizing
     homeIcon: (row.home_icon as string) || "",

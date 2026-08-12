@@ -57,13 +57,25 @@ export default function RolesPage() {
   const [mounted, setMounted] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const [savingUser, setSavingUser] = useState(false);
-  const [savedUserSuccess, setSavedUserSuccess] = useState(false);
-  const { logActivity } = useActivityLog();
+  const [homeVis, setHomeVis] = useState({
+    showLogos: true,
+    showShare: true,
+    showMap: true,
+    showContact: true,
+  });
+  const [notifCatPerms, setNotifCatPerms] = useState({
+    allowReplies: true,
+    allowOffers: true,
+    allowPosts: true,
+  });
 
-  // Sync Home Menu Visibility from settings
+  // Sync Home Menu Visibility and Notification Category Permissions from settings
   useEffect(() => {
     if (settings?.homeMenuVisibility) {
       setHomeVis(settings.homeMenuVisibility);
+    }
+    if (settings?.customerNotificationCategories) {
+      setNotifCatPerms(settings.customerNotificationCategories);
     }
   }, [settings]);
 
@@ -277,14 +289,23 @@ export default function RolesPage() {
       saveCustomerPermissionsConfig({ permissions: customerPerms });
     }
 
-    await updateSettings({ homeMenuVisibility: homeVis });
+    await updateSettings({
+      homeMenuVisibility: homeVis,
+      customerNotificationCategories: notifCatPerms,
+    });
 
     if (user?.role === "manager") {
       const { data: existing } = await supabase.from("settings").select("id").limit(1).maybeSingle();
       if (existing?.id) {
-        await supabase.from("settings").update({ home_menu_visibility: homeVis }).eq("id", existing.id);
+        await supabase.from("settings").update({
+          home_menu_visibility: homeVis,
+          customer_notification_categories: notifCatPerms,
+        }).eq("id", existing.id);
       } else {
-        await supabase.from("settings").insert({ home_menu_visibility: homeVis });
+        await supabase.from("settings").insert({
+          home_menu_visibility: homeVis,
+          customer_notification_categories: notifCatPerms,
+        });
       }
     }
 
@@ -577,6 +598,76 @@ export default function RolesPage() {
                   checked={homeVis.showContact}
                   onChange={(e) => setHomeVis((prev) => ({ ...prev, showContact: e.target.checked }))}
                   className="w-5 h-5 accent-blue-600 cursor-pointer"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Notification Category Permissions Panel ── */}
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 shadow-xs mb-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-violet-50 dark:bg-violet-950/50 text-violet-600 dark:text-violet-400 flex items-center justify-center text-xl font-bold">
+                🔔
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-gray-900 dark:text-white">
+                  إدارة صلاحيات وتحديد إشعارات الزبائن والضيوف (Customer Notification Scoping)
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  تحديد أنواع التنبيهات المسموح إرسالها وعرضها لحسابات الزبائن والضيوف مع حجب السجلات الإدارية
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+              {/* 1. Support Message Replies */}
+              <div className="flex items-center justify-between p-3.5 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/60">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">💬</span>
+                  <div>
+                    <p className="text-xs font-bold text-gray-900 dark:text-white">الرد على الرسائل</p>
+                    <p className="text-[11px] text-gray-500">إشعارات الردود الإدارية على رسائل الدعم</p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={notifCatPerms.allowReplies}
+                  onChange={(e) => setNotifCatPerms((prev) => ({ ...prev, allowReplies: e.target.checked }))}
+                  className="w-5 h-5 accent-violet-600 cursor-pointer"
+                />
+              </div>
+
+              {/* 2. Offers & Discounts */}
+              <div className="flex items-center justify-between p-3.5 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/60">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">🏷️</span>
+                  <div>
+                    <p className="text-xs font-bold text-gray-900 dark:text-white">العروض والخصومات</p>
+                    <p className="text-[11px] text-gray-500">إشعارات التخفيضات والعروض الخاصة</p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={notifCatPerms.allowOffers}
+                  onChange={(e) => setNotifCatPerms((prev) => ({ ...prev, allowOffers: e.target.checked }))}
+                  className="w-5 h-5 accent-violet-600 cursor-pointer"
+                />
+              </div>
+
+              {/* 3. New Posts & Announcements */}
+              <div className="flex items-center justify-between p-3.5 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-100 dark:border-gray-700/60">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">📢</span>
+                  <div>
+                    <p className="text-xs font-bold text-gray-900 dark:text-white">المنشورات والإعلانات</p>
+                    <p className="text-[11px] text-gray-500">إشعارات منشورات وإعلانات المتجر</p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={notifCatPerms.allowPosts}
+                  onChange={(e) => setNotifCatPerms((prev) => ({ ...prev, allowPosts: e.target.checked }))}
+                  className="w-5 h-5 accent-violet-600 cursor-pointer"
                 />
               </div>
             </div>

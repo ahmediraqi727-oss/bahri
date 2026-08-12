@@ -160,12 +160,19 @@ export interface SiteSettings {
   notificationSoundUrl?: string;
   notificationVolume?: number; // 0.0 to 1.0
   defaultMuteDuration?: number; // 1, 4, 24 hours
+  customerNotificationCategories?: CustomerNotificationCategorySettings;
 
   roleThemes: {
     manager: RoleTheme;
     admin: RoleTheme;
     customer: RoleTheme;
   };
+}
+
+export interface CustomerNotificationCategorySettings {
+  allowReplies: boolean;
+  allowOffers: boolean;
+  allowPosts: boolean;
 }
 
 export interface HomeMenuVisibilitySettings {
@@ -190,6 +197,11 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   notificationSoundUrl: "/sounds/chime.mp3",
   notificationVolume: 0.8,
   defaultMuteDuration: 1,
+  customerNotificationCategories: {
+    allowReplies: true,
+    allowOffers: true,
+    allowPosts: true,
+  },
   currentRole: "manager",
   whatsappLink: "",
   telegramLink: "",
