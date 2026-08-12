@@ -192,12 +192,17 @@ GRANT SELECT ON public.auto_replies TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.notifications TO authenticated;
 GRANT SELECT, INSERT ON public.notifications TO anon;
 
--- 7. إضافة عمود session_id للرسائل والإشعارات لتتبع الضيوف بدقة
+-- 7. إضافة عمودي session_id و serial_id للرسائل والإشعارات لتتبع الضيوف بدقة
 ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS session_id TEXT;
+ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS serial_id TEXT;
+
 ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS session_id TEXT;
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS serial_id TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_messages_session_id ON public.messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_messages_serial_id ON public.messages(serial_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_session_id ON public.notifications(session_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_serial_id ON public.notifications(serial_id);
 
 -- 8. دالة RPC لنقل وترقية كافة بيانات ورسائل الضيف إلى الحساب الرسمي الجديد عند التسجيل
 CREATE OR REPLACE FUNCTION public.upgrade_guest_to_user(p_session_id TEXT, p_user_id UUID)
@@ -212,17 +217,40 @@ BEGIN
 
   -- نقل الإشعارات المؤقتة إلى الحساب الرسمي الدائم
   UPDATE public.notifications
-  SET user_id = p_user_id, session_id = NULL
-  WHERE session_id = p_session_id AND user_id IS NULL;
+  SET user_id = p_user_id, session_id = NULL, serial_id = NULL
+  WHERE (session_id = p_session_id OR serial_id = p_session_id) AND user_id IS NULL;
 
   -- نقل الرسائل المؤقتة إلى الحساب الرسمي الدائم
   UPDATE public.messages
-  SET user_id = p_user_id, session_id = NULL, is_guest = FALSE
-  WHERE (session_id = p_session_id OR sender_phone = p_session_id) AND user_id IS NULL;
+  SET user_id = p_user_id, session_id = NULL, serial_id = NULL, is_guest = FALSE
+  WHERE (session_id = p_session_id OR serial_id = p_session_id OR sender_phone = p_session_id) AND user_id IS NULL;
 END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.upgrade_guest_to_user(TEXT, UUID) TO authenticated, anon;
 
--- 9. تحديث ذاكرة التخزين المؤقت للخادم
+-- 9. دالة تنظيف وتصفية بيانات وإشعارات الضيوف المنتهية الصلاحية (أكثر من 24 ساعة)
+CREATE OR REPLACE FUNCTION public.cleanup_expired_guest_data()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  -- حذف الرسائل المؤقتة للضيوف غير المسجلين التي تجاوزت 24 ساعة
+  DELETE FROM public.messages
+  WHERE user_id IS NULL
+    AND (serial_id IS NOT NULL OR session_id IS NOT NULL)
+    AND created_at < NOW() - INTERVAL '24 hours';
+
+  -- حذف الإشعارات المؤقتة للضيوف غير المسجلين التي تجاوزت 24 ساعة
+  DELETE FROM public.notifications
+  WHERE user_id IS NULL
+    AND (serial_id IS NOT NULL OR session_id IS NOT NULL)
+    AND created_at < NOW() - INTERVAL '24 hours';
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.cleanup_expired_guest_data() TO authenticated, anon;
+
+-- 10. تحديث ذاكرة التخزين المؤقت للخادم
 NOTIFY pgrst, 'reload schema';

@@ -112,6 +112,7 @@ export default function CustomerMessagesModal({ isOpen, onClose }: CustomerMessa
         .insert({
           user_id: customerUserId,
           session_id: isGuest ? guestSessionId : null,
+          serial_id: isGuest ? guestSessionId : null,
           sender_name: user?.fullName || (isGuest ? "ضيف عزيز" : "مستخدم"),
           sender_phone: isGuest ? guestSessionId : (user as any)?.phone || "",
           content: newText.trim(),

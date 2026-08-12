@@ -37,34 +37,45 @@ const NotificationsContext = createContext<NotificationsContextType | undefined>
 const MUTE_STORAGE_KEY = "customer_notification_mute_until";
 const MUTE_DURATION_KEY = "customer_notification_mute_duration";
 
+const SERIAL_STORAGE_KEY = "ahmed_bahri_guest_serial";
+const SERIAL_TIME_KEY = "ahmed_bahri_guest_serial_time";
 const GUEST_STORAGE_KEY = "ahmed_bahri_guest_session";
 const GUEST_TIME_KEY = "ahmed_bahri_guest_time";
+const EXPIRATION_MS = 24 * 60 * 60 * 1000; // 24 Hours
 
 /**
- * دالة للحصول على معرف جلسة الضيف الفريد وصالح لمدة 24 ساعة فقط
- * يتم تجديد المعرف وحذف القديم تلقائياً بعد مرور 24 ساعة لضمان الخصوصية
+ * دالة توليد والحصول على الرقم التسلسلي الفريد للضيف (صالح لمدة 24 ساعة فقط)
+ * يتم تجديد الرقم التسلسلي وحذف القديم تلقائياً بعد مرور 24 ساعة لضمان الخصوصية والمنع التام لتداخل البيانات
  */
-export function getOrCreateGuestSessionId(): string {
+export function getOrCreateGuestSerialId(): string {
   if (typeof window === "undefined") return "";
 
   const now = Date.now();
-  const savedTime = localStorage.getItem(GUEST_TIME_KEY);
-  let sessionId = localStorage.getItem(GUEST_STORAGE_KEY);
+  const savedTime = localStorage.getItem(SERIAL_TIME_KEY) || localStorage.getItem(GUEST_TIME_KEY);
+  let serialId = localStorage.getItem(SERIAL_STORAGE_KEY) || localStorage.getItem(GUEST_STORAGE_KEY);
 
-  if (!sessionId || !savedTime || now - Number(savedTime) > 24 * 60 * 60 * 1000) {
-    sessionId = "guest_" + Math.random().toString(36).substring(2) + now.toString(36);
-    localStorage.setItem(GUEST_STORAGE_KEY, sessionId);
+  if (!serialId || !savedTime || now - Number(savedTime) > EXPIRATION_MS) {
+    serialId = "guest_serial_" + Math.random().toString(36).substring(2) + now.toString(36);
+    localStorage.setItem(SERIAL_STORAGE_KEY, serialId);
+    localStorage.setItem(SERIAL_TIME_KEY, now.toString());
+    localStorage.setItem(GUEST_STORAGE_KEY, serialId);
     localStorage.setItem(GUEST_TIME_KEY, now.toString());
   }
 
-  return sessionId;
+  return serialId;
+}
+
+export function getOrCreateGuestSessionId(): string {
+  return getOrCreateGuestSerialId();
 }
 
 /**
- * مسح جلسة الضيف المؤقتة بعد دمجها بالحساب الرسمي
+ * مسح بيانات ورقم الضيف التسلسلي المؤقت بعد دمج البيانات بالحساب الرسمي
  */
 export function clearGuestSessionId(): void {
   if (typeof window === "undefined") return;
+  localStorage.removeItem(SERIAL_STORAGE_KEY);
+  localStorage.removeItem(SERIAL_TIME_KEY);
   localStorage.removeItem(GUEST_STORAGE_KEY);
   localStorage.removeItem(GUEST_TIME_KEY);
   localStorage.removeItem("store_guest_session_id");
@@ -249,7 +260,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   const addNotification = useCallback(
     async (n: Omit<Notification, "id" | "timestamp" | "read">) => {
-      const guestSessionId = getOrCreateGuestSessionId();
+      const guestSerialId = getOrCreateGuestSerialId();
       const isRegistered = user?.id && isUUID(user.id) && !user.isGuest;
 
       const row = {
@@ -258,7 +269,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         message: n.message,
         product_id: n.productId || "",
         user_id: isRegistered ? user.id : null,
-        session_id: !isRegistered ? guestSessionId : null,
+        session_id: !isRegistered ? guestSerialId : null,
+        serial_id: !isRegistered ? guestSerialId : null,
         read: false,
       };
       const { data: created, error } = await supabase.from("notifications").insert(row).select().single();

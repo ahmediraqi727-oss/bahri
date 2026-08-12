@@ -32,7 +32,9 @@ interface AuthContextType {
 export async function upgradeGuestDataToUser(userId: string): Promise<void> {
   if (typeof window === "undefined" || !userId) return;
   const guestSessionId =
-    localStorage.getItem("ahmed_bahri_guest_session") || localStorage.getItem("store_guest_session_id");
+    localStorage.getItem("ahmed_bahri_guest_serial") ||
+    localStorage.getItem("ahmed_bahri_guest_session") ||
+    localStorage.getItem("store_guest_session_id");
   if (!guestSessionId) return;
 
   try {
