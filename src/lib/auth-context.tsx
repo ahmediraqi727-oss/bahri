@@ -47,6 +47,8 @@ export async function upgradeGuestDataToUser(userId: string): Promise<void> {
   }
 }
 
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
