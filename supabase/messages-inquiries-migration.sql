@@ -132,6 +132,7 @@ ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS user_id UUID REFERENCE
 
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
+-- 1. حذف السياسات التي تعتمد على عمود type مؤقتاً
 DROP POLICY IF EXISTS "notifications_admin_all" ON public.notifications;
 DROP POLICY IF EXISTS "notifications_customer_select" ON public.notifications;
 DROP POLICY IF EXISTS "notifications_public_customer_select" ON public.notifications;
@@ -142,7 +143,11 @@ DROP POLICY IF EXISTS "notifications_insert_all" ON public.notifications;
 DROP POLICY IF EXISTS "notifications_select_all" ON public.notifications;
 DROP POLICY IF EXISTS "notifications_insert_policy" ON public.notifications;
 
--- سياسة المدير الكاملة
+-- 2. الآن بعد أن أزلنا الاعتمادية، قم بتحويل نوع عمود type إلى TEXT حر بنجاح تام
+ALTER TABLE public.notifications 
+ALTER COLUMN type TYPE TEXT USING type::TEXT;
+
+-- 3. إعادة إنشاء سياسة الأدمن الكاملة
 CREATE POLICY "notifications_admin_all" ON public.notifications
   FOR ALL
   USING (
@@ -153,7 +158,7 @@ CREATE POLICY "notifications_admin_all" ON public.notifications
     )
   );
 
--- سياسة الزبائن والضيوف الآمنة تماماً
+-- 4. إعادة إنشاء سياسة الزبائن والضيوف الآمنة
 CREATE POLICY "notifications_customer_safe_select" ON public.notifications
   FOR SELECT
   USING (
@@ -163,11 +168,12 @@ CREATE POLICY "notifications_customer_safe_select" ON public.notifications
       user_id IS NULL 
       AND (
         type IS NULL 
-        OR type::text NOT IN ('low_stock', 'out_of_stock', 'admin_log', 'system', 'contact')
+        OR type NOT IN ('low_stock', 'out_of_stock', 'admin_log', 'system', 'contact')
       )
     )
   );
 
+-- 5. سياسة الإدراج المفتوحة
 CREATE POLICY "notifications_insert_policy" ON public.notifications
   FOR INSERT
   WITH CHECK (true);
