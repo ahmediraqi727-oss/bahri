@@ -164,8 +164,30 @@ INSERT INTO public.auto_replies (trigger_keywords, response_text, match_threshol
 ON CONFLICT DO NOTHING;
 
 
--- ── 7. STRICT NOTIFICATIONS RLS SECURITY ───────────────────────────────────────
--- Fixes permission leak where customers could view internal admin logs & other users' support tickets
+-- ── 7. STRICT NOTIFICATIONS RLS SECURITY & ENUM EXPANSION ─────────────────────
+-- 7a. Safely expand notification_type enum if it exists in Postgres
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'notification_type') THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_enum
+      WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = 'notification_type')
+      AND enumlabel = 'contact'
+    ) THEN
+      ALTER TYPE notification_type ADD VALUE 'contact';
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_enum
+      WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = 'notification_type')
+      AND enumlabel = 'message'
+    ) THEN
+      ALTER TYPE notification_type ADD VALUE 'message';
+    END IF;
+  END IF;
+END $$;
+
+-- 7b. Enable RLS and set strict role-based policies
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all operations on notifications" ON public.notifications;
@@ -186,9 +208,10 @@ CREATE POLICY "notifications_admin_all" ON public.notifications
 
 -- Customers and Guests can ONLY select non-admin notification categories
 -- and ONLY notifications tied to their own user_id OR public broadcasts (user_id IS NULL)
+-- Note: type::text cast prevents 22P02 enum mismatch errors in Postgres
 CREATE POLICY "notifications_customer_select" ON public.notifications
   FOR SELECT
   USING (
     (user_id = auth.uid() OR user_id IS NULL)
-    AND type NOT IN ('low_stock', 'out_of_stock', 'contact', 'admin_log', 'system')
+    AND type::text NOT IN ('low_stock', 'out_of_stock', 'contact', 'admin_log', 'system')
   );
