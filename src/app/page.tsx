@@ -16,6 +16,8 @@ import CustomerProductsModal, {
   getFavoriteProductIds,
   toggleFavoriteProductId,
 } from "@/components/CustomerProductsModal";
+import CustomerMessagesModal from "@/components/CustomerMessagesModal";
+import GuestRetentionModal from "@/components/GuestRetentionModal";
 import ContactSupportModal from "@/components/ContactSupportModal";
 import { supabase } from "@/lib/supabase-client";
 import { useLang, Lang } from "@/lib/lang-context";
@@ -86,6 +88,8 @@ export default function Home() {
   const [shareOpen, setShareOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [myProductsOpen, setMyProductsOpen] = useState(false);
+  const [customerMessagesOpen, setCustomerMessagesOpen] = useState(false);
+  const [guestRetentionOpen, setGuestRetentionOpen] = useState(false);
   const [copyNotice, setCopyNotice] = useState(false);
   const [eyeCare, setEyeCare] = useState(false);
   const [fontSize, setFontSize] = useState(16);
@@ -632,6 +636,18 @@ export default function Home() {
                         )
                       )}
 
+                      {/* 1.5 Messages Button: "الرسائل" directly below "منتجاتي" / "المنتجات" */}
+                      <button
+                        onClick={() => { setCustomerMessagesOpen(true); setMenuOpen(false); }}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-sky-50 dark:hover:bg-sky-950/30 transition-colors text-right"
+                      >
+                        <span className="text-xl">💬</span>
+                        <div className="flex-1 text-right">
+                          <span className="text-sm font-bold text-sky-700 dark:text-sky-400">الرسائل</span>
+                          <p className="text-[11px] text-gray-400 mt-0.5">العروض والإشعارات والمحادثات المباشرة</p>
+                        </div>
+                      </button>
+
                       {/* 2. Store Share Button: "المشاركة" */}
                       {homeVis.showShare !== false && (
                         <button
@@ -691,7 +707,14 @@ export default function Home() {
                       {/* Logout */}
                       {user && (
                         <button
-                          onClick={() => { signOut(); setMenuOpen(false); }}
+                          onClick={() => {
+                            if (user.isGuest || user.id.startsWith("guest-")) {
+                              setGuestRetentionOpen(true);
+                            } else {
+                              signOut();
+                            }
+                            setMenuOpen(false);
+                          }}
                           className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-right"
                         >
                           <span className="text-xl">🚪</span>
@@ -1234,6 +1257,16 @@ export default function Home() {
 
       {/* My Products / Favorites Modal */}
       <CustomerProductsModal isOpen={myProductsOpen} onClose={() => setMyProductsOpen(false)} />
+
+      {/* Customer Messages & Broadcasts Modal */}
+      <CustomerMessagesModal isOpen={customerMessagesOpen} onClose={() => setCustomerMessagesOpen(false)} />
+
+      {/* Guest Retention Warning Modal */}
+      <GuestRetentionModal
+        isOpen={guestRetentionOpen}
+        onClose={() => setGuestRetentionOpen(false)}
+        onConfirmLogout={() => signOut()}
+      />
 
       {/* Direct Contact & Technical Support Modal */}
       <ContactSupportModal isOpen={contactOpen} onClose={() => setContactOpen(false)} />

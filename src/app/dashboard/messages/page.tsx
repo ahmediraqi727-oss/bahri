@@ -13,6 +13,7 @@ interface Message {
   is_admin_reply: boolean;
   is_read: boolean;
   auto_replied: boolean;
+  is_guest?: boolean;
   matched_keyword: string | null;
   thread_id: string | null;
   created_at: string;
@@ -25,6 +26,7 @@ interface Thread {
   last_message: string;
   last_at: string;
   unread_count: number;
+  is_guest: boolean;
   messages: Message[];
 }
 
@@ -52,6 +54,7 @@ function groupIntoThreads(msgs: Message[]): Thread[] {
     const customer = sorted.find((m) => !m.is_admin_reply) || sorted[0];
     const last = sorted[sorted.length - 1];
     const unread = sorted.filter((m) => !m.is_admin_reply && !m.is_read).length;
+    const isGuest = customer?.is_guest || customer?.sender_name?.includes("ضيف") || false;
     threads.push({
       thread_id: threadId,
       sender_name: customer?.sender_name || "زائر",
@@ -59,6 +62,7 @@ function groupIntoThreads(msgs: Message[]): Thread[] {
       last_message: last?.content || "",
       last_at: last?.created_at || new Date().toISOString(),
       unread_count: unread,
+      is_guest: isGuest,
       messages: sorted,
     });
   });
@@ -347,8 +351,17 @@ export default function MessagesPage() {
                         {thread.sender_name.charAt(0)}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-extrabold text-gray-900 dark:text-white truncate">{thread.sender_name}</p>
+                        <div className="flex items-center justify-between gap-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <p className="text-xs font-extrabold text-gray-900 dark:text-white truncate">{thread.sender_name}</p>
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-extrabold flex-shrink-0 ${
+                              thread.is_guest
+                                ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                                : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                            }`}>
+                              {thread.is_guest ? "🤝 ضيف" : "✉️ مسجل"}
+                            </span>
+                          </div>
                           {thread.unread_count > 0 && (
                             <span className="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-red-500 text-white flex-shrink-0">{thread.unread_count}</span>
                           )}
@@ -386,7 +399,16 @@ export default function MessagesPage() {
                     {selectedThread.sender_name.charAt(0)}
                   </div>
                   <div>
-                    <p className="text-sm font-extrabold text-gray-900 dark:text-white">{selectedThread.sender_name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-extrabold text-gray-900 dark:text-white">{selectedThread.sender_name}</p>
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold ${
+                        selectedThread.is_guest
+                          ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40"
+                          : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40"
+                      }`}>
+                        {selectedThread.is_guest ? "🤝 زائر / ضيف مؤقت" : "✉️ حساب مسجل عبر الإيميل"}
+                      </span>
+                    </div>
                     {selectedThread.sender_phone && <p className="text-xs text-gray-400">{selectedThread.sender_phone}</p>}
                   </div>
                 </div>

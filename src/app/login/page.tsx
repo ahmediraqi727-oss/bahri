@@ -74,6 +74,8 @@ export default function LoginPage() {
     );
   }
 
+  const [signupSuccess, setSignupSuccess] = useState(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -109,8 +111,7 @@ export default function LoginPage() {
         return;
       }
       setError("");
-      alert("تم إنشاء الحساب بنجاح! يمكنك الآن تسجيل الدخول.");
-      setMode("login");
+      setSignupSuccess(true);
       setSubmitting(false);
     }
   };
@@ -129,6 +130,51 @@ export default function LoginPage() {
     guestLogin(guestName.trim(), governorate);
     router.replace("/");
   };
+
+  if (signupSuccess) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 p-4 ${settings.darkMode ? "dark" : ""}`} dir="rtl">
+        <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-3xl shadow-2xl p-8 border border-emerald-200 dark:border-emerald-800/60 text-center space-y-6 animate-scaleUp">
+          <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-950/80 rounded-3xl flex items-center justify-center text-4xl mx-auto shadow-md ring-4 ring-emerald-50 dark:ring-emerald-900/40">
+            📩
+          </div>
+          <div className="space-y-3">
+            <h2 className="text-2xl font-extrabold text-gray-900 dark:text-white">
+              تم التسجيل بنجاح! 🎉
+            </h2>
+            <p className="text-sm font-extrabold text-emerald-800 dark:text-emerald-300 leading-relaxed bg-emerald-50 dark:bg-emerald-950/40 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800/40">
+              شكراً لتسجيلك بالموقع! يرجى الذهاب إلى إيميلك الذي سجلت به وإتمام التأكيد حتى يُسمح لك بالدخول للموقع
+            </p>
+            {email && (
+              <p className="text-xs font-bold text-gray-500 dark:text-gray-400 dir-ltr font-mono">
+                {email}
+              </p>
+            )}
+          </div>
+
+          <div className="pt-2 space-y-3">
+            <button
+              onClick={() => {
+                setSignupSuccess(false);
+                setMode("login");
+              }}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-extrabold text-sm shadow-md transition-all flex items-center justify-center gap-2"
+            >
+              <span>🔑</span>
+              <span>العودة لصفحة تسجيل الدخول</span>
+            </button>
+            
+            <Link
+              href="/"
+              className="w-full py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold text-xs transition-colors block text-center"
+            >
+              العودة للصفحة الرئيسية 🏠
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 p-4 ${settings.darkMode ? "dark" : ""}`}>
