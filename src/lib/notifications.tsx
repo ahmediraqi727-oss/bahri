@@ -37,6 +37,17 @@ const NotificationsContext = createContext<NotificationsContextType | undefined>
 const MUTE_STORAGE_KEY = "customer_notification_mute_until";
 const MUTE_DURATION_KEY = "customer_notification_mute_duration";
 
+// دالة للحصول على معرف جلسة الضيف الفريد أو إنشاؤه إن لم يكن موجوداً
+export function getOrCreateGuestSessionId(): string {
+  if (typeof window === "undefined") return "";
+  let sessionId = localStorage.getItem("store_guest_session_id");
+  if (!sessionId) {
+    sessionId = "guest_" + Math.random().toString(36).substring(2) + Date.now().toString(36);
+    localStorage.setItem("store_guest_session_id", sessionId);
+  }
+  return sessionId;
+}
+
 export function playNotificationChime(soundUrl?: string, volume = 0.8) {
   try {
     if (typeof window === "undefined") return;
