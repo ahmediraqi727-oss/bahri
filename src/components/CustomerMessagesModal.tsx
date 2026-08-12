@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase-client";
 import { useAuth } from "@/lib/auth-context";
 import { useSettings } from "@/lib/settings-context";
+import { getOrCreateGuestSessionId } from "@/lib/notifications";
 import Link from "next/link";
 
 interface Message {

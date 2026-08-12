@@ -29,7 +29,23 @@ interface AuthContextType {
   guestLogin: (name: string, governorate: string) => void;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export async function upgradeGuestDataToUser(userId: string): Promise<void> {
+  if (typeof window === "undefined" || !userId) return;
+  const guestSessionId = localStorage.getItem("store_guest_session_id");
+  if (!guestSessionId) return;
+
+  try {
+    const { error } = await supabase.rpc("upgrade_guest_to_user", {
+      p_session_id: guestSessionId,
+      p_user_id: userId,
+    });
+    if (!error) {
+      clearGuestSessionId();
+    }
+  } catch {
+    // Ignore RPC errors gracefully
+  }
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -110,24 +126,6 @@ function getSavedGuestUser(): AuthUser | null {
     } catch {}
   }
   return null;
-}
-
-export async function upgradeGuestDataToUser(userId: string): Promise<void> {
-  if (typeof window === "undefined" || !userId) return;
-  const guestSessionId = localStorage.getItem("store_guest_session_id");
-  if (!guestSessionId) return;
-
-  try {
-    const { error } = await supabase.rpc("upgrade_guest_to_user", {
-      p_session_id: guestSessionId,
-      p_user_id: userId,
-    });
-    if (!error) {
-      clearGuestSessionId();
-    }
-  } catch {
-    // Ignore RPC errors gracefully
-  }
 }
 
   useEffect(() => {
