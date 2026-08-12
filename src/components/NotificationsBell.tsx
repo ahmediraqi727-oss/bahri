@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from "react";
 import { useNotifications, Notification } from "@/lib/notifications";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase-client";
+import { useAuth } from "@/lib/auth-context";
 
 const TYPE_ICONS: Record<string, string> = {
   low_stock: "⚠️",
@@ -34,9 +36,50 @@ function timeAgo(iso: string): string {
 
 export default function NotificationsBell() {
   const { notifications, unreadCount, markAsRead, markAllAsRead, clearAll } = useNotifications();
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+
+  // تفعيل الاستماع اللحظي (Realtime) للرسائل والإشعارات الجديدة وتشغيل الصوت
+  useEffect(() => {
+    const channel = supabase
+      .channel("realtime-notifications-bell")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        (payload) => {
+          const newMsg = payload.new as any;
+          // إذا كانت الرسالة رد إداري وتخص المستخدم الحالي أو زائر
+          if (newMsg.is_admin_reply) {
+            try {
+              const audio = new Audio("/sounds/chime.mp3");
+              audio.play().catch(() => {});
+            } catch {}
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "notifications" },
+        (payload) => {
+          const newNotif = payload.new as any;
+          // التحقق مما إذا كان الإشعار موجهاً للمستخدم أو عاماً
+          if (!newNotif.user_id || newNotif.user_id === user?.id) {
+            try {
+              const audio = new Audio("/sounds/chime.mp3");
+              audio.play().catch(() => {});
+            } catch {}
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -46,15 +89,12 @@ export default function NotificationsBell() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const router = useRouter();
-
   const handleSelectNotification = (n: Notification) => {
     if (!n.read) {
       markAsRead(n.id);
     }
     setSelectedNotification(n);
     setOpen(false);
-    // Route message/contact notifications to messages hub
     if (n.type === "message" || n.type === "contact") {
       router.push("/dashboard/messages");
     }
@@ -150,11 +190,9 @@ export default function NotificationsBell() {
         )}
       </div>
 
-      {/* Notification Details Modal */}
       {selectedNotification && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn" dir="rtl">
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl max-w-lg w-full overflow-hidden text-right transform transition-all">
-            {/* Header */}
             <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between bg-gray-50/80 dark:bg-gray-800/80">
               <div className="flex items-center gap-3">
                 <span className="text-3xl p-2 bg-white dark:bg-gray-700 rounded-xl shadow-sm border border-gray-200 dark:border-gray-600">
@@ -179,7 +217,6 @@ export default function NotificationsBell() {
               </button>
             </div>
 
-            {/* Body Details */}
             <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
               <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl border border-gray-200/80 dark:border-gray-700/80">
                 <p className="text-xs text-gray-400 font-medium mb-1">📅 التاريخ والوقت:</p>
@@ -201,31 +238,8 @@ export default function NotificationsBell() {
                   {selectedNotification.message}
                 </div>
               </div>
-
-              {selectedNotification.type === "info" || selectedNotification.title.includes("طلب") ? (
-                <div className="pt-2">
-                  <Link
-                    href="/dashboard/orders"
-                    onClick={() => setSelectedNotification(null)}
-                    className="w-full py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-center hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 shadow-sm text-sm"
-                  >
-                    🛒 الانتقال فوراً إلى صفحة الطلبات
-                  </Link>
-                </div>
-              ) : selectedNotification.productId ? (
-                <div className="pt-2">
-                  <Link
-                    href="/dashboard/inventory"
-                    onClick={() => setSelectedNotification(null)}
-                    className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-bold text-center hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-sm text-sm"
-                  >
-                    📦 الانتقال إلى المخزون والمنتجات
-                  </Link>
-                </div>
-              ) : null}
             </div>
 
-            {/* Footer */}
             <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex justify-end gap-2">
               <button
                 onClick={() => setSelectedNotification(null)}
