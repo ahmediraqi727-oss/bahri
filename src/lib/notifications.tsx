@@ -11,8 +11,9 @@ export interface Notification {
   type: string;
   title: string;
   message: string;
-  productId?: string;
   read: boolean;
+  user_id?: string | null;
+  productId?: string;
 }
 
 export type MuteDurationType = "none" | "1h" | "4h" | "24h";
@@ -45,24 +46,23 @@ export function playNotificationChime(soundUrl?: string, volume = 0.8) {
     const playPromise = audio.play();
     if (playPromise !== undefined) {
       playPromise.catch(() => {
-        // Fallback Web Audio API synthesizer chime if audio file is blocked or missing
         try {
           const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
           const osc = ctx.createOscillator();
           const gain = ctx.createGain();
           osc.type = "sine";
-          osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-          osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5
+          osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15);
           gain.gain.setValueAtTime(volume * 0.3, ctx.currentTime);
           gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
           osc.connect(gain);
           gain.connect(ctx.destination);
           osc.start();
-          osc.stop(ctx.currentTime + 0.3);
-        } catch { /* ignore audio fallback errors */ }
+          osc.stop(ctx.currentTime + 0.2);
+        } catch {}
       });
     }
-  } catch { /* ignore audio errors */ }
+  } catch {}
 }
 
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
@@ -100,7 +100,6 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     localStorage.setItem(MUTE_DURATION_KEY, duration);
   }, []);
 
-  // جلب الإشعارات بشكل مبسط وآمن تماماً لتجنب خطأ 400
   const fetchNotifications = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -118,18 +117,36 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           type: row.type || "message",
           title: row.title,
           message: row.message || "",
-          productId: row.product_id || undefined,
           read: row.read || false,
           timestamp: row.created_at,
+          user_id: row.user_id,
+          productId: row.product_id || undefined,
         }));
 
-        // تصفية أمان العميل (الضيوف والزبائن لا يرون سوى إشعاراتهم أو الإشعارات العامة غير الإدارية)
+        // 🔒 فلتر الأمان الصارم للضيوف والزبائن العاديين
         if (!isAdmin) {
-          const filtered = parsed.filter((n) => {
-            const isRestrictedAdminType = ["low_stock", "out_of_stock", "admin_log", "system"].includes(n.type);
-            return !isRestrictedAdminType;
+          const safeFiltered = parsed.filter((n) => {
+            const isOrderOrAdminType = [
+              "low_stock",
+              "out_of_stock",
+              "admin_log",
+              "system",
+              "contact",
+              "order",
+              "new_order",
+              "whatsapp_order",
+            ].includes(n.type);
+
+            const hasOrderKeywords = n.title.includes("طلب") || n.message.includes("طلب");
+
+            // إذا كان الإشعار طلب أو إداري، فلا يظهر أبداً إلا إذا كان موجهة للمستخدم نفسه بصورة خاصة
+            if (isOrderOrAdminType || hasOrderKeywords) {
+              return n.user_id === user?.id;
+            }
+
+            return true;
           });
-          setNotifications(filtered);
+          setNotifications(safeFiltered);
         } else {
           setNotifications(parsed);
         }
@@ -144,7 +161,6 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     fetchNotifications();
 
-    // الاستماع الفوري (Realtime) للإشعارات الجديدة
     const channel = supabase
       .channel("notifications-realtime-channel")
       .on(
@@ -157,10 +173,31 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
             type: newRow.type || "message",
             title: newRow.title,
             message: newRow.message || "",
-            productId: newRow.product_id || undefined,
             read: false,
             timestamp: newRow.created_at,
+            user_id: newRow.user_id,
+            productId: newRow.product_id || undefined,
           };
+
+          const isAdmin = user && (user.role === "manager" || user.role === "admin");
+          const isOrderOrAdminType = [
+            "low_stock",
+            "out_of_stock",
+            "admin_log",
+            "system",
+            "contact",
+            "order",
+            "new_order",
+            "whatsapp_order",
+          ].includes(newNotif.type);
+          const hasOrderKeywords = newNotif.title.includes("طلب") || newNotif.message.includes("طلب");
+
+          // تطبيق نفس فلتر الأمان اللحظي
+          if (!isAdmin && (isOrderOrAdminType || hasOrderKeywords)) {
+            if (newNotif.user_id !== user?.id) {
+              return; // تجاهل الإشعار إذا لم يكن يخص هذا الضيف/الزبون
+            }
+          }
 
           setNotifications((prev) => [newNotif, ...prev]);
 
@@ -174,7 +211,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [fetchNotifications, isMuted]);
+  }, [fetchNotifications, isMuted, user?.id, user?.role]);
 
   const addNotification = useCallback(
     async (n: Omit<Notification, "id" | "timestamp" | "read">) => {
@@ -194,9 +231,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           type: created.type || "message",
           title: created.title,
           message: created.message || "",
-          productId: created.product_id || undefined,
           read: false,
           timestamp: created.created_at,
+          user_id: created.user_id,
+          productId: created.product_id || undefined,
         };
         setNotifications((prev) => [newNotif, ...prev]);
         if (!isMuted) {
