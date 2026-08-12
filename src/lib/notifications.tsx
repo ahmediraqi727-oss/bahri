@@ -37,15 +37,42 @@ const NotificationsContext = createContext<NotificationsContextType | undefined>
 const MUTE_STORAGE_KEY = "customer_notification_mute_until";
 const MUTE_DURATION_KEY = "customer_notification_mute_duration";
 
-// دالة للحصول على معرف جلسة الضيف الفريد أو إنشاؤه إن لم يكن موجوداً
+const GUEST_SESSION_ID_KEY = "store_guest_session_id";
+const GUEST_SESSION_TIME_KEY = "store_guest_session_time";
+const SESSION_EXPIRATION_MS = 24 * 60 * 60 * 1000; // 24 Hours
+
+/**
+ * دالة للحصول على معرف جلسة الضيف الفريد المؤقت (صالح لمدة 24 ساعة)
+ * يتم تجديد المعرف تلقائياً إذا انتهت الـ 24 ساعة لضمان الخصوصية
+ */
 export function getOrCreateGuestSessionId(): string {
   if (typeof window === "undefined") return "";
-  let sessionId = localStorage.getItem("store_guest_session_id");
-  if (!sessionId) {
-    sessionId = "guest_" + Math.random().toString(36).substring(2) + Date.now().toString(36);
-    localStorage.setItem("store_guest_session_id", sessionId);
+
+  const storedId = localStorage.getItem(GUEST_SESSION_ID_KEY);
+  const storedTime = localStorage.getItem(GUEST_SESSION_TIME_KEY);
+  const now = Date.now();
+
+  if (storedId && storedTime) {
+    const elapsed = now - Number(storedTime);
+    if (elapsed < SESSION_EXPIRATION_MS) {
+      return storedId;
+    }
   }
-  return sessionId;
+
+  // إنشاء session_id جديد وتحديث تاريخ الإنشاء
+  const newSessionId = "guest_" + Math.random().toString(36).substring(2) + now.toString(36);
+  localStorage.setItem(GUEST_SESSION_ID_KEY, newSessionId);
+  localStorage.setItem(GUEST_SESSION_TIME_KEY, now.toString());
+  return newSessionId;
+}
+
+/**
+ * دالة مسح معرف جلسة الضيف بعد ترقية الحساب بنجاح
+ */
+export function clearGuestSessionId(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(GUEST_SESSION_ID_KEY);
+  localStorage.removeItem(GUEST_SESSION_TIME_KEY);
 }
 
 export function playNotificationChime(soundUrl?: string, volume = 0.8) {
@@ -226,12 +253,16 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   const addNotification = useCallback(
     async (n: Omit<Notification, "id" | "timestamp" | "read">) => {
+      const guestSessionId = getOrCreateGuestSessionId();
+      const isRegistered = user?.id && isUUID(user.id) && !user.isGuest;
+
       const row = {
         type: n.type || "message",
         title: n.title,
         message: n.message,
         product_id: n.productId || "",
-        user_id: user?.id && isUUID(user.id) ? user.id : null,
+        user_id: isRegistered ? user.id : null,
+        session_id: !isRegistered ? guestSessionId : null,
         read: false,
       };
       const { data: created, error } = await supabase.from("notifications").insert(row).select().single();

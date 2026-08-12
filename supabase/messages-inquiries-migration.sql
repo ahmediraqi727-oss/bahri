@@ -192,5 +192,41 @@ GRANT SELECT ON public.auto_replies TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.notifications TO authenticated;
 GRANT SELECT, INSERT ON public.notifications TO anon;
 
--- 7. تحديث ذاكرة التخزين المؤقت للخادم
+-- 7. إضافة عمود session_id للرسائل والإشعارات لتتبع الضيوف بدقة
+ALTER TABLE public.messages ADD COLUMN IF NOT EXISTS session_id TEXT;
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS session_id TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_messages_session_id ON public.messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_session_id ON public.notifications(session_id);
+
+-- 8. دالة RPC لنقل وترقية كافة بيانات ورسائل الضيف إلى الحساب الرسمي الجديد عند التسجيل
+CREATE OR REPLACE FUNCTION public.upgrade_guest_to_user(
+  p_session_id TEXT,
+  p_user_id UUID
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  IF p_session_id IS NULL OR p_session_id = '' OR p_user_id IS NULL THEN
+    RETURN;
+  END IF;
+
+  -- 1. نقل الرسائل الخاصة بالجلسة إلى user_id وتعديل is_guest
+  UPDATE public.messages
+  SET user_id = p_user_id,
+      is_guest = FALSE
+  WHERE session_id = p_session_id OR (user_id IS NULL AND sender_phone = p_session_id);
+
+  -- 2. نقل الإشعارات الخاصة بالجلسة إلى user_id
+  UPDATE public.notifications
+  SET user_id = p_user_id
+  WHERE session_id = p_session_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.upgrade_guest_to_user(TEXT, UUID) TO authenticated, anon;
+
+-- 9. تحديث ذاكرة التخزين المؤقت للخادم
 NOTIFY pgrst, 'reload schema';

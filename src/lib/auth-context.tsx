@@ -6,6 +6,7 @@ import { supabase } from "./supabase-client";
 import { UserRole } from "./types";
 import { getCookie, setCookie, eraseCookie } from "./visitor-tracker";
 import { updateGuestIdentity } from "./visitor-tracker";
+import { clearGuestSessionId } from "./notifications";
 
 interface AuthUser {
   id: string;
@@ -111,6 +112,24 @@ function getSavedGuestUser(): AuthUser | null {
   return null;
 }
 
+export async function upgradeGuestDataToUser(userId: string): Promise<void> {
+  if (typeof window === "undefined" || !userId) return;
+  const guestSessionId = localStorage.getItem("store_guest_session_id");
+  if (!guestSessionId) return;
+
+  try {
+    const { error } = await supabase.rpc("upgrade_guest_to_user", {
+      p_session_id: guestSessionId,
+      p_user_id: userId,
+    });
+    if (!error) {
+      clearGuestSessionId();
+    }
+  } catch {
+    // Ignore RPC errors gracefully
+  }
+}
+
   useEffect(() => {
     let mounted = true;
     try {
@@ -118,6 +137,7 @@ function getSavedGuestUser(): AuthUser | null {
         if (!mounted) return;
         setSession(s);
         if (s?.user) {
+          upgradeGuestDataToUser(s.user.id);
           fetchUserProfile(s.user).then((profile) => {
             if (mounted) {
               setUser(profile);
@@ -145,6 +165,7 @@ function getSavedGuestUser(): AuthUser | null {
           if (!mounted) return;
           setSession(s);
           if (s?.user) {
+            upgradeGuestDataToUser(s.user.id);
             const profile = await fetchUserProfile(s.user);
             if (mounted) setUser(profile);
           } else {

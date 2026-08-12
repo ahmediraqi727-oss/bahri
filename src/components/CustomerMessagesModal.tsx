@@ -50,13 +50,14 @@ export default function CustomerMessagesModal({ isOpen, onClose }: CustomerMessa
     if (!isOpen) return;
     try {
       setLoading(true);
+      const guestSessionId = getOrCreateGuestSessionId();
       // Fetch messages relevant to this user or general broadcasts
       let query = supabase.from("messages").select("*").order("created_at", { ascending: true }).limit(200);
 
       if (user?.id && !user.id.startsWith("guest-")) {
         query = query.or(`user_id.eq.${user.id},user_id.is.null`);
       } else {
-        query = query.or(`sender_name.ilike.%${user?.fullName || "ضيف"}%,user_id.is.null`);
+        query = query.or(`session_id.eq.${guestSessionId},sender_phone.eq.${guestSessionId},user_id.is.null`);
       }
 
       const { data, error } = await query;
@@ -101,6 +102,7 @@ export default function CustomerMessagesModal({ isOpen, onClose }: CustomerMessa
     if (!newText.trim()) return;
     setSending(true);
     try {
+      const guestSessionId = getOrCreateGuestSessionId();
       const threadId = messages.length > 0 ? (messages[0].thread_id || crypto.randomUUID()) : crypto.randomUUID();
       const customerUserId = user && !user.isGuest && !user.id?.startsWith("guest-") ? user.id : null;
 
@@ -108,7 +110,9 @@ export default function CustomerMessagesModal({ isOpen, onClose }: CustomerMessa
         .from("messages")
         .insert({
           user_id: customerUserId,
+          session_id: isGuest ? guestSessionId : null,
           sender_name: user?.fullName || (isGuest ? "ضيف عزيز" : "مستخدم"),
+          sender_phone: isGuest ? guestSessionId : (user as any)?.phone || "",
           content: newText.trim(),
           is_admin_reply: false,
           is_read: false,
