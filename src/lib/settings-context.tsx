@@ -59,6 +59,11 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
     customThemes: (row.custom_themes as any) || [],
     activeThemePreset: (row.active_theme_preset as string) || "classic-blue",
 
+    // Notification Audio & Mute Settings
+    notificationSoundUrl: (row.notification_sound_url as string) || "/sounds/chime.mp3",
+    notificationVolume: row.notification_volume !== undefined ? Number(row.notification_volume) : 0.8,
+    defaultMuteDuration: row.default_mute_duration !== undefined ? Number(row.default_mute_duration) : 1,
+
     // Icons & Custom Sizing
     homeIcon: (row.home_icon as string) || "",
     homeIconSize: Number(row.home_icon_size) || 28,

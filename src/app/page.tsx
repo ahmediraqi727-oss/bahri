@@ -17,8 +17,10 @@ import CustomerProductsModal, {
   toggleFavoriteProductId,
 } from "@/components/CustomerProductsModal";
 import CustomerMessagesModal from "@/components/CustomerMessagesModal";
+import CustomerNotificationsModal from "@/components/CustomerNotificationsModal";
 import GuestRetentionModal from "@/components/GuestRetentionModal";
 import ContactSupportModal from "@/components/ContactSupportModal";
+import { useNotifications } from "@/lib/notifications";
 import { supabase } from "@/lib/supabase-client";
 import { useLang, Lang } from "@/lib/lang-context";
 import { hasPermission } from "@/lib/permissions";
@@ -84,11 +86,13 @@ export default function Home() {
   const [suggestions, setSuggestions] = useState<typeof products>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileEditOpen, setProfileEditOpen] = useState(false);
+  const { unreadCount: notifUnreadCount } = useNotifications();
   const [guestEditOpen, setGuestEditOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [myProductsOpen, setMyProductsOpen] = useState(false);
   const [customerMessagesOpen, setCustomerMessagesOpen] = useState(false);
+  const [customerNotificationsOpen, setCustomerNotificationsOpen] = useState(false);
   const [guestRetentionOpen, setGuestRetentionOpen] = useState(false);
   const [copyNotice, setCopyNotice] = useState(false);
   const [eyeCare, setEyeCare] = useState(false);
@@ -645,6 +649,25 @@ export default function Home() {
                         <div className="flex-1 text-right">
                           <span className="text-sm font-bold text-sky-700 dark:text-sky-400">الرسائل</span>
                           <p className="text-[11px] text-gray-400 mt-0.5">العروض والإشعارات والمحادثات المباشرة</p>
+                        </div>
+                      </button>
+
+                      {/* 1.6 Notifications Button: "الشعارات" alongside Messages & Products */}
+                      <button
+                        onClick={() => { setCustomerNotificationsOpen(true); setMenuOpen(false); }}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-violet-50 dark:hover:bg-violet-950/30 transition-colors text-right group"
+                      >
+                        <span className="text-xl">🔔</span>
+                        <div className="flex-1 text-right flex items-center justify-between">
+                          <div>
+                            <span className="text-sm font-bold text-violet-700 dark:text-violet-400">الشعارات</span>
+                            <p className="text-[11px] text-gray-400 mt-0.5">مركز التنبيهات المباشرة والتحديثات</p>
+                          </div>
+                          {notifUnreadCount > 0 && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-red-600 text-white animate-pulse">
+                              {notifUnreadCount}
+                            </span>
+                          )}
                         </div>
                       </button>
 
@@ -1260,6 +1283,9 @@ export default function Home() {
 
       {/* Customer Messages & Broadcasts Modal */}
       <CustomerMessagesModal isOpen={customerMessagesOpen} onClose={() => setCustomerMessagesOpen(false)} />
+
+      {/* Customer Notifications Center Modal */}
+      <CustomerNotificationsModal isOpen={customerNotificationsOpen} onClose={() => setCustomerNotificationsOpen(false)} />
 
       {/* Guest Retention Warning Modal */}
       <GuestRetentionModal

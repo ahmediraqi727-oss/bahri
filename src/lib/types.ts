@@ -156,6 +156,11 @@ export interface SiteSettings {
   pricingTiers?: import("./pricing-engine").GlobalPricingConfig;
   importMarkupPct?: number;             // % added to cost to derive retail price
   importWholesaleReductionPct?: number; // % reduced from retail to derive wholesale price
+  // Notification Audio & Mute Configuration
+  notificationSoundUrl?: string;
+  notificationVolume?: number; // 0.0 to 1.0
+  defaultMuteDuration?: number; // 1, 4, 24 hours
+
   roleThemes: {
     manager: RoleTheme;
     admin: RoleTheme;
@@ -182,6 +187,9 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   accentColor: "#f59e0b",
   darkMode: false,
   eyeProtection: false,
+  notificationSoundUrl: "/sounds/chime.mp3",
+  notificationVolume: 0.8,
+  defaultMuteDuration: 1,
   currentRole: "manager",
   whatsappLink: "",
   telegramLink: "",

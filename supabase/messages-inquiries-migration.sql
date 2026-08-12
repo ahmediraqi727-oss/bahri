@@ -121,14 +121,17 @@ CREATE POLICY "auto_replies_admin_all" ON public.auto_replies
 CREATE POLICY "auto_replies_public_read" ON public.auto_replies
   FOR SELECT USING (is_active = TRUE);
 
--- ── 4. Global auto-reply toggles in settings (إذا كان جدول settings موجوداً) ──
+-- ── 4. Global auto-reply & notification toggles in settings ─────────────────────
 DO $$ 
 BEGIN
   IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'settings') THEN
     ALTER TABLE public.settings
-      ADD COLUMN IF NOT EXISTS auto_reply_enabled   BOOLEAN DEFAULT FALSE,
-      ADD COLUMN IF NOT EXISTS auto_reply_threshold NUMERIC(4,2) DEFAULT 0.90,
-      ADD COLUMN IF NOT EXISTS auto_reply_fallback  TEXT DEFAULT 'شكراً لتواصلك معنا! سيتم الرد عليك من قبل فريقنا في أقرب وقت ممكن.';
+      ADD COLUMN IF NOT EXISTS auto_reply_enabled     BOOLEAN DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS auto_reply_threshold   NUMERIC(4,2) DEFAULT 0.90,
+      ADD COLUMN IF NOT EXISTS auto_reply_fallback    TEXT DEFAULT 'شكراً لتواصلك معنا! سيتم الرد عليك من قبل فريقنا في أقرب وقت ممكن.',
+      ADD COLUMN IF NOT EXISTS notification_sound_url TEXT DEFAULT '/sounds/chime.mp3',
+      ADD COLUMN IF NOT EXISTS notification_volume    NUMERIC(3,2) DEFAULT 0.80,
+      ADD COLUMN IF NOT EXISTS default_mute_duration  INTEGER DEFAULT 1;
   END IF;
 END $$;
 

@@ -1487,6 +1487,111 @@ export default function SettingsPage() {
         )}
       </section>
 
+      {/* ════════════════════════════════════════════════════════════════
+          Section: Notification Audio & Mute Settings (إعدادات الشعارات والتنبيهات الصوتية)
+      ════════════════════════════════════════════════════════════════ */}
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-5 shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">🔔</span>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">إعدادات الشعارات والتنبيهات الصوتية</h2>
+        </div>
+
+        <div className="p-4 bg-violet-50/50 dark:bg-violet-950/20 rounded-2xl border border-violet-200 dark:border-violet-800/40 space-y-4">
+          <p className="text-xs font-extrabold text-violet-800 dark:text-violet-300">🔊 تخصيص نغمة التنبيه ومستوى الصوت</p>
+
+          {/* Sound Tone Selection & Upload */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block">
+              رابط نغمة التنبيه الصوتية (Audio Tone URL):
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="/sounds/chime.mp3"
+                value={formData.notificationSoundUrl || "/sounds/chime.mp3"}
+                onChange={(e) => handleChange({ notificationSoundUrl: e.target.value })}
+                className="flex-1 px-3.5 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs font-medium text-gray-900 dark:text-white outline-none focus:border-violet-500"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    const audio = new Audio(formData.notificationSoundUrl || "/sounds/chime.mp3");
+                    audio.volume = formData.notificationVolume ?? 0.8;
+                    audio.play().catch(() => alert("تنبيه: تعذر تشغيل ملف الصوت المخصص، يرجى التأكد من مسار الملف."));
+                  } catch {
+                    alert("تعذر تشغيل النغمة");
+                  }
+                }}
+                className="px-4 py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-colors flex items-center gap-1.5"
+              >
+                <span>🔊</span>
+                <span>تجربة النغمة</span>
+              </button>
+            </div>
+            <div className="flex gap-2 flex-wrap text-[11px]">
+              <span className="text-gray-400">نغمات مقترحة:</span>
+              <button type="button" onClick={() => handleChange({ notificationSoundUrl: "/sounds/chime.mp3" })} className="text-violet-600 dark:text-violet-400 underline font-bold">chime.mp3</button>
+              <button type="button" onClick={() => handleChange({ notificationSoundUrl: "/sounds/bell.mp3" })} className="text-violet-600 dark:text-violet-400 underline font-bold">bell.mp3</button>
+              <button type="button" onClick={() => handleChange({ notificationSoundUrl: "/sounds/alert.mp3" })} className="text-violet-600 dark:text-violet-400 underline font-bold">alert.mp3</button>
+            </div>
+          </div>
+
+          {/* Volume Control Slider */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                مستوى صوت التنبيه: {Math.round((formData.notificationVolume ?? 0.8) * 100)}%
+              </label>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={Math.round((formData.notificationVolume ?? 0.8) * 100)}
+              onChange={(e) => handleChange({ notificationVolume: parseInt(e.target.value) / 100 })}
+              className="w-full accent-violet-600 cursor-pointer"
+            />
+            <div className="flex justify-between text-[10px] text-gray-400 font-bold">
+              <span>0% (صامت)</span>
+              <span>50% (متوسط)</span>
+              <span>100% (أقصى صوت)</span>
+            </div>
+          </div>
+
+          {/* Default Mute Duration Settings */}
+          <div className="space-y-2 pt-2 border-t border-violet-100 dark:border-violet-900/40">
+            <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block">
+              مدة الكتم الإفتراضية عند التفعيل في الواجهة:
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { val: 1, label: "1 ساعة" },
+                { val: 4, label: "4 ساعات" },
+                { val: 24, label: "24 ساعة" },
+              ].map((item) => (
+                <button
+                  key={item.val}
+                  type="button"
+                  onClick={() => handleChange({ defaultMuteDuration: item.val })}
+                  className={`py-2 px-3 rounded-xl text-xs font-extrabold border transition-all ${
+                    formData.defaultMuteDuration === item.val
+                      ? "bg-violet-600 text-white border-violet-600 shadow-sm"
+                      : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-violet-400"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-400 leading-relaxed">
+              * بمجرد انتهاء مدة الكتم التي يحددها المستخدم، يقوم النظام بالعودة تلقائياً للوضع العام واستئناف التنبيهات الصوتية.
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* Profile Edit Modal */}
       <ProfileEditModal isOpen={profileModalOpen} onClose={() => setProfileModalOpen(false)} />
     </div>
