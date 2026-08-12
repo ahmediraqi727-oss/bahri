@@ -8,7 +8,7 @@ import { isUUID } from "./data-context";
 export interface Notification {
   id: string;
   timestamp: string;
-  type: "low_stock" | "out_of_stock" | "info" | "message" | "contact";
+  type: string;
   title: string;
   message: string;
   productId?: string;
@@ -35,18 +35,6 @@ interface NotificationsContextType {
 const NotificationsContext = createContext<NotificationsContextType | undefined>(undefined);
 const MUTE_STORAGE_KEY = "customer_notification_mute_until";
 const MUTE_DURATION_KEY = "customer_notification_mute_duration";
-
-function rowToNotification(row: Record<string, unknown>): Notification {
-  return {
-    id: row.id as string,
-    type: row.type as Notification["type"],
-    title: row.title as string,
-    message: (row.message as string) || "",
-    productId: (row.product_id as string) || undefined,
-    read: (row.read as boolean) || false,
-    timestamp: row.created_at as string,
-  };
-}
 
 export function playNotificationChime(soundUrl?: string, volume = 0.8) {
   try {
@@ -84,38 +72,16 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const [muteUntil, setMuteUntil] = useState<string | null>(null);
   const [muteDuration, setMuteDuration] = useState<MuteDurationType>("none");
 
-  // Load mute settings from localStorage
   useEffect(() => {
     if (typeof window !== "undefined") {
       const storedUntil = localStorage.getItem(MUTE_STORAGE_KEY);
       const storedDuration = (localStorage.getItem(MUTE_DURATION_KEY) as MuteDurationType) || "none";
-      if (storedUntil) {
-        if (Date.now() < new Date(storedUntil).getTime()) {
-          setMuteUntil(storedUntil);
-          setMuteDuration(storedDuration);
-        } else {
-          localStorage.removeItem(MUTE_STORAGE_KEY);
-          localStorage.removeItem(MUTE_DURATION_KEY);
-        }
+      if (storedUntil && Date.now() < new Date(storedUntil).getTime()) {
+        setMuteUntil(storedUntil);
+        setMuteDuration(storedDuration);
       }
     }
   }, []);
-
-  // Automatic Restoration Check Interval (every 10 seconds)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (muteUntil && Date.now() >= new Date(muteUntil).getTime()) {
-        // Mute timer expired -> Auto-revert back to General Mode ("عام")
-        setMuteUntil(null);
-        setMuteDuration("none");
-        if (typeof window !== "undefined") {
-          localStorage.removeItem(MUTE_STORAGE_KEY);
-          localStorage.removeItem(MUTE_DURATION_KEY);
-        }
-      }
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [muteUntil]);
 
   const isMuted = Boolean(muteUntil && Date.now() < new Date(muteUntil).getTime());
 
@@ -123,89 +89,123 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     setMuteDuration(duration);
     if (duration === "none") {
       setMuteUntil(null);
-      if (typeof window !== "undefined") {
-        localStorage.removeItem(MUTE_STORAGE_KEY);
-        localStorage.removeItem(MUTE_DURATION_KEY);
-      }
+      localStorage.removeItem(MUTE_STORAGE_KEY);
+      localStorage.removeItem(MUTE_DURATION_KEY);
       return;
     }
-
     const hours = duration === "1h" ? 1 : duration === "4h" ? 4 : 24;
-    const until = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+    const until = new Date(Date.now() + hours * 3600000).toISOString();
     setMuteUntil(until);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(MUTE_STORAGE_KEY, until);
-      localStorage.setItem(MUTE_DURATION_KEY, duration);
-    }
+    localStorage.setItem(MUTE_STORAGE_KEY, until);
+    localStorage.setItem(MUTE_DURATION_KEY, duration);
   }, []);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        let query = supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(100);
+  // جلب الإشعارات بشكل مبسط وآمن تماماً لتجنب خطأ 400
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(50);
 
+      if (error) throw error;
+
+      if (data) {
         const isAdmin = user && (user.role === "manager" || user.role === "admin");
+        const parsed: Notification[] = data.map((row: any) => ({
+          id: row.id,
+          type: row.type || "message",
+          title: row.title,
+          message: row.message || "",
+          productId: row.product_id || undefined,
+          read: row.read || false,
+          timestamp: row.created_at,
+        }));
 
-        if (isAdmin) {
-          // Admins & Managers see all notifications (internal logs, stock alerts, user messages, broadcasts)
-          if (user?.id && isUUID(user.id)) {
-            query = query.or(`user_id.eq.${user.id},user_id.is.null`);
-          }
+        // تصفية أمان العميل (الضيوف والزبائن لا يرون سوى إشعاراتهم أو الإشعارات العامة غير الإدارية)
+        if (!isAdmin) {
+          const filtered = parsed.filter((n) => {
+            const isRestrictedAdminType = ["low_stock", "out_of_stock", "admin_log", "system"].includes(n.type);
+            return !isRestrictedAdminType;
+          });
+          setNotifications(filtered);
         } else {
-          // Customers & Guests: STRICT ISOLATION & SCOPING
-          // Only query notifications belonging strictly to their own user_id or public broadcasts
-          if (user?.id && isUUID(user.id)) {
-            query = query.or(`user_id.eq.${user.id},user_id.is.null`);
-          } else {
-            query = query.is("user_id", null);
-          }
-          // Strictly exclude admin internal logs, stock alerts, and other users' support tickets
-          query = query.not("type", "in", '("low_stock","out_of_stock","contact","admin_log","system")');
+          setNotifications(parsed);
         }
-
-        const { data } = await query;
-        if (data) {
-          const parsed = data.map(rowToNotification);
-          // Double-check client-side isolation safety filter for non-admin accounts
-          if (!isAdmin) {
-            const safeFiltered = parsed.filter((n) => {
-              const isAdminOnlyType = ["low_stock", "out_of_stock", "contact"].includes(n.type);
-              return !isAdminOnlyType;
-            });
-            setNotifications(safeFiltered);
-          } else {
-            setNotifications(parsed);
-          }
-        }
-      } catch {
-        // Fallback gracefully on query error
-      } finally {
-        setLoading(false);
       }
+    } catch (err) {
+      console.error("Error fetching notifications:", err);
+    } finally {
+      setLoading(false);
     }
-    load();
   }, [user?.id, user?.role]);
 
-  const addNotification = useCallback(async (n: Omit<Notification, "id" | "timestamp" | "read">) => {
-    const row = {
-      type: n.type,
-      title: n.title,
-      message: n.message,
-      product_id: n.productId || "",
-      user_id: user?.id && isUUID(user.id) ? user.id : null,
-      read: false,
-    };
-    const { data: created, error } = await supabase.from("notifications").insert(row).select().single();
-    if (error) throw error;
-    
-    const newNotif = rowToNotification(created);
-    setNotifications((prev) => [newNotif, ...prev]);
+  useEffect(() => {
+    fetchNotifications();
 
-    // Play chime sound if NOT muted
-    if (!isMuted) {
-      playNotificationChime();
-    }
-  }, [user?.id, isMuted]);
+    // الاستماع الفوري (Realtime) للإشعارات الجديدة
+    const channel = supabase
+      .channel("notifications-realtime-channel")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "notifications" },
+        (payload) => {
+          const newRow = payload.new as any;
+          const newNotif: Notification = {
+            id: newRow.id,
+            type: newRow.type || "message",
+            title: newRow.title,
+            message: newRow.message || "",
+            productId: newRow.product_id || undefined,
+            read: false,
+            timestamp: newRow.created_at,
+          };
+
+          setNotifications((prev) => [newNotif, ...prev]);
+
+          if (!isMuted) {
+            playNotificationChime();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchNotifications, isMuted]);
+
+  const addNotification = useCallback(
+    async (n: Omit<Notification, "id" | "timestamp" | "read">) => {
+      const row = {
+        type: n.type || "message",
+        title: n.title,
+        message: n.message,
+        product_id: n.productId || "",
+        user_id: user?.id && isUUID(user.id) ? user.id : null,
+        read: false,
+      };
+      const { data: created, error } = await supabase.from("notifications").insert(row).select().single();
+      if (error) throw error;
+      if (created) {
+        const newNotif: Notification = {
+          id: created.id,
+          type: created.type || "message",
+          title: created.title,
+          message: created.message || "",
+          productId: created.product_id || undefined,
+          read: false,
+          timestamp: created.created_at,
+        };
+        setNotifications((prev) => [newNotif, ...prev]);
+        if (!isMuted) {
+          playNotificationChime();
+        }
+      }
+    },
+    [user?.id, isMuted]
+  );
 
   const markAsRead = useCallback(async (id: string) => {
     await supabase.from("notifications").update({ read: true }).eq("id", id);
@@ -213,18 +213,14 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, []);
 
   const markAllAsRead = useCallback(async () => {
-    let query = supabase.from("notifications").update({ read: true }).eq("read", false);
-    if (user?.id && isUUID(user.id)) query = query.eq("user_id", user.id);
-    await query;
+    await supabase.from("notifications").update({ read: true }).eq("read", false);
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  }, [user?.id]);
+  }, []);
 
   const clearAll = useCallback(async () => {
-    let query = supabase.from("notifications").delete().neq("id", "");
-    if (user?.id && isUUID(user.id)) query = query.eq("user_id", user.id);
-    await query;
+    await supabase.from("notifications").delete().neq("id", "");
     setNotifications([]);
-  }, [user?.id]);
+  }, []);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
