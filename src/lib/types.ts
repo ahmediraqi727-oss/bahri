@@ -212,7 +212,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   instagramLink: "",
   tiktokLink: "",
   youtubeLink: "",
-  storeAddress: "العراق - بغداد - الشارع التجاري الرئيسي",
+  storeAddress: "العراق - كركوك - الشارع التجاري الرئيسي",
   storeMapLink: "https://maps.google.com",
   storeMapEmbedUrl: "",
   appDownloadUrl: "",

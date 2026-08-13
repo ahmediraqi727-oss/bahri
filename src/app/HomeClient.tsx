@@ -1273,26 +1273,46 @@ export default function HomeClient() {
         </section>
       )}
 
-      {/* ─── Store Location Banner ─── */}
-      {storeLocation && (
-        <div className="bg-emerald-600 dark:bg-emerald-700 text-white py-4 px-4" dir="rtl">
-          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-right">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl" aria-hidden="true">📍</span>
-              <div>
-                <p className="font-extrabold text-sm">{storeLocation.name}</p>
-                <p className="text-xs text-emerald-100">{storeLocation.city} — {storeLocation.address}</p>
-              </div>
+      {/* ─── Store Location Banner (Always Active & Interactive) ─── */}
+      <div className="bg-emerald-600 dark:bg-emerald-700 text-white py-4 px-4 shadow-md transition-colors" dir="rtl">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-right">
+          <a
+            href={
+              settings.storeMapLink ||
+              storeLocation?.google_maps_url ||
+              `https://maps.google.com/?q=${encodeURIComponent(settings.storeAddress || "أحمد بحري متجر كركوك")}`
+            }
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 group text-white hover:opacity-95 transition-opacity cursor-pointer"
+          >
+            <span className="text-2xl group-hover:scale-110 transition-transform" aria-hidden="true">📍</span>
+            <div>
+              <p className="font-extrabold text-sm sm:text-base">
+                {storeLocation?.name || settings.siteName || "متجر أحمد بحري"}
+              </p>
+              <p className="text-xs text-emerald-100 font-medium">
+                {storeLocation?.address
+                  ? `${storeLocation.city ? storeLocation.city + " — " : ""}${storeLocation.address}`
+                  : (settings.storeAddress || "العراق - كركوك - الشارع التجاري الرئيسي")}
+              </p>
             </div>
-            <button
-              onClick={openMap}
-              className="px-5 py-2 bg-white text-emerald-700 font-extrabold text-sm rounded-xl shadow-md hover:scale-[1.02] transition-transform flex items-center gap-2"
-            >
-              <span aria-hidden="true">🗺️</span> افتح الخريطة
-            </button>
-          </div>
+          </a>
+          <a
+            href={
+              settings.storeMapLink ||
+              storeLocation?.google_maps_url ||
+              `https://maps.google.com/?q=${encodeURIComponent(settings.storeAddress || "أحمد بحري متجر كركوك")}`
+            }
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-5 py-2 bg-white text-emerald-700 hover:bg-emerald-50 font-extrabold text-sm rounded-xl shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-2"
+          >
+            <span aria-hidden="true">🗺️</span>
+            <span>افتح الموقع في الخريطة</span>
+          </a>
         </div>
-      )}
+      </div>
 
       {/* Customizable Dynamic Footer */}
       <footer
