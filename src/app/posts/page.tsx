@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { supabase } from "@/lib/supabase-client";
 import Link from "next/link";
 
@@ -121,11 +122,18 @@ function PostCard({ post }: { post: Post }) {
     <article className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm hover:shadow-lg transition-shadow">
       {/* Media */}
       {post.media_url && (
-        <div className="w-full aspect-video bg-gray-100 dark:bg-gray-800 overflow-hidden">
+        <div className="relative w-full aspect-video bg-gray-100 dark:bg-gray-800 overflow-hidden">
           {post.media_type === "video" ? (
             <video src={post.media_url} controls className="w-full h-full object-cover" />
           ) : (
-            <img src={post.media_url} alt={post.title} className="w-full h-full object-cover hover:scale-[1.02] transition-transform duration-500" />
+            <Image
+              src={post.media_url}
+              alt={`${post.title} | متجر أحمد بحري - قطع غيار دراجات نارية وكهربائية`}
+              fill
+              sizes="(max-width: 896px) 100vw, 896px"
+              className="object-cover hover:scale-[1.02] transition-transform duration-500"
+              loading="lazy"
+            />
           )}
         </div>
       )}
@@ -140,7 +148,7 @@ function PostCard({ post }: { post: Post }) {
         </div>
 
         <div>
-          <h2 className="font-extrabold text-gray-900 dark:text-white text-lg leading-snug">{post.title}</h2>
+          <h3 className="font-extrabold text-gray-900 dark:text-white text-lg leading-snug">{post.title}</h3>
           {post.body && <p className="text-sm text-gray-600 dark:text-gray-300 mt-2 leading-relaxed">{post.body}</p>}
         </div>
 
@@ -247,19 +255,26 @@ export default function PostsPublicPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 overflow-x-hidden" dir="rtl">
+      {/* Visually-hidden SEO H1 */}
+      <h1 className="sr-only">منشورات ومقالات متجر أحمد بحري | قطع غيار دراجات نارية وكهربائية كركوك</h1>
+
       {/* Header */}
-      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-30 shadow-sm">
+      <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-30 shadow-sm">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
           <Link href="/" className="flex items-center gap-2 text-blue-600 dark:text-blue-400 font-bold text-sm hover:underline">
             ← العودة للمتجر
           </Link>
-          <h1 className="font-extrabold text-gray-900 dark:text-white text-lg">📢 المنشورات</h1>
+          {/* Visible heading — decorative, H1 is sr-only above */}
+          <p className="font-extrabold text-gray-900 dark:text-white text-lg" aria-hidden="true"><span aria-hidden="true">📢</span> المنشورات والمقاطع</p>
         </div>
-      </div>
+      </header>
 
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+        {/* H2: Posts section heading */}
+        <h2 className="sr-only">أحدث المنشورات والإعلانات</h2>
+
         {/* Filter Tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1" role="tablist" aria-label="تصفية المنشورات">
           {([["all", "الكل"], ["educational", "📚 تعليمي"], ["promotional", "📣 ترويجي"]] as const).map(([v, l]) => (
             <button
               key={v}
