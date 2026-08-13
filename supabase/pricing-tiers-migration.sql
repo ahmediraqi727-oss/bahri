@@ -114,3 +114,7 @@ CREATE TRIGGER trg_product_pricing_overrides_updated_at
 
 -- ─── 6. Reload schema cache ──────────────────────────────────────────────────
 NOTIFY pgrst, 'reload schema';
+-- التأكد من وجود أعمدة محرك الأسعار في جدول الإعدادات
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS pricing_tiers JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS import_markup_pct NUMERIC DEFAULT 20;
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS import_wholesale_reduction_pct NUMERIC DEFAULT 10;
