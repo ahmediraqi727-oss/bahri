@@ -13,6 +13,7 @@ import CategoriesManager from "@/components/CategoriesManager";
 import WatermarkSettings from "@/components/WatermarkSettings";
 import ThemeCustomizer from "@/components/ThemeCustomizer";
 import ProfileEditModal from "@/components/ProfileEditModal";
+import FooterSettingsManager from "@/components/FooterSettingsManager";
 import { SiteSettings, UserRole } from "@/lib/types";
 import { deriveRetailFromCost, deriveWholesaleFromRetail, type PricingTier } from "@/lib/pricing-engine";
 
@@ -819,6 +820,9 @@ export default function SettingsPage() {
           </div>
         </div>
       </section>
+
+      {/* === Section 5.5: Dynamic Footer System Management === */}
+      <FooterSettingsManager />
 
       {/* === Section 6: Categories Management === */}
       <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">

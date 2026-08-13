@@ -21,6 +21,7 @@ import CustomerMessagesModal from "@/components/CustomerMessagesModal";
 import CustomerNotificationsModal from "@/components/CustomerNotificationsModal";
 import GuestRetentionModal from "@/components/GuestRetentionModal";
 import ContactSupportModal from "@/components/ContactSupportModal";
+import Footer from "@/components/Footer";
 import { useNotifications } from "@/lib/notifications";
 import { supabase } from "@/lib/supabase-client";
 import { useLang } from "@/lib/lang-context";
@@ -1315,34 +1316,8 @@ export default function HomeClient() {
         </div>
       </div>
 
-      {/* Customizable Dynamic Footer */}
-      <footer
-        className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 transition-colors"
-        style={{ minHeight: settings.footerHeight || 120, padding: "30px 15px" }}
-      >
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 text-sm text-gray-600 dark:text-gray-300" dir="rtl">
-          <div className="text-right font-bold text-xs sm:text-sm">
-            {settings.footerRightText || `جميع الحقوق محفوظة © 2026 ${settings.siteName}`}
-          </div>
-          <div className="text-center space-y-2">
-            {settings.footerImage ? (
-              <div className="relative h-14 w-32 mx-auto rounded-xl overflow-hidden">
-                <Image src={settings.footerImage} alt={`شعار ${settings.siteName}`} fill className="object-contain" />
-              </div>
-            ) : (
-              <div className="relative w-12 h-12 rounded-xl overflow-hidden mx-auto shadow-md">
-                <Image src={settings.logo || "/logo.jpg"} alt={`شعار ${settings.siteName}`} fill className="object-cover" />
-              </div>
-            )}
-            <p className="font-extrabold text-gray-900 dark:text-white text-xs sm:text-sm">
-              {settings.footerCenterText || "أفضل المنتجات والخدمات لعملائنا الكرام"}
-            </p>
-          </div>
-          <div className="text-left font-bold text-xs sm:text-sm">
-            {settings.footerLeftText || `للطلب والتواصل: ${settings.phoneLink || "07800000000"}`}
-          </div>
-        </div>
-      </footer>
+      {/* Customizable Dynamic Enterprise Footer */}
+      <Footer />
 
       {/* Customer Cart Drawer */}
       <CustomerCartSidebar isOpen={cartOpen} onClose={() => setCartOpen(false)} />
