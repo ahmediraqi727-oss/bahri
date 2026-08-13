@@ -1,5 +1,3 @@
-"use client";
-
 import React from "react";
 import { Product } from "@/lib/types";
 import { generateProductJsonLd, generateStoreJsonLd } from "@/lib/seo";
