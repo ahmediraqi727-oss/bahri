@@ -230,14 +230,15 @@ export default function FooterSettingsManager() {
                   صورة القسم الأيمن (اختياري):
                 </label>
                 <ImageUploader
-                  currentImage={footerSettings.right.imageUrl}
-                  onImageUploaded={(url) =>
+                  label="صورة القسم الأيمن"
+                  image={footerSettings.right.imageUrl}
+                  onUpload={(url: string) =>
                     setFooterSettings((prev) => ({
                       ...prev,
                       right: { ...prev.right, imageUrl: url },
                     }))
                   }
-                  bucketName="site-assets"
+                  bucket="site-assets"
                 />
               </div>
 
@@ -361,14 +362,15 @@ export default function FooterSettingsManager() {
                   صورة / شعار القسم الأوسط:
                 </label>
                 <ImageUploader
-                  currentImage={footerSettings.center.imageUrl}
-                  onImageUploaded={(url) =>
+                  label="صورة / شعار القسم الأوسط"
+                  image={footerSettings.center.imageUrl}
+                  onUpload={(url: string) =>
                     setFooterSettings((prev) => ({
                       ...prev,
                       center: { ...prev.center, imageUrl: url },
                     }))
                   }
-                  bucketName="site-assets"
+                  bucket="site-assets"
                 />
               </div>
 
