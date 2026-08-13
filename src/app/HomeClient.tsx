@@ -1273,14 +1273,15 @@ export default function HomeClient() {
         </section>
       )}
 
-      {/* ─── Store Location Banner (Always Active & Interactive) ─── */}
+      {/* ─── Store Location Banner ─── */}
       <div className="bg-emerald-600 dark:bg-emerald-700 text-white py-4 px-4 shadow-md transition-colors" dir="rtl">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-right">
+          {/* Right Side: Store Name & Database Address */}
           <a
             href={
               settings.storeMapLink ||
               storeLocation?.google_maps_url ||
-              `https://maps.google.com/?q=${encodeURIComponent(settings.storeAddress || "أحمد بحري متجر كركوك")}`
+              `https://maps.google.com/?q=${encodeURIComponent(settings.storeAddress || "متجر أحمد بحري كركوك")}`
             }
             target="_blank"
             rel="noopener noreferrer"
@@ -1289,27 +1290,27 @@ export default function HomeClient() {
             <span className="text-2xl group-hover:scale-110 transition-transform" aria-hidden="true">📍</span>
             <div>
               <p className="font-extrabold text-sm sm:text-base">
-                {storeLocation?.name || settings.siteName || "متجر أحمد بحري"}
+                {settings.siteName || storeLocation?.name || "متجر أحمد بحري"}
               </p>
               <p className="text-xs text-emerald-100 font-medium">
-                {storeLocation?.address
-                  ? `${storeLocation.city ? storeLocation.city + " — " : ""}${storeLocation.address}`
-                  : (settings.storeAddress || "العراق - كركوك - الشارع التجاري الرئيسي")}
+                {settings.storeAddress || (storeLocation ? `${storeLocation.city ? storeLocation.city + " — " : ""}${storeLocation.address}` : "")}
               </p>
             </div>
           </a>
+
+          {/* Left Side: Interactive Map Link labeled "موقعنا" */}
           <a
             href={
               settings.storeMapLink ||
               storeLocation?.google_maps_url ||
-              `https://maps.google.com/?q=${encodeURIComponent(settings.storeAddress || "أحمد بحري متجر كركوك")}`
+              `https://maps.google.com/?q=${encodeURIComponent(settings.storeAddress || "متجر أحمد بحري كركوك")}`
             }
             target="_blank"
             rel="noopener noreferrer"
             className="px-5 py-2 bg-white text-emerald-700 hover:bg-emerald-50 font-extrabold text-sm rounded-xl shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center gap-2"
           >
             <span aria-hidden="true">🗺️</span>
-            <span>افتح الموقع في الخريطة</span>
+            <span>موقعنا</span>
           </a>
         </div>
       </div>
