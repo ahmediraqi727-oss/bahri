@@ -55,6 +55,9 @@ export const metadata: Metadata = {
   title: "متجر أحمد بحري | تجارة قطع غيار الدراجات النارية والكهربائية",
   description: "المنصة الرائدة لتجارة الجملة والتجزئة لقطع غيار الدراجات النارية والدراجات الكهربائية بأفضل الأسعار وخصومات الكميات.",
   icons: { icon: "/logo.jpg" },
+  verification: {
+    google: "google-site-verification: googleea26b5a095faa157.html",
+  },
   openGraph: {
     title: "متجر أحمد بحري - Ahmed Bahri Store",
     description: "المنصة الرائدة لتجارة الجملة والتجزئة لقطع غيار الدراجات النارية والدراجات الكهربائية بأفضل الأسعار وخصومات الكميات.",
@@ -78,6 +81,7 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
       <head>
+        <meta name="google-site-verification" content="google-site-verification: googleea26b5a095faa157.html" />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
