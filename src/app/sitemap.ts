@@ -28,7 +28,24 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ];
 
-  // 2. Fetch Active Products Dynamically from Supabase
+  // Core Category Filters for Search Engine Indexing
+  const coreCategories = [
+    "قطع غيار دراجات نارية",
+    "قطع غيار دراجات كهربائية",
+    "إطارات وجنوط",
+    "زيوت وشحوم",
+    "بطاريات وشواحن",
+    "ملحقات وإكسسوارات"
+  ];
+
+  const categoryRoutes: MetadataRoute.Sitemap = coreCategories.map((cat) => ({
+    url: `${baseUrl}/?category=${encodeURIComponent(cat)}`,
+    lastModified: new Date(),
+    changeFrequency: "daily" as const,
+    priority: 0.85,
+  }));
+
+  // 2. Fetch Active Products Dynamically from Supabase safely
   let productRoutes: MetadataRoute.Sitemap = [];
   try {
     const { data: products, error } = await supabase
@@ -45,7 +62,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
             url: `${baseUrl}/?product=${product.id}`,
             lastModified: isNaN(lastModified.getTime()) ? new Date() : lastModified,
             changeFrequency: "weekly" as const,
-            priority: 0.7,
+            priority: 0.75,
           };
         });
     }
@@ -53,7 +70,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     console.error("Sitemap: Error fetching products from Supabase:", err);
   }
 
-  // 3. Fetch Posts/Educational Content Dynamically from Supabase
+  // 3. Fetch Posts/Educational Content Dynamically from Supabase safely
   let postRoutes: MetadataRoute.Sitemap = [];
   try {
     const { data: posts, error } = await supabase
@@ -67,7 +84,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           url: `${baseUrl}/posts?id=${post.id}`,
           lastModified: isNaN(lastModified.getTime()) ? new Date() : lastModified,
           changeFrequency: "weekly" as const,
-          priority: 0.6,
+          priority: 0.65,
         };
       });
     }
@@ -75,5 +92,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     console.error("Sitemap: Error fetching posts from Supabase:", err);
   }
 
-  return [...staticRoutes, ...productRoutes, ...postRoutes];
+  return [...staticRoutes, ...categoryRoutes, ...productRoutes, ...postRoutes];
 }
+

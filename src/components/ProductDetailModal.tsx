@@ -5,6 +5,7 @@ import { Product } from "@/lib/types";
 import { PricingTier, buildTierBadgeText, resolveTierForQty, calculateTierPrice, getTierLabel } from "@/lib/pricing-engine";
 import { useCart } from "@/lib/cart-context";
 import { useLang } from "@/lib/lang-context";
+import StructuredData from "@/components/StructuredData";
 
 interface ProductDetailModalProps {
   product: Product | null;
@@ -63,11 +64,21 @@ export default function ProductDetailModal({ product, tiers, onClose }: ProductD
   const sortedTiers = [...tiers].sort((a, b) => a.minQty - b.minQty);
 
   return (
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-      onClick={onClose}
-      dir="rtl"
-    >
+    <>
+      <StructuredData
+        product={product}
+        breadcrumbs={[
+          { name: "الرئيسية", item: "/" },
+          { name: "المنتجات", item: "/#products" },
+          { name: product.name, item: `/?product=${product.id}` },
+        ]}
+      />
+      <div
+        className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+        onClick={onClose}
+        dir="rtl"
+      >
+
       <div
         className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-scaleUp"
         onClick={(e) => e.stopPropagation()}
@@ -282,5 +293,6 @@ export default function ProductDetailModal({ product, tiers, onClose }: ProductD
         </div>
       </div>
     </div>
+    </>
   );
 }

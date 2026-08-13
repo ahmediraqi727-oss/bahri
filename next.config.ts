@@ -30,11 +30,13 @@ const nextConfig: NextConfig = {
       : false,
   },
 
-  // Allow images from any origin (needed for Supabase storage URLs)
+  // Allow images from any origin and optimize with AVIF/WebP formats
   images: {
-    unoptimized: true,
+    unoptimized: process.env.NEXT_OUTPUT_MODE === "export",
+    formats: ["image/avif", "image/webp"],
     remotePatterns: [
       { protocol: "https", hostname: "**" },
+      { protocol: "http", hostname: "**" },
     ],
   },
 
