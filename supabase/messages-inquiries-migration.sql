@@ -203,7 +203,6 @@ CREATE INDEX IF NOT EXISTS idx_messages_session_id ON public.messages(session_id
 CREATE INDEX IF NOT EXISTS idx_messages_serial_id ON public.messages(serial_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_session_id ON public.notifications(session_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_serial_id ON public.notifications(serial_id);
-
 -- 8. دالة RPC لنقل وترقية كافة بيانات ورسائل الضيف إلى الحساب الرسمي الجديد عند التسجيل
 CREATE OR REPLACE FUNCTION public.upgrade_guest_to_user(p_session_id TEXT, p_user_id UUID)
 RETURNS void
