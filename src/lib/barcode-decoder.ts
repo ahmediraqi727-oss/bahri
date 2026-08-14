@@ -5,6 +5,7 @@
  * Powered by @zxing/library, native BarcodeDetector API, and jsQR fallback.
  * Supports simultaneous detection of 1D linear barcodes (EAN-13, EAN-8, Code128, Code39, UPC)
  * and 2D codes (QR Code, DataMatrix).
+ * Includes 90-degree rotation pass for mobile EXIF portrait photos.
  */
 
 import {
@@ -165,7 +166,23 @@ export async function decodeBarcodeFromCanvas(
 }
 
 /**
- * Decodes barcode/QR from an uploaded File or Blob object.
+ * Rotates a canvas by 90 degrees clockwise (solves mobile portrait 1D barcode orientation).
+ */
+function rotateCanvas90(sourceCanvas: HTMLCanvasElement): HTMLCanvasElement {
+  const rotated = document.createElement("canvas");
+  rotated.width = sourceCanvas.height;
+  rotated.height = sourceCanvas.width;
+  const ctx = rotated.getContext("2d");
+  if (ctx) {
+    ctx.translate(rotated.width / 2, rotated.height / 2);
+    ctx.rotate((90 * Math.PI) / 180);
+    ctx.drawImage(sourceCanvas, -sourceCanvas.width / 2, -sourceCanvas.height / 2);
+  }
+  return rotated;
+}
+
+/**
+ * Decodes barcode/QR from an uploaded File or Blob object with rotation normalization.
  */
 export async function decodeBarcodeFromFile(file: File): Promise<string | null> {
   const bitmap = await createImageBitmap(file);
@@ -176,5 +193,14 @@ export async function decodeBarcodeFromFile(file: File): Promise<string | null> 
   if (!ctx) return null;
   ctx.drawImage(bitmap, 0, 0);
 
-  return await decodeBarcodeFromCanvas(canvas);
+  // Attempt 1: Standard orientation
+  const code1 = await decodeBarcodeFromCanvas(canvas);
+  if (code1) return code1;
+
+  // Attempt 2: 90-degree rotated orientation (for portrait mobile photos)
+  const rotatedCanvas = rotateCanvas90(canvas);
+  const code2 = await decodeBarcodeFromCanvas(rotatedCanvas);
+  if (code2) return code2;
+
+  return null;
 }

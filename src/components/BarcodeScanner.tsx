@@ -45,7 +45,7 @@ export default function BarcodeScanner({
   const rafRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ─── Camera Stream Management ─────────────────────────────────────────────
+  const lastScanTimeRef = useRef<number>(0);
 
   const stopCamera = useCallback(() => {
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
@@ -54,40 +54,65 @@ export default function BarcodeScanner({
       streamRef.current = null;
     }
     setIsScanning(false);
+    setTorchOn(false);
   }, []);
 
   const startCamera = useCallback(async () => {
     setCameraError("");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
-      });
+      let stream: MediaStream;
+      try {
+        // Try back environment camera first for smartphones/tablets
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false,
+        });
+      } catch {
+        // Fallback for laptops/desktops without environment camera
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      }
+
       streamRef.current = stream;
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        const video = videoRef.current;
+        video.setAttribute("playsinline", "true");
+        video.setAttribute("webkit-playsinline", "true");
+        video.muted = true;
+        video.srcObject = stream;
+        await video.play();
       }
       setIsScanning(true);
       scanLoop();
     } catch (err) {
-      console.error("Camera error:", err);
-      setCameraError("تعذّر الوصول إلى الكاميرا. تحقق من الإذن أو جرّب الإدخال اليدوي.");
+      console.error("Camera access error:", err);
+      setCameraError("تعذّر الوصول إلى الكاميرا. تحقق من منح الإذن للمتصفح أو استخدم الإدخال اليدوي.");
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Barcode Detection Loop (BarcodeDetector API → jsQR fallback) ─────────
+  // ─── Throttled Computer Vision Scan Loop ───────────────────────────────────
 
   const scanLoop = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas || video.readyState < 2) {
+    if (!video || !canvas || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
       rafRef.current = requestAnimationFrame(scanLoop);
       return;
     }
 
+    // Throttle decoding passes to max 10 FPS (every 100ms) for smooth video playback on mobile
+    const now = performance.now();
+    if (now - lastScanTimeRef.current < 100) {
+      rafRef.current = requestAnimationFrame(scanLoop);
+      return;
+    }
+    lastScanTimeRef.current = now;
+
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
@@ -100,7 +125,6 @@ export default function BarcodeScanner({
         }
       } catch { /* silent */ }
 
-      // Continue scanning loop
       rafRef.current = requestAnimationFrame(scanLoop);
     };
 
