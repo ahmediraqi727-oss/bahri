@@ -80,7 +80,11 @@ export async function lookupByBarcode(code: string): Promise<Product | null> {
     .eq("barcode", cleaned)
     .maybeSingle();
 
-  if (byBarcode) return mapRow(byBarcode);
+  if (byBarcode) {
+    const p = mapRow(byBarcode);
+    incrementScanCount(p.id);
+    return p;
+  }
 
   // Fallback: try QR code match
   const { data: byQR } = await supabase
@@ -89,7 +93,11 @@ export async function lookupByBarcode(code: string): Promise<Product | null> {
     .eq("qr_code", cleaned)
     .maybeSingle();
 
-  if (byQR) return mapRow(byQR);
+  if (byQR) {
+    const p = mapRow(byQR);
+    incrementScanCount(p.id);
+    return p;
+  }
 
   // Last resort: check product_barcodes lookup table
   const { data: barcodeRecord } = await supabase
@@ -104,10 +112,24 @@ export async function lookupByBarcode(code: string): Promise<Product | null> {
       .select("*")
       .eq("id", barcodeRecord.product_id)
       .maybeSingle();
-    if (product) return mapRow(product);
+    if (product) {
+      const p = mapRow(product);
+      incrementScanCount(p.id);
+      return p;
+    }
   }
 
   return null;
+}
+
+function incrementScanCount(productId: string) {
+  try {
+    supabase.rpc("increment_product_scan_count", {
+      target_product_id: productId,
+    }).then();
+  } catch {
+    // Non-fatal
+  }
 }
 
 /**
@@ -281,6 +303,40 @@ export async function getBarcodeSummary(): Promise<{
   return { total, withBarcode, withQR, missing };
 }
 
+/**
+ * Batch reset / clear codes for selected products.
+ */
+export async function batchResetCodes(productIds: string[]): Promise<void> {
+  if (!productIds || productIds.length === 0) return;
+
+  const { error: err1 } = await supabase
+    .from("products")
+    .update({ barcode: null, qr_code: null })
+    .in("id", productIds);
+
+  if (err1) throw new Error(`خطأ في تصفير الأكواد: ${err1.message}`);
+
+  // Delete from lookup table as well
+  await supabase.from("product_barcodes").delete().in("product_id", productIds);
+}
+
+/**
+ * Batch update active barcode status for products.
+ */
+export async function batchToggleBarcodeActive(
+  productIds: string[],
+  active: boolean
+): Promise<void> {
+  if (!productIds || productIds.length === 0) return;
+
+  const { error } = await supabase
+    .from("products")
+    .update({ is_barcode_active: active })
+    .in("id", productIds);
+
+  if (error) throw new Error(`خطأ في تحديث حالة الباركود: ${error.message}`);
+}
+
 // ─── Row Mapper ───────────────────────────────────────────────────────────────
 
 function mapRow(row: Record<string, unknown>): Product {
@@ -300,5 +356,8 @@ function mapRow(row: Record<string, unknown>): Product {
     updatedAt: (row.updated_at as string) || "",
     barcode: (row.barcode as string | null) || null,
     qrCode: (row.qr_code as string | null) || null,
+    scanCount: Number(row.scan_count) || 0,
+    lastScannedAt: (row.last_scanned_at as string | null) || null,
+    isBarcodeActive: row.is_barcode_active !== undefined ? Boolean(row.is_barcode_active) : true,
   };
 }

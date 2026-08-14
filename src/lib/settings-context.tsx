@@ -85,6 +85,7 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
 
     // Carousel & Delivery toggle
     showCategoriesCarousel: row.show_categories_carousel !== undefined ? Boolean(row.show_categories_carousel) : true,
+    barcodeEngineActive: row.barcode_engine_active !== undefined ? Boolean(row.barcode_engine_active) : (row.barcodeEngineActive !== undefined ? Boolean(row.barcodeEngineActive) : true),
     defaultDeliveryFee: row.default_delivery_fee !== undefined ? Number(row.default_delivery_fee) : 5000,
     defaultDeliveryDuration: (row.default_delivery_duration as string) || "2 - 3 أيام عمل",
 

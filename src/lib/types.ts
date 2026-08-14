@@ -143,6 +143,8 @@ export interface SiteSettings {
   footerLeftText?: string;
   // Categories Carousel Toggle
   showCategoriesCarousel?: boolean;
+  // Barcode Master Switch
+  barcodeEngineActive?: boolean;
   // Delivery Default Settings
   defaultDeliveryFee?: number;
   defaultDeliveryDuration?: string;
@@ -218,6 +220,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   appDownloadUrl: "",
   androidAppUrl: "",
   iosAppUrl: "",
+  barcodeEngineActive: true,
   customThemes: [],
   activeThemePreset: "classic-blue",
   homeIcon: "",
@@ -304,6 +307,9 @@ export interface Product {
   // Barcode & QR Code fields (1-to-1 strict mapping enforced at DB level)
   barcode?: string | null;
   qrCode?: string | null;
+  scanCount?: number;
+  lastScannedAt?: string | null;
+  isBarcodeActive?: boolean;
   // Optional per-product pricing override (loaded from product_pricing_overrides table)
   pricingOverride?: import("./pricing-engine").ProductPricingOverride | null;
 }

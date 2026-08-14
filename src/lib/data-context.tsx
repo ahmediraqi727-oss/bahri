@@ -120,9 +120,12 @@ function rowToProduct(row: Record<string, unknown>): Product {
     notes: (row.notes as string) || "",
     createdAt: (row.created_at as string) || new Date().toISOString(),
     updatedAt: (row.updated_at as string) || new Date().toISOString(),
-    // Barcode & QR Code — 1-to-1 mapping fields
+    // Barcode & QR Code — 1-to-1 mapping & usage tracking fields
     barcode: (row.barcode as string | null) ?? null,
     qrCode: (row.qr_code as string | null) ?? null,
+    scanCount: Number(row.scan_count) || 0,
+    lastScannedAt: (row.last_scanned_at as string | null) ?? null,
+    isBarcodeActive: row.is_barcode_active !== undefined ? Boolean(row.is_barcode_active) : true,
   };
 }
 
@@ -164,10 +167,19 @@ export function productToRow(product: Record<string, unknown>): Record<string, u
   }
   if ("notes" in product) row.notes = product.notes || "";
 
-  // Barcode & QR Code columns
+  // Barcode & QR Code columns & tracking
   if ("barcode" in product) row.barcode = product.barcode ?? null;
   if ("qrCode" in product) row.qr_code = (product.qrCode as string | null) ?? null;
   if ("qr_code" in product) row.qr_code = product.qr_code ?? null;
+  if ("scanCount" in product || "scan_count" in product) {
+    row.scan_count = Number(product.scanCount ?? product.scan_count) || 0;
+  }
+  if ("lastScannedAt" in product || "last_scanned_at" in product) {
+    row.last_scanned_at = product.lastScannedAt ?? product.last_scanned_at ?? null;
+  }
+  if ("isBarcodeActive" in product || "is_barcode_active" in product) {
+    row.is_barcode_active = Boolean(product.isBarcodeActive ?? product.is_barcode_active);
+  }
 
   if ("is_active" in product) row.is_active = Boolean(product.is_active);
   if ("is_published" in product) row.is_published = Boolean(product.is_published);
