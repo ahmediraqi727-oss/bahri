@@ -45,13 +45,25 @@ export default function FooterSettingsManager() {
     try {
       const rowData = footerSettingsToRow(footerSettings);
 
-      // الحفظ المباشر والآمن في جدول footer_settings فقط لمنع أي تعارض
+      // 1. Attempt direct client upsert
       const { error } = await supabase
         .from("footer_settings")
         .upsert(rowData, { onConflict: "id" });
 
       if (error) {
-        throw new Error(error.message);
+        console.warn("Direct client upsert encountered RLS/permissions constraint, attempting API route fallback:", error.message);
+
+        // 2. API Route Fallback (bypasses client-side RLS)
+        const res = await fetch("/api/footer-settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(rowData),
+        });
+
+        const apiResult = await res.json();
+        if (!res.ok || !apiResult.success) {
+          throw new Error(apiResult.error || error.message);
+        }
       }
 
       setToastMessage("✅ تم حفظ إعدادات ذيل الصفحة الرئيسية بنجاح!");

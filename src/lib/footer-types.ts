@@ -50,7 +50,7 @@ export const DEFAULT_FOOTER_SETTINGS: FooterSettings = {
     imageWidth: 120,
     imageHeight: 40,
     linkUrl: "",
-    fontSize: 14,
+    fontSize: 15,
   },
   
   center: {
@@ -61,7 +61,7 @@ export const DEFAULT_FOOTER_SETTINGS: FooterSettings = {
     imageWidth: 100,
     imageHeight: 48,
     linkUrl: "",
-    fontSize: 14,
+    fontSize: 15,
   },
   
   left: {
@@ -72,7 +72,7 @@ export const DEFAULT_FOOTER_SETTINGS: FooterSettings = {
     imageWidth: 120,
     imageHeight: 40,
     linkUrl: "tel:07800000000",
-    fontSize: 14,
+    fontSize: 15,
   },
   
   fullWidth: {
