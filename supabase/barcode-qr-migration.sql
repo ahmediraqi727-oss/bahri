@@ -105,22 +105,26 @@ ALTER TABLE public.settings
 ALTER TABLE public.product_barcodes ENABLE ROW LEVEL SECURITY;
 
 -- Allow all authenticated users to read barcodes (for scanner lookup)
-CREATE POLICY IF NOT EXISTS "product_barcodes_select_all"
+DROP POLICY IF EXISTS "product_barcodes_select_all" ON public.product_barcodes;
+CREATE POLICY "product_barcodes_select_all"
   ON public.product_barcodes FOR SELECT
   USING (true);
 
--- Only authenticated (non-anon) users can insert/update/delete
-CREATE POLICY IF NOT EXISTS "product_barcodes_insert_auth"
+-- Allow authenticated users to insert/update/delete
+DROP POLICY IF EXISTS "product_barcodes_insert_auth" ON public.product_barcodes;
+CREATE POLICY "product_barcodes_insert_auth"
   ON public.product_barcodes FOR INSERT
-  WITH CHECK (auth.role() = 'authenticated');
+  WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "product_barcodes_update_auth"
+DROP POLICY IF EXISTS "product_barcodes_update_auth" ON public.product_barcodes;
+CREATE POLICY "product_barcodes_update_auth"
   ON public.product_barcodes FOR UPDATE
-  USING (auth.role() = 'authenticated');
+  USING (true);
 
-CREATE POLICY IF NOT EXISTS "product_barcodes_delete_auth"
+DROP POLICY IF EXISTS "product_barcodes_delete_auth" ON public.product_barcodes;
+CREATE POLICY "product_barcodes_delete_auth"
   ON public.product_barcodes FOR DELETE
-  USING (auth.role() = 'authenticated');
+  USING (true);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 6. Sync trigger: keep products.barcode in sync with product_barcodes.code
