@@ -13,6 +13,7 @@ import { validateImportColumns } from "@/lib/import-validator";
 import { useToast } from "@/components/ToastProvider";
 import { isUUID } from "@/lib/data-context";
 import { deriveRetailFromCost, deriveWholesaleFromRetail } from "@/lib/pricing-engine";
+import { checkDuplicateOnImport } from "@/lib/barcode-service"; // Barcode dedup guard
 
 interface DuplicatePair {
   existing: Product;
@@ -215,7 +216,38 @@ export default function ImportExportBar() {
           },
         });
       } else {
-        validProducts.push({ name: nameStr, image, costPrice, wholesalePrice, profitMargin, retailPrice, stock, supplierId, notes });
+        // ─── Barcode / QR Import + Dedup Guard ───────────────────────────────
+        // Read barcode/QR columns from Excel if present
+        const barcodeFromRow = String(
+          findVal(row, ["barcode", "bar_code", "barcode_number", "product_code", "ean", "ean13", "باركود", "رمز المنتج", "الباركود"]) || ""
+        ).trim() || null;
+
+        const qrFromRow = String(
+          findVal(row, ["qr", "qr_code", "qrcode", "qr code", "كيو ار", "رمز qr"]) || ""
+        ).trim() || null;
+
+        // Dedup: check if a product with the same name already has codes in DB
+        // If so, inherit them to prevent data fragmentation
+        let finalBarcode = barcodeFromRow;
+        let finalQrCode = qrFromRow;
+
+        if (!finalBarcode && !finalQrCode && nameStr) {
+          try {
+            const existing = await checkDuplicateOnImport(nameStr);
+            if (existing) {
+              finalBarcode = finalBarcode ?? existing.barcode;
+              finalQrCode = finalQrCode ?? existing.qrCode;
+            }
+          } catch {
+            // Non-fatal: continue import without barcode inheritance
+          }
+        }
+
+        validProducts.push({
+          name: nameStr, image, costPrice, wholesalePrice, profitMargin, retailPrice, stock, supplierId, notes,
+          barcode: finalBarcode,
+          qrCode: finalQrCode,
+        });
       }
     }
     return { validProducts, incompleteItems };

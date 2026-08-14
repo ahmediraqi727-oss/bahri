@@ -35,6 +35,10 @@ import {
 } from "@/lib/pricing-engine";
 import type { Product } from "@/lib/types";
 import { generateProductAltText, extractCategoryFromNotes } from "@/lib/seo";
+// ─── Barcode / QR Scanner ─────────────────────────────────────────────────
+import BarcodeScanner from "@/components/BarcodeScanner";
+import ScannerProductModal from "@/components/ScannerProductModal";
+import { HardwareScannerService, subscribeToHardwareScan } from "@/lib/hardware-scanner";
 
 interface StoreLocation {
   id: string;
@@ -103,6 +107,41 @@ export default function HomeClient() {
   // Favorites / Wishlist State
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [favToast, setFavToast] = useState<string | null>(null);
+
+  // ─── Barcode / QR Scanner State ──────────────────────────────────────────
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannedCode, setScannedCode] = useState<string | null>(null);
+
+  // Compute scanner RBAC permissions from current role
+  const adminPermConfig = getAdminPermissionsConfig();
+  const currentUserRole = user?.role ?? "customer";
+  const canViewScannerBtn = currentUserRole === "manager" || hasPermission(currentUserRole, "scanner.view_button", adminPermConfig);
+  const canUseCamera      = currentUserRole === "manager" || hasPermission(currentUserRole, "scanner.use_camera", adminPermConfig);
+  const canUseImageUpload = currentUserRole === "manager" || hasPermission(currentUserRole, "scanner.use_image_upload", adminPermConfig);
+  const canUseManualEntry = currentUserRole === "manager" || hasPermission(currentUserRole, "scanner.use_manual_entry", adminPermConfig);
+  const canUseHardware    = currentUserRole === "manager" || hasPermission(currentUserRole, "scanner.use_hardware", adminPermConfig);
+
+  // ─── Hardware Scanner Lifecycle (focus-trap-aware via HardwareScannerService) ─
+  useEffect(() => {
+    if (!canUseHardware) return; // RBAC gate
+
+    HardwareScannerService.start();
+    const unsub = subscribeToHardwareScan((code) => {
+      setScannedCode(code);
+      setScannerOpen(false); // Close software scanner if open
+    });
+
+    return () => {
+      unsub();
+      HardwareScannerService.stop();
+    };
+  }, [canUseHardware]);
+
+  // Handler: software scanner modal scanned a code
+  const handleSoftwareScan = (code: string) => {
+    setScannerOpen(false);
+    setScannedCode(code);
+  };
 
   // Sync Wishlist / Favorites state
   useEffect(() => {
@@ -812,6 +851,21 @@ export default function HomeClient() {
                 )}
               </button>
 
+              {/* 📷 QR / Barcode Scanner Button — RBAC gated */}
+              {canViewScannerBtn && (
+                <button
+                  id="barcode-scanner-btn"
+                  onClick={() => setScannerOpen(true)}
+                  className="relative p-2 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-600 dark:text-blue-400 transition-all flex items-center justify-center group"
+                  title="ماسح الباركود والـ QR"
+                  aria-label="فتح ماسح الباركود والـ QR"
+                >
+                  <span className="text-[22px] group-hover:scale-110 transition-transform" aria-hidden="true">📷</span>
+                  {/* Pulse indicator to make it noticeable */}
+                  <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-blue-500 rounded-full animate-pulse" />
+                </button>
+              )}
+
               {/* Customer Cart Icon */}
               <button
                 onClick={() => setCartOpen(true)}
@@ -1321,6 +1375,25 @@ export default function HomeClient() {
 
       {/* Customer Cart Drawer */}
       <CustomerCartSidebar isOpen={cartOpen} onClose={() => setCartOpen(false)} />
+
+      {/* ─── Barcode / QR Scanner Modal ─────────────────────────────────── */}
+      <BarcodeScanner
+        isOpen={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScan={handleSoftwareScan}
+        canUseCamera={canUseCamera}
+        canUseImageUpload={canUseImageUpload}
+        canUseManualEntry={canUseManualEntry}
+      />
+
+      {/* ─── POS-Style Scanner Product Modal with Smart Queue ───────────── */}
+      <ScannerProductModal
+        scannedCode={scannedCode}
+        onClose={() => setScannedCode(null)}
+        onAddedToCart={() => {
+          // Optionally open cart after adding from scanner
+        }}
+      />
 
       {/* Product Detail Modal with Real-Time Pricing */}
       {detailProduct && (

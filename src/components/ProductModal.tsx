@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Product, Supplier, calculateRetailPrice, CategoryItem } from "@/lib/types";
 import { useData } from "@/lib/data-context";
+import BarcodeDisplay from "@/components/BarcodeDisplay";
 
 interface ProductModalProps {
   isOpen: boolean;
@@ -46,6 +47,9 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
   const [stock, setStock] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [notes, setNotes] = useState("");
+  // Barcode & QR Code fields
+  const [barcode, setBarcode] = useState<string>("");
+  const [qrCode, setQrCode] = useState<string>("");
 
   // Creatable Autocomplete Category Combobox State
   const [selectedCategoryName, setSelectedCategoryName] = useState("");
@@ -70,6 +74,8 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
       setStock(product.stock.toString());
       setSupplierId(product.supplierId);
       setNotes(product.notes);
+      setBarcode(product.barcode || "");
+      setQrCode(product.qrCode || "");
       const cat = extractCategoryFromNotes(product.notes);
       setSelectedCategoryName(cat);
       setCategoryQuery(cat);
@@ -79,6 +85,7 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
       setName(""); setImage(""); setCostPrice(""); setWholesalePrice("");
       setProfitMargin(""); setRetailPrice(""); setStock(""); setSupplierId("");
       setNotes(""); setSelectedCategoryName(""); setCategoryQuery(""); setShowNewSupplier(false); setNewSupplierName("");
+      setBarcode(""); setQrCode("");
     }
   }, [product, isOpen]);
 
@@ -235,6 +242,8 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
         stock: parseInt(stock) || 0,
         supplierId: finalSupplierId,
         notes: finalNotes,
+        barcode: barcode.trim() || null,
+        qrCode: qrCode.trim() || null,
       };
 
       if (product) {
@@ -530,6 +539,39 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
                 >
                   إلغاء
                 </button>
+              </div>
+            )}
+          </div>
+
+          {/* Barcode & QR Code Fields */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">
+                الباركود (EAN-13) 📷
+              </label>
+              <input
+                type="text"
+                value={barcode}
+                onChange={(e) => setBarcode(e.target.value)}
+                placeholder="أدخل الباركود أو اتركه للتوليد"
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none font-mono text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">
+                رمز الـ QR 📱
+              </label>
+              <input
+                type="text"
+                value={qrCode}
+                onChange={(e) => setQrCode(e.target.value)}
+                placeholder="أدخل رمز الـ QR"
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none font-mono text-sm"
+              />
+            </div>
+            {(barcode || qrCode) && (
+              <div className="sm:col-span-2 flex justify-center pt-2">
+                <BarcodeDisplay barcode={barcode} qrCode={qrCode} productName={name} compact />
               </div>
             )}
           </div>

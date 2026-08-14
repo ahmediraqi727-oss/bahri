@@ -2,10 +2,17 @@
 
 import { useState } from "react";
 import { useSettings } from "@/lib/settings-context";
+import { useAuth } from "@/lib/auth-context";
+import { hasPermission } from "@/lib/permissions";
+import { getAdminPermissionsConfig } from "@/components/PermissionGate";
 import NotificationsBell from "@/components/NotificationsBell";
 import GlobalSearch from "@/components/GlobalSearch";
 import ContactLocationModal from "@/components/ContactLocationModal";
 import ShareModal from "@/components/ShareModal";
+import BarcodeScanner from "@/components/BarcodeScanner";
+import ScannerProductModal from "@/components/ScannerProductModal";
+import { HardwareScannerService, subscribeToHardwareScan } from "@/lib/hardware-scanner";
+import { useEffect } from "react";
 
 const ROLE_LABELS = {
   manager: "مدير النظام",
@@ -15,12 +22,32 @@ const ROLE_LABELS = {
 
 export default function Header() {
   const { settings, toggleDarkMode, toggleEyeProtection } = useSettings();
+  const { user } = useAuth();
   const currentRole = settings?.currentRole || "manager";
   const theme = settings?.roleThemes?.[currentRole] || { primary: "#1e40af", secondary: "#7c3aed", accent: "#f59e0b" };
   const roleLabel = ROLE_LABELS[currentRole] || "مدير النظام";
 
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannedCode, setScannedCode] = useState<string | null>(null);
+
+  // Scanner RBAC
+  const adminPermConfig = getAdminPermissionsConfig();
+  const userRole = user?.role ?? currentRole;
+  const canViewScannerBtn = userRole === "manager" || hasPermission(userRole, "scanner.view_button", adminPermConfig);
+  const canUseCamera      = userRole === "manager" || hasPermission(userRole, "scanner.use_camera", adminPermConfig);
+  const canUseImageUpload = userRole === "manager" || hasPermission(userRole, "scanner.use_image_upload", adminPermConfig);
+  const canUseManualEntry = userRole === "manager" || hasPermission(userRole, "scanner.use_manual_entry", adminPermConfig);
+  const canUseHardware    = userRole === "manager" || hasPermission(userRole, "scanner.use_hardware", adminPermConfig);
+
+  // Hardware scanner in dashboard
+  useEffect(() => {
+    if (!canUseHardware) return;
+    HardwareScannerService.start();
+    const unsub = subscribeToHardwareScan((code) => { setScannedCode(code); setScannerOpen(false); });
+    return () => { unsub(); HardwareScannerService.stop(); };
+  }, [canUseHardware]);
 
   return (
     <>
@@ -69,6 +96,19 @@ export default function Header() {
           <GlobalSearch />
           <NotificationsBell />
 
+          {/* 📷 Barcode Scanner Button (Dashboard) */}
+          {canViewScannerBtn && (
+            <button
+              id="dashboard-barcode-scanner-btn"
+              onClick={() => setScannerOpen(true)}
+              className="relative p-2 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-950/40 text-blue-600 dark:text-blue-400 transition-all flex items-center justify-center group"
+              title="ماسح الباركود — لمسح منتج مباشرةً"
+            >
+              <span className="text-xl group-hover:scale-110 transition-transform">📷</span>
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+            </button>
+          )}
+
           {/* Light / Dark Mode Toggle */}
           <button
             onClick={toggleDarkMode}
@@ -102,6 +142,20 @@ export default function Header() {
       {/* Global Interactive Modals */}
       <ContactLocationModal isOpen={isContactModalOpen} onClose={() => setIsContactModalOpen(false)} />
       <ShareModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} />
+
+      {/* Barcode Scanner Modals */}
+      <BarcodeScanner
+        isOpen={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScan={(code) => { setScannerOpen(false); setScannedCode(code); }}
+        canUseCamera={canUseCamera}
+        canUseImageUpload={canUseImageUpload}
+        canUseManualEntry={canUseManualEntry}
+      />
+      <ScannerProductModal
+        scannedCode={scannedCode}
+        onClose={() => setScannedCode(null)}
+      />
     </>
   );
 }

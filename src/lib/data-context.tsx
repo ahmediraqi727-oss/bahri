@@ -92,6 +92,9 @@ interface DataContextType {
   productPricingOverrides: Record<string, ProductPricingOverride>;
   getEffectiveTiers: (productId: string, globalConfig?: GlobalPricingConfig) => PricingTier[];
   upsertPricingOverride: (override: ProductPricingOverride) => Promise<void>;
+  // ─ Barcode / QR Code ──────────────────────────────────────────
+  /** Instant in-memory lookup — O(1). Falls back to DB if not found locally. */
+  lookupProductByBarcode: (code: string) => Product | null;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -117,6 +120,9 @@ function rowToProduct(row: Record<string, unknown>): Product {
     notes: (row.notes as string) || "",
     createdAt: (row.created_at as string) || new Date().toISOString(),
     updatedAt: (row.updated_at as string) || new Date().toISOString(),
+    // Barcode & QR Code — 1-to-1 mapping fields
+    barcode: (row.barcode as string | null) ?? null,
+    qrCode: (row.qr_code as string | null) ?? null,
   };
 }
 
@@ -157,6 +163,11 @@ export function productToRow(product: Record<string, unknown>): Record<string, u
     if (isUUID(cid)) row.category_id = cid;
   }
   if ("notes" in product) row.notes = product.notes || "";
+
+  // Barcode & QR Code columns
+  if ("barcode" in product) row.barcode = product.barcode ?? null;
+  if ("qrCode" in product) row.qr_code = (product.qrCode as string | null) ?? null;
+  if ("qr_code" in product) row.qr_code = product.qr_code ?? null;
 
   if ("is_active" in product) row.is_active = Boolean(product.is_active);
   if ("is_published" in product) row.is_published = Boolean(product.is_published);
@@ -866,6 +877,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         persistAllCategoriesAndProducts, reloadAllData,
         importProducts, exportAllData, importAllData,
         productPricingOverrides, getEffectiveTiers, upsertPricingOverride,
+        // ─ Barcode / QR instant in-memory lookup ────────────────────────────
+        lookupProductByBarcode: (code: string): Product | null => {
+          if (!code?.trim()) return null;
+          const cleaned = code.trim();
+          return (
+            products.find(
+              (p) =>
+                (p.barcode && p.barcode === cleaned) ||
+                (p.qrCode && p.qrCode === cleaned)
+            ) ?? null
+          );
+        },
       }}
     >
       {children}

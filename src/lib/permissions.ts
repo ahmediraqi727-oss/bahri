@@ -28,7 +28,14 @@ export type Permission =
   | "trash.permanent_delete"
   | "settings.view"
   | "settings.edit"
-  | "permissions.manage";
+  | "permissions.manage"
+  // ─── QR Scanner Management ──────────────────────────────────────────────
+  | "scanner.view_button"     // زر فتح الماسح
+  | "scanner.use_camera"      // ماسح الكاميرا
+  | "scanner.use_image_upload" // رفع صورة باركود
+  | "scanner.use_manual_entry" // إدخال يدوي
+  | "scanner.use_hardware"    // ماسح الحديد (USB/Bluetooth)
+  | "scanner.admin_generate"; // توليد باركود تلقائي (admin فقط)
 
 export interface AdminPermissionsConfig {
   permissions: Permission[];
@@ -58,6 +65,9 @@ const MANAGER_PERMISSIONS: Permission[] = [
   "trash.view", "trash.restore", "trash.permanent_delete",
   "settings.view", "settings.edit",
   "permissions.manage",
+  // QR Scanner — full access for manager
+  "scanner.view_button", "scanner.use_camera", "scanner.use_image_upload",
+  "scanner.use_manual_entry", "scanner.use_hardware", "scanner.admin_generate",
 ];
 
 const DEFAULT_ADMIN_PERMISSIONS: Permission[] = [
@@ -67,6 +77,9 @@ const DEFAULT_ADMIN_PERMISSIONS: Permission[] = [
   "inventory.view",
   "orders.view", "orders.create",
   "customers.view",
+  // QR Scanner — standard admin access (no bulk generation)
+  "scanner.view_button", "scanner.use_camera", "scanner.use_image_upload",
+  "scanner.use_manual_entry", "scanner.use_hardware",
 ];
 
 const CUSTOMER_PERMISSIONS: Permission[] = [
@@ -103,6 +116,13 @@ export const PERMISSION_LABELS: Record<Permission, { label: string; category: st
   "settings.view": { label: "عرض الإعدادات", category: "النظام" },
   "settings.edit": { label: "تعديل الإعدادات", category: "النظام" },
   "permissions.manage": { label: "إدارة صلاحيات الأدوار", category: "النظام" },
+  // ─── QR Scanner Management ──────────────────────────────────────────────────
+  "scanner.view_button": { label: "إظهار زر الماسح الضوئي", category: "ماسح الباركود" },
+  "scanner.use_camera": { label: "استخدام ماسح الكاميرا المباشر", category: "ماسح الباركود" },
+  "scanner.use_image_upload": { label: "رفع صورة باركود للمسح", category: "ماسح الباركود" },
+  "scanner.use_manual_entry": { label: "إدخال رقم الباركود يدوياً", category: "ماسح الباركود" },
+  "scanner.use_hardware": { label: "استخدام ماسح الحديد (USB / Bluetooth)", category: "ماسح الباركود" },
+  "scanner.admin_generate": { label: "توليد وإدارة الباركود تلقائياً", category: "ماسح الباركود" },
 };
 
 export function getRolePermissions(

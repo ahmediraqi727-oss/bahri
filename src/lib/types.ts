@@ -301,9 +301,54 @@ export interface Product {
   notes: string;
   createdAt: string;
   updatedAt: string;
+  // Barcode & QR Code fields (1-to-1 strict mapping enforced at DB level)
+  barcode?: string | null;
+  qrCode?: string | null;
   // Optional per-product pricing override (loaded from product_pricing_overrides table)
   pricingOverride?: import("./pricing-engine").ProductPricingOverride | null;
 }
+
+// ─── Scanner RBAC Permissions Configuration ──────────────────────────────────
+export type ScannerPermissionKey =
+  | "scanner.view_button"
+  | "scanner.use_camera"
+  | "scanner.use_image_upload"
+  | "scanner.use_manual_entry"
+  | "scanner.use_hardware"
+  | "scanner.admin_generate";
+
+export interface ScannerPermissionsConfig {
+  manager: Record<ScannerPermissionKey, boolean>;
+  admin: Record<ScannerPermissionKey, boolean>;
+  customer: Record<ScannerPermissionKey, boolean>;
+}
+
+export const DEFAULT_SCANNER_PERMISSIONS: ScannerPermissionsConfig = {
+  manager: {
+    "scanner.view_button": true,
+    "scanner.use_camera": true,
+    "scanner.use_image_upload": true,
+    "scanner.use_manual_entry": true,
+    "scanner.use_hardware": true,
+    "scanner.admin_generate": true,
+  },
+  admin: {
+    "scanner.view_button": true,
+    "scanner.use_camera": true,
+    "scanner.use_image_upload": true,
+    "scanner.use_manual_entry": true,
+    "scanner.use_hardware": true,
+    "scanner.admin_generate": false,
+  },
+  customer: {
+    "scanner.view_button": true,
+    "scanner.use_camera": true,
+    "scanner.use_image_upload": false,
+    "scanner.use_manual_entry": false,
+    "scanner.use_hardware": false,
+    "scanner.admin_generate": false,
+  },
+};
 
 export function calculateRetailPrice(costPrice: number, profitMargin: number): number {
   return Math.round((costPrice + (costPrice * profitMargin) / 100) * 100) / 100;

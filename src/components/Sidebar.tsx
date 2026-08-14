@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { label: "إدارة أعضاء الفريق", href: "/dashboard/team", icon: "👥", roles: ["manager"] as UserRole[] },
   { label: "إدارة المنشورات", href: "/dashboard/posts", icon: "📢", roles: ["manager", "admin"] as UserRole[] },
   { label: "إدارة الصلاحيات", href: "/dashboard/roles", icon: "🔐", roles: ["manager", "admin"] as UserRole[] },
+  { label: "📷 إدارة الباركود", href: "/dashboard/scanner", icon: "📷", roles: ["manager", "admin"] as UserRole[] },
   { label: "المنشورات والمقاطع", href: "/posts", icon: "🎬", roles: ["manager", "admin", "customer"] as UserRole[] },
   { label: "المنتجات", href: "/dashboard/products", icon: "📦", roles: ["manager", "admin"] as UserRole[] },
   { label: "الأقسام", href: "/dashboard/categories", icon: "📂", roles: ["manager", "admin"] as UserRole[] },
@@ -142,6 +143,10 @@ export default function Sidebar() {
     if (item.href === "/dashboard/roles") {
       const config = getAdminPermissionsConfig();
       return currentRole === "manager" || hasPermission(currentRole, "permissions.manage", config);
+    }
+    if (item.href === "/dashboard/scanner") {
+      const config = getAdminPermissionsConfig();
+      return currentRole === "manager" || hasPermission(currentRole, "scanner.admin_generate", config);
     }
     return item.roles.includes(currentRole);
   });
