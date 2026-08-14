@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { lookupByBarcode } from "@/lib/barcode-service";
+import { decodeBarcodeFromCanvas, decodeBarcodeFromFile } from "@/lib/barcode-decoder";
 import type { Product } from "@/lib/types";
 
 interface BarcodeScannerProps {
@@ -92,23 +93,9 @@ export default function BarcodeScanner({
 
     const tryDetect = async () => {
       try {
-        // Try native BarcodeDetector first (Chrome 88+, Android)
-        if ("BarcodeDetector" in window) {
-          // @ts-expect-error — BarcodeDetector is not in TS lib yet
-          const detector = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "code_128", "code_39", "qr_code", "upc_a", "upc_e", "data_matrix", "pdf417"] });
-          const barcodes = await detector.detect(canvas);
-          if (barcodes.length > 0) {
-            handleScannedCode(barcodes[0].rawValue);
-            return;
-          }
-        }
-
-        // Fallback: jsQR for QR-only
-        const { default: jsQR } = await import("jsqr");
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const result = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
-        if (result?.data) {
-          handleScannedCode(result.data);
+        const code = await decodeBarcodeFromCanvas(canvas);
+        if (code) {
+          handleScannedCode(code);
           return;
         }
       } catch { /* silent */ }
@@ -126,37 +113,12 @@ export default function BarcodeScanner({
     setImageDecoding(true);
     setImageError("");
     try {
-      const bitmap = await createImageBitmap(file);
-      const canvas = document.createElement("canvas");
-      canvas.width = bitmap.width;
-      canvas.height = bitmap.height;
-      const ctx = canvas.getContext("2d")!;
-      ctx.drawImage(bitmap, 0, 0);
-
-      // Try native BarcodeDetector
-      if ("BarcodeDetector" in window) {
-        try {
-          // @ts-expect-error
-          const detector = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "code_128", "code_39", "qr_code", "upc_a", "upc_e"] });
-          const barcodes = await detector.detect(canvas);
-          if (barcodes.length > 0) {
-            handleScannedCode(barcodes[0].rawValue);
-            setImageDecoding(false);
-            return;
-          }
-        } catch { /* fall through */ }
-      }
-
-      // jsQR fallback
-      const { default: jsQR } = await import("jsqr");
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const result = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: "attemptBoth" });
-      if (result?.data) {
-        handleScannedCode(result.data);
+      const code = await decodeBarcodeFromFile(file);
+      if (code) {
+        handleScannedCode(code);
         setImageDecoding(false);
         return;
       }
-
       setImageError("لم يتم التعرف على باركود أو QR في الصورة. جرّب صورة أوضح أو الإدخال اليدوي.");
     } catch (err) {
       console.error("Image decode error:", err);
