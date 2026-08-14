@@ -1,20 +1,44 @@
 /**
  * printer-service.ts
  *
- * Enterprise-grade Batch Label Printing & Printer Integration Service.
- * Decoupled from UI components.
- * Supports:
- *  - 1D Barcode, 2D QR Code, or Both rendering per label
- *  - Per-item quantity allocation
- *  - Direct Browser & Native Thermal Label printing window
- *  - Downloadable Printable HTML/PDF Document export
+ * Enterprise-Grade Decoupled Printer Service & Data URL Generator.
+ * Converts 1D Linear Barcodes (via JsBarcode canvas) and 2D QR Codes (via QRCode)
+ * into static 100% offline Base64 Data URLs (data:image/png;base64,...).
+ *
+ * Guarantees zero CORS / zero network latency / 100% reliable rendering
+ * inside window.print(), popup windows, thermal printer drivers, and PDF exports.
  */
 
 import QRCode from "qrcode";
+import JsBarcode from "jsbarcode";
 import type { Product } from "./types";
 
 export type CodePrintType = "barcode" | "qr" | "both";
 export type PrintQuantityMode = "unified" | "custom";
+
+export interface LabelCustomizationOptions {
+  showProductName: boolean;
+  showProductPrice: boolean;
+  showBarcode: boolean;
+  showQRCode: boolean;
+  showFooterText: boolean;
+  footerText: string;
+  barcodeHeight: number; // 30 - 80px
+  nameFontSize: number;  // 10 - 20px
+  priceFontSize: number; // 12 - 24px
+}
+
+export const DEFAULT_LABEL_CUSTOMIZATION: LabelCustomizationOptions = {
+  showProductName: true,
+  showProductPrice: true,
+  showBarcode: true,
+  showQRCode: true,
+  showFooterText: true,
+  footerText: "معرض أحمد بحري",
+  barcodeHeight: 45,
+  nameFontSize: 13,
+  priceFontSize: 14,
+};
 
 export interface PrintItemConfig {
   product: Product;
@@ -22,14 +46,39 @@ export interface PrintItemConfig {
 }
 
 export interface PrintJobOptions {
-  codeType: CodePrintType;
   items: PrintItemConfig[];
-  storeName?: string;
-  showPrice?: boolean;
+  customization: LabelCustomizationOptions;
 }
 
 /**
- * Generate Base64 Data URL for a QR Code string safely.
+ * Converts a 1D Barcode string into a pure Base64 PNG Data URL using off-screen HTMLCanvasElement.
+ * Zero external network dependency.
+ */
+export function generateBarcodeDataURL(text: string, height = 45): string {
+  if (!text || !text.trim()) return "";
+  try {
+    if (typeof document === "undefined") return "";
+    const canvas = document.createElement("canvas");
+    JsBarcode(canvas, text.trim(), {
+      format: "CODE128",
+      width: 1.5,
+      height: height,
+      displayValue: true,
+      fontSize: 11,
+      margin: 4,
+      background: "#ffffff",
+      lineColor: "#000000",
+    });
+    return canvas.toDataURL("image/png");
+  } catch (err) {
+    console.error("[PrinterService] Failed to generate 1D Barcode Data URL:", err);
+    return "";
+  }
+}
+
+/**
+ * Converts a 2D QR Code string into a pure Base64 PNG Data URL using QRCode library.
+ * Zero external network dependency.
  */
 export async function generateQRDataURL(text: string): Promise<string> {
   if (!text || !text.trim()) return "";
@@ -48,68 +97,80 @@ export async function generateQRDataURL(text: string): Promise<string> {
       });
     }
   } catch (err) {
-    console.error("[PrinterService] Failed to generate QR Data URL:", err);
+    console.error("[PrinterService] Failed to generate 2D QR Data URL:", err);
   }
   return "";
 }
 
 /**
  * Generates an optimized, self-contained printable HTML document string
- * formatted for thermal label printers or standard A4/A6 label sheets.
+ * formatted for thermal label printers or standard label sheets with exact @media print CSS.
  */
 export async function buildPrintableDocument(options: PrintJobOptions): Promise<string> {
-  const { codeType, items, storeName = "معرض أحمد بحري", showPrice = true } = options;
+  const { items, customization } = options;
 
-  // Pre-generate QR Data URLs for all items that require QR printing
+  // Pre-generate Base64 Data URLs for all 1D Barcodes and 2D QRs
+  const barcodeMap = new Map<string, string>();
   const qrMap = new Map<string, string>();
-  if (codeType === "qr" || codeType === "both") {
-    for (const item of items) {
-      if (item.product.qrCode && !qrMap.has(item.product.id)) {
-        const url = await generateQRDataURL(item.product.qrCode);
-        qrMap.set(item.product.id, url);
-      }
+
+  for (const item of items) {
+    const p = item.product;
+    if (customization.showBarcode && p.barcode && !barcodeMap.has(p.id)) {
+      const dataUrl = generateBarcodeDataURL(p.barcode, customization.barcodeHeight);
+      barcodeMap.set(p.id, dataUrl);
+    }
+    if (customization.showQRCode && p.qrCode && !qrMap.has(p.id)) {
+      const dataUrl = await generateQRDataURL(p.qrCode);
+      qrMap.set(p.id, dataUrl);
     }
   }
 
-  // Build labels array repeating per item quantity
+  // Build labels HTML repeating per item quantity
   const labelsHTML: string[] = [];
 
   for (const { product, quantity } of items) {
     const qty = Math.max(1, quantity);
-    const barcodeVal = product.barcode || "";
+    const barcodeDataUrl = barcodeMap.get(product.id) || "";
     const qrDataUrl = qrMap.get(product.id) || "";
 
     for (let i = 0; i < qty; i++) {
       labelsHTML.push(`
         <div class="label-card">
-          <div class="store-name">${storeName}</div>
-          <div class="product-name">${product.name}</div>
+          ${
+            customization.showProductName
+              ? `<div class="product-name" style="font-size: ${customization.nameFontSize}px;">${product.name}</div>`
+              : ""
+          }
           
           ${
-            showPrice
-              ? `<div class="product-price">${product.retailPrice.toLocaleString()} د.ع</div>`
+            customization.showProductPrice
+              ? `<div class="product-price" style="font-size: ${customization.priceFontSize}px;">${product.retailPrice.toLocaleString()} د.ع</div>`
               : ""
           }
 
           <div class="codes-container">
             ${
-              (codeType === "barcode" || codeType === "both") && barcodeVal
+              customization.showBarcode && barcodeDataUrl
                 ? `<div class="barcode-wrapper">
-                    <img src="https://barcode.tec-it.com/barcode.ashx?data=${encodeURIComponent(barcodeVal)}&code=Code128&dpi=96&unit=Min&width=1.5&height=40" alt="Barcode" class="barcode-img" />
-                    <div class="code-text">${barcodeVal}</div>
+                    <img src="${barcodeDataUrl}" alt="Barcode" className="barcode-img" style="height: ${customization.barcodeHeight}px;" />
                    </div>`
                 : ""
             }
 
             ${
-              (codeType === "qr" || codeType === "both") && qrDataUrl
+              customization.showQRCode && qrDataUrl
                 ? `<div class="qr-wrapper">
-                    <img src="${qrDataUrl}" alt="QR" class="qr-img" />
-                    ${!barcodeVal || codeType === "qr" ? `<div class="code-text">${product.qrCode || ""}</div>` : ""}
+                    <img src="${qrDataUrl}" alt="QR Code" class="qr-img" />
                    </div>`
                 : ""
             }
           </div>
+
+          ${
+            customization.showFooterText && customization.footerText
+              ? `<div class="footer-text">${customization.footerText}</div>`
+              : ""
+          }
         </div>
       `);
     }
@@ -130,10 +191,27 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
           color: #0f172a;
         }
         @media print {
-          body { background: #fff; padding: 0; }
-          .no-print { display: none !important; }
-          .labels-grid { gap: 8px !important; }
-          .label-card { break-inside: avoid; page-break-inside: avoid; }
+          @page {
+            margin: 5mm;
+          }
+          body {
+            background: #fff !important;
+            padding: 0 !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+          .labels-grid {
+            gap: 6mm !important;
+            display: flex !important;
+            flex-wrap: wrap !important;
+          }
+          .label-card {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+            border: 1px solid #000 !important;
+            box-shadow: none !important;
+          }
         }
         .header-bar {
           display: flex;
@@ -159,7 +237,7 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
         .btn-print:hover { background: #1d4ed8; }
         .labels-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+          grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
           gap: 16px;
           justify-content: center;
         }
@@ -170,31 +248,22 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
           padding: 12px;
           text-align: center;
           display: flex;
-          flex-col;
+          flex-direction: column;
           align-items: center;
           justify-content: space-between;
-          min-height: 180px;
-        }
-        .store-name {
-          font-size: 10px;
-          color: #64748b;
-          font-weight: bold;
-          text-transform: uppercase;
-          letter-spacing: 1px;
+          min-height: 170px;
+          max-width: 260px;
+          margin: 0 auto;
+          width: 100%;
         }
         .product-name {
-          font-size: 13px;
           font-weight: 800;
           color: #0f172a;
-          margin: 4px 0;
-          line-clamp: 2;
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
+          line-height: 1.3;
+          margin-bottom: 4px;
+          word-break: break-word;
         }
         .product-price {
-          font-size: 14px;
           font-weight: 900;
           color: #2563eb;
           margin-bottom: 6px;
@@ -205,42 +274,47 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
           align-items: center;
           justify-content: center;
           width: 100%;
-          margin-top: auto;
+          margin: 6px 0;
         }
         .barcode-wrapper, .qr-wrapper {
           display: flex;
           flex-direction: column;
           align-items: center;
+          justify-content: center;
           flex: 1;
         }
         .barcode-img {
-          max-height: 42px;
           max-width: 100%;
-          object-contain: contain;
+          object-fit: contain;
+          display: block;
         }
         .qr-img {
-          width: 64px;
-          height: 64px;
+          width: 68px;
+          height: 68px;
           object-fit: contain;
+          display: block;
         }
-        .code-text {
-          font-family: monospace;
+        .footer-text {
           font-size: 10px;
-          color: #475569;
-          margin-top: 2px;
-          letter-spacing: 1px;
+          color: #64748b;
+          font-weight: bold;
+          margin-top: 6px;
+          letter-spacing: 0.5px;
+          border-top: 1px solid #f1f5f9;
+          padding-top: 4px;
+          width: 100%;
         }
       </style>
     </head>
     <body>
       <div class="header-bar no-print">
         <div>
-          <h2 style="font-size:18px;">معاينة ملصقات الباركود والـ QR</h2>
-          <p style="font-size:12px; color:#64748b;">إجمالي الملصقات: <strong>${labelsHTML.length}</strong> ملصق</p>
+          <h2 style="font-size:18px;">معاينة طباعة الملصقات</h2>
+          <p style="font-size:12px; color:#64748b;">إجمالي عدد الملصقات: <strong>${labelsHTML.length}</strong> ملصق</p>
         </div>
         <div style="display:flex; gap:10px;">
-          <button class="btn-print" onclick="window.print()">🖨 أمر الطباعة</button>
-          <button class="btn-print" style="background:#64748b;" onclick="window.close()">إلغاء</button>
+          <button class="btn-print" onclick="window.print()">🖨 أمر الطباعة الفوري</button>
+          <button class="btn-print" style="background:#64748b;" onclick="window.close()">إغلاق</button>
         </div>
       </div>
 
@@ -249,10 +323,9 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
       </div>
 
       <script>
-        // Auto print prompt when loaded in popup window
         if (window.opener) {
           window.onload = () => {
-            setTimeout(() => { window.print(); }, 500);
+            setTimeout(() => { window.print(); }, 400);
           };
         }
       </script>
@@ -262,11 +335,11 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
 }
 
 /**
- * Directly triggers browser / thermal printer window for a Print Job.
+ * Triggers browser / thermal printer popup with 100% local Data URLs.
  */
 export async function executePrintJob(options: PrintJobOptions): Promise<void> {
   const html = await buildPrintableDocument(options);
-  const printWin = window.open("", "_blank", "width=800,height=600");
+  const printWin = window.open("", "_blank", "width=850,height=650");
   if (!printWin) {
     throw new Error("تعذّر فتح نافذة الطباعة. يُرجى السماح بالنوافذ المنبثقة (Popups).");
   }
@@ -275,7 +348,7 @@ export async function executePrintJob(options: PrintJobOptions): Promise<void> {
 }
 
 /**
- * Downloads a self-contained printable HTML/PDF label sheet file.
+ * Downloads self-contained HTML label batch file.
  */
 export async function exportPrintableFile(
   options: PrintJobOptions,
