@@ -3,9 +3,8 @@
  *
  * Multi-Format Barcode & QR Code Computer Vision Preprocessing & Decoding Engine.
  * Powered by @zxing/library, native BarcodeDetector API, and jsQR fallback.
- * Supports simultaneous detection of 1D linear barcodes (EAN-13, EAN-8, Code128, Code39, UPC)
- * and 2D codes (QR Code, DataMatrix).
- * Includes 90-degree rotation pass for mobile EXIF portrait photos.
+ * Includes Mobile Pre-Scaling & Memory-Safe Canvas Normalization Pipeline (max 1000px).
+ * Resolves mobile phone OOM pixel reading failures on iOS Safari & Android Chrome.
  */
 
 import {
@@ -74,7 +73,7 @@ export async function decodeBarcodeFromCanvas(
 
   // Create an off-screen processing canvas for image optimization
   const processCanvas = document.createElement("canvas");
-  const maxDim = 1280;
+  const maxDim = 1000;
   let width = sourceCanvas.width;
   let height = sourceCanvas.height;
 
@@ -166,13 +165,13 @@ export async function decodeBarcodeFromCanvas(
 }
 
 /**
- * Rotates a canvas by 90 degrees clockwise (solves mobile portrait 1D barcode orientation).
+ * Rotates a canvas by 90 degrees clockwise (solves mobile portrait EXIF photo orientation).
  */
 function rotateCanvas90(sourceCanvas: HTMLCanvasElement): HTMLCanvasElement {
   const rotated = document.createElement("canvas");
   rotated.width = sourceCanvas.height;
   rotated.height = sourceCanvas.width;
-  const ctx = rotated.getContext("2d");
+  const ctx = rotated.getContext("2d", { willReadFrequently: true });
   if (ctx) {
     ctx.translate(rotated.width / 2, rotated.height / 2);
     ctx.rotate((90 * Math.PI) / 180);
@@ -182,25 +181,83 @@ function rotateCanvas90(sourceCanvas: HTMLCanvasElement): HTMLCanvasElement {
 }
 
 /**
- * Decodes barcode/QR from an uploaded File or Blob object with rotation normalization.
+ * Safely loads an uploaded File into an HTMLImageElement or ImageBitmap
+ * across all mobile browsers (iOS Safari, Android Chrome, Tablets, Desktop).
+ */
+async function safeLoadImage(file: File): Promise<HTMLImageElement | ImageBitmap | null> {
+  if (typeof createImageBitmap === "function") {
+    try {
+      return await createImageBitmap(file);
+    } catch {
+      // Fallback to FileReader + HTMLImageElement
+    }
+  }
+
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const src = e.target?.result as string;
+      if (!src) return resolve(null);
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = src;
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Decodes barcode/QR from an uploaded File or Blob object with mobile pre-scaling (max 1000px),
+ * memory-safe async canvas normalization, and 90-degree rotation pass.
  */
 export async function decodeBarcodeFromFile(file: File): Promise<string | null> {
-  const bitmap = await createImageBitmap(file);
-  const canvas = document.createElement("canvas");
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-  ctx.drawImage(bitmap, 0, 0);
+  try {
+    const img = await safeLoadImage(file);
+    if (!img) return null;
 
-  // Attempt 1: Standard orientation
-  const code1 = await decodeBarcodeFromCanvas(canvas);
-  if (code1) return code1;
+    // Mobile Pre-Scaling Pipeline: limit max dimension to 1000px to prevent mobile OOM context drop
+    const maxDim = 1000;
+    let width = img.width;
+    let height = img.height;
 
-  // Attempt 2: 90-degree rotated orientation (for portrait mobile photos)
-  const rotatedCanvas = rotateCanvas90(canvas);
-  const code2 = await decodeBarcodeFromCanvas(rotatedCanvas);
-  if (code2) return code2;
+    if (width > maxDim || height > maxDim) {
+      if (width > height) {
+        height = Math.round((height * maxDim) / width);
+        width = maxDim;
+      } else {
+        width = Math.round((width * maxDim) / height);
+        height = maxDim;
+      }
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+
+    ctx.drawImage(img, 0, 0, width, height);
+
+    // Free memory if ImageBitmap was used
+    if ("close" in img && typeof (img as ImageBitmap).close === "function") {
+      (img as ImageBitmap).close();
+    }
+
+    // Attempt 1: Standard orientation on downscaled canvas
+    const code1 = await decodeBarcodeFromCanvas(canvas);
+    if (code1) return code1;
+
+    // Attempt 2: 90-degree rotated orientation (for mobile EXIF portrait photos)
+    const rotatedCanvas = rotateCanvas90(canvas);
+    const code2 = await decodeBarcodeFromCanvas(rotatedCanvas);
+    if (code2) return code2;
+
+  } catch (err) {
+    console.error("[BarcodeDecoder] Error decoding uploaded image:", err);
+  }
 
   return null;
 }
