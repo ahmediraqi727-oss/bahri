@@ -10,10 +10,8 @@ import {
   rowToFooterSettings,
   footerSettingsToRow,
 } from "@/lib/footer-types";
-import { useSettings } from "@/lib/settings-context";
 
 export default function FooterSettingsManager() {
-  const { updateSettings } = useSettings();
   const [footerSettings, setFooterSettings] = useState<FooterSettings>(DEFAULT_FOOTER_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -47,29 +45,20 @@ export default function FooterSettingsManager() {
     try {
       const rowData = footerSettingsToRow(footerSettings);
 
-      // 1. Try upserting to `footer_settings` table
+      // الحفظ المباشر والآمن في جدول footer_settings فقط لمنع أي تعارض
       const { error } = await supabase
         .from("footer_settings")
         .upsert(rowData, { onConflict: "id" });
 
       if (error) {
-        console.warn("Upsert to footer_settings table failed, writing to fallback site settings:", error.message);
+        throw new Error(error.message);
       }
-
-      // 2. Also update legacy SiteSettings for 100% backward compatibility
-      await updateSettings({
-        footerHeight: footerSettings.footerMinHeight,
-        footerRightText: footerSettings.right.text,
-        footerCenterText: footerSettings.center.text,
-        footerLeftText: footerSettings.left.text,
-        footerImage: footerSettings.center.imageUrl,
-      });
 
       setToastMessage("✅ تم حفظ إعدادات ذيل الصفحة الرئيسية بنجاح!");
       setTimeout(() => setToastMessage(null), 3000);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error saving footer settings:", err);
-      setToastMessage("⚠️ حدث خطأ أثناء الحفظ، يرجى المحاولة مرة أخرى.");
+      setToastMessage(`⚠️ حدث خطأ أثناء الحفظ: ${err.message || "يرجى المحاولة مرة أخرى"}`);
       setTimeout(() => setToastMessage(null), 4000);
     } finally {
       setSaving(false);

@@ -16,36 +16,6 @@ export default function Footer() {
   const [footerSettings, setFooterSettings] = useState<FooterSettings>(DEFAULT_FOOTER_SETTINGS);
   const [loading, setLoading] = useState(true);
 
-  // Synchronize footerSettings with SiteSettings legacy values if footer_settings DB row is empty
-  useEffect(() => {
-    setFooterSettings((prev) => ({
-      ...prev,
-      footerMinHeight: settings.footerHeight || prev.footerMinHeight,
-      right: {
-        ...prev.right,
-        text: settings.footerRightText || prev.right.text,
-      },
-      center: {
-        ...prev.center,
-        text: settings.footerCenterText || prev.center.text,
-        imageUrl: settings.footerImage || settings.logo || prev.center.imageUrl,
-      },
-      left: {
-        ...prev.left,
-        text: settings.footerLeftText || prev.left.text,
-        linkUrl: settings.phoneLink ? `tel:${settings.phoneLink}` : prev.left.linkUrl,
-      },
-    }));
-  }, [
-    settings.footerHeight,
-    settings.footerRightText,
-    settings.footerCenterText,
-    settings.footerLeftText,
-    settings.footerImage,
-    settings.logo,
-    settings.phoneLink,
-  ]);
-
   // Load dynamic footer settings from Supabase database `footer_settings` table
   useEffect(() => {
     async function loadFooterDb() {
@@ -58,6 +28,15 @@ export default function Footer() {
 
         if (data && !error) {
           setFooterSettings(rowToFooterSettings(data));
+        } else {
+          // Fallback to legacy SiteSettings if footer_settings row doesn't exist yet
+          setFooterSettings((prev) => ({
+            ...prev,
+            footerMinHeight: settings.footerHeight || prev.footerMinHeight,
+            right: { ...prev.right, text: settings.footerRightText || prev.right.text },
+            center: { ...prev.center, text: settings.footerCenterText || prev.center.text, imageUrl: settings.footerImage || settings.logo || prev.center.imageUrl },
+            left: { ...prev.left, text: settings.footerLeftText || prev.left.text, linkUrl: settings.phoneLink ? `tel:${settings.phoneLink}` : prev.left.linkUrl },
+          }));
         }
       } catch (err) {
         console.warn("Footer settings fetch fallback:", err);
@@ -84,7 +63,15 @@ export default function Footer() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [
+    settings.footerHeight,
+    settings.footerRightText,
+    settings.footerCenterText,
+    settings.footerLeftText,
+    settings.footerImage,
+    settings.logo,
+    settings.phoneLink,
+  ]);
 
   const { right, center, left, fullWidth } = footerSettings;
 
