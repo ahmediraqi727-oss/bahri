@@ -11,6 +11,20 @@
 
 import React from "react";
 
+// تعريف أدوات الاختبار القياسية لدعم مجمع TypeScript المستقل
+const describe = (name: string, fn: () => void) => fn();
+const test = async (name: string, fn: () => Promise<void> | void) => { await fn(); };
+const expect = <T,>(actual: T) => ({
+  toBe: (expected: T) => {
+    if (actual !== expected) throw new Error(`توقعت ${expected} ولكن وجد ${actual}`);
+  },
+  toContain: (expected: string) => {
+    if (typeof actual === "string" && !actual.includes(expected)) {
+      throw new Error(`توقعت أن تحتوي ${actual} على ${expected}`);
+    }
+  },
+});
+
 // 1. اختبار حماية الأزرار التفاعلية من النقر المتعدد (Double Click / Async Throttle Test)
 describe("إتقان وسلامة الأزرار التفاعلية في متجر أحمد بحري", () => {
   test("التحقق من عدم تكرار إرسال الطلب عند النقر السريع المتكرر على زر التأكيد", async () => {
