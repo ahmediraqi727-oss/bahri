@@ -286,7 +286,7 @@ export default function Footer() {
         )}
       </div>
 
-      {/* ─── 3. Social Media & Store Links Sub-Bar (Mobile-First Fluid Flex-Wrap Layout) ─── */}
+      {/* ─── 3. Social Media & Store Links Sub-Bar (Responsive Alignment & Grid Sync) ─── */}
       {(() => {
         const hasFacebook = Boolean(settings.facebookLink && settings.facebookLink.trim() !== "");
         const hasInstagram = Boolean(settings.instagramLink && settings.instagramLink.trim() !== "");
@@ -303,10 +303,16 @@ export default function Footer() {
         }
 
         return (
-          <div className="max-w-7xl mx-auto mt-8 pt-6 border-t border-gray-100 dark:border-gray-800/80 flex flex-col md:flex-row items-center justify-between gap-4 text-xs font-bold text-gray-500 dark:text-gray-400 w-full max-w-full overflow-x-hidden">
+          <div
+            className="max-w-7xl mx-auto mt-8 pt-6 border-t border-gray-100 dark:border-gray-800/80 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 text-xs font-bold text-gray-500 dark:text-gray-400 w-full max-w-full overflow-x-hidden"
+            style={{
+              paddingLeft: `${footerSettings.containerPaddingX}px`,
+              paddingRight: `${footerSettings.containerPaddingX}px`,
+            }}
+          >
             {footerSettings.showSocialLinks && hasAnySocial && (
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 w-full md:w-auto">
-                <span className="text-gray-700 dark:text-gray-300 font-extrabold flex items-center gap-1 w-full sm:w-auto justify-center sm:justify-start mb-1 sm:mb-0">
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-3 gap-y-2 text-xs">
+                <span className="text-gray-700 dark:text-gray-300 font-extrabold flex items-center gap-1.5 shrink-0">
                   <span>🌐</span>
                   <span>تابعنا على وسائل التواصل الاجتماعي:</span>
                 </span>
@@ -391,8 +397,8 @@ export default function Footer() {
             )}
 
             {hasAppLinks && (
-              <div className="flex items-center justify-center gap-2 flex-wrap w-full md:w-auto pt-2 md:pt-0 border-t md:border-t-0 border-gray-100 dark:border-gray-800/60">
-                <span className="text-gray-700 dark:text-gray-300 font-extrabold shrink-0">تطبيق الهاتف:</span>
+              <div className="flex items-center justify-center gap-x-2 gap-y-1.5 flex-wrap shrink-0">
+                <span className="text-gray-700 dark:text-gray-300 font-extrabold">تطبيق الهاتف:</span>
                 {settings.androidAppUrl && (
                   <a
                     href={settings.androidAppUrl}
