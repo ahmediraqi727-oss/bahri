@@ -73,138 +73,158 @@ export default function ContactLocationModal({
           </div>
 
           {/* Direct Communication Channels */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
-              <span>📞</span>
-              <span>قنوات الاتصال والدعم الفوري:</span>
-            </h4>
+          {(() => {
+            const hasPhone = Boolean(settings.phoneLink && settings.phoneLink.trim() !== "");
+            const hasPhone2 = Boolean(settings.phoneLink2 && settings.phoneLink2.trim() !== "");
+            const hasWhatsapp = Boolean(settings.whatsappLink && settings.whatsappLink.trim() !== "");
+            const hasTelegram = Boolean(settings.telegramLink && settings.telegramLink.trim() !== "");
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Phone Call */}
-              {settings.phoneLink && (
-                <a
-                  href={`tel:${settings.phoneLink}`}
-                  className="flex items-center gap-3 p-3 bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 border border-purple-200 dark:border-purple-800 rounded-xl text-purple-900 dark:text-purple-200 text-xs font-bold transition-all shadow-sm"
-                >
-                  <span className="text-xl">📞</span>
-                  <div>
-                    <div className="text-[10px] text-purple-600 dark:text-purple-400">اتصال مباشر</div>
-                    <div>{settings.phoneLink}</div>
-                  </div>
-                </a>
-              )}
+            if (!hasPhone && !hasPhone2 && !hasWhatsapp && !hasTelegram) return null;
 
-              {/* Second Phone Call */}
-              {settings.phoneLink2 && (
-                <a
-                  href={`tel:${settings.phoneLink2}`}
-                  className="flex items-center gap-3 p-3 bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 border border-purple-200 dark:border-purple-800 rounded-xl text-purple-900 dark:text-purple-200 text-xs font-bold transition-all shadow-sm"
-                >
-                  <span className="text-xl">☎️</span>
-                  <div>
-                    <div className="text-[10px] text-purple-600 dark:text-purple-400">رقم ثانوي</div>
-                    <div>{settings.phoneLink2}</div>
-                  </div>
-                </a>
-              )}
+            return (
+              <div className="space-y-3">
+                <h4 className="text-xs font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
+                  <span>📞</span>
+                  <span>قنوات الاتصال والدعم الفوري:</span>
+                </h4>
 
-              {/* WhatsApp */}
-              {settings.whatsappLink && (
-                <a
-                  href={
-                    settings.whatsappLink.startsWith("http")
-                      ? settings.whatsappLink
-                      : `https://wa.me/${settings.whatsappLink.replace(/[^0-9]/g, "")}`
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-3 p-3 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 border border-emerald-200 dark:border-emerald-800 rounded-xl text-emerald-900 dark:text-emerald-200 text-xs font-bold transition-all shadow-sm"
-                >
-                  <span className="text-xl">💬</span>
-                  <div>
-                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400">مراسلة WhatsApp</div>
-                    <div>{settings.whatsappLink}</div>
-                  </div>
-                </a>
-              )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Primary Phone Call */}
+                  {hasPhone && (
+                    <a
+                      href={`tel:${settings.phoneLink}`}
+                      className="flex items-center gap-3 p-3 bg-purple-50 dark:bg-purple-950/30 hover:bg-purple-100 border border-purple-200 dark:border-purple-800 rounded-xl text-purple-900 dark:text-purple-200 text-xs font-bold transition-all shadow-xs"
+                    >
+                      <span className="text-xl">📞</span>
+                      <div>
+                        <div className="text-[10px] text-purple-600 dark:text-purple-400">اتصال مباشر (رئيسي)</div>
+                        <div>{settings.phoneLink}</div>
+                      </div>
+                    </a>
+                  )}
 
-              {/* Telegram */}
-              {settings.telegramLink && (
-                <a
-                  href={
-                    settings.telegramLink.startsWith("http")
-                      ? settings.telegramLink
-                      : `https://t.me/${settings.telegramLink.replace("@", "")}`
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-3 p-3 bg-sky-50 dark:bg-sky-950/30 hover:bg-sky-100 border border-sky-200 dark:border-sky-800 rounded-xl text-sky-900 dark:text-sky-200 text-xs font-bold transition-all shadow-sm"
-                >
-                  <span className="text-xl">✈️</span>
-                  <div>
-                    <div className="text-[10px] text-sky-600 dark:text-sky-400">قناة Telegram</div>
-                    <div>{settings.telegramLink}</div>
-                  </div>
-                </a>
-              )}
-            </div>
-          </div>
+                  {/* Second Phone Call */}
+                  {hasPhone2 && (
+                    <a
+                      href={`tel:${settings.phoneLink2}`}
+                      className="flex items-center gap-3 p-3 bg-indigo-50 dark:bg-indigo-950/30 hover:bg-indigo-100 border border-indigo-200 dark:border-indigo-800 rounded-xl text-indigo-900 dark:text-indigo-200 text-xs font-bold transition-all shadow-xs"
+                    >
+                      <span className="text-xl">☎️</span>
+                      <div>
+                        <div className="text-[10px] text-indigo-600 dark:text-indigo-400">رقم ثانوي</div>
+                        <div>{settings.phoneLink2}</div>
+                      </div>
+                    </a>
+                  )}
+
+                  {/* WhatsApp */}
+                  {hasWhatsapp && (
+                    <a
+                      href={
+                        settings.whatsappLink!.startsWith("http")
+                          ? settings.whatsappLink!
+                          : `https://wa.me/${settings.whatsappLink!.replace(/[^0-9]/g, "")}`
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 p-3 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 border border-emerald-200 dark:border-emerald-800 rounded-xl text-emerald-900 dark:text-emerald-200 text-xs font-bold transition-all shadow-xs"
+                    >
+                      <span className="text-xl">💬</span>
+                      <div>
+                        <div className="text-[10px] text-emerald-600 dark:text-emerald-400">مراسلة WhatsApp</div>
+                        <div>{settings.whatsappLink}</div>
+                      </div>
+                    </a>
+                  )}
+
+                  {/* Telegram */}
+                  {hasTelegram && (
+                    <a
+                      href={
+                        settings.telegramLink!.startsWith("http")
+                          ? settings.telegramLink!
+                          : `https://t.me/${settings.telegramLink!.replace("@", "")}`
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 p-3 bg-sky-50 dark:bg-sky-950/30 hover:bg-sky-100 border border-sky-200 dark:border-sky-800 rounded-xl text-sky-900 dark:text-sky-200 text-xs font-bold transition-all shadow-xs"
+                    >
+                      <span className="text-xl">✈️</span>
+                      <div>
+                        <div className="text-[10px] text-sky-600 dark:text-sky-400">قناة Telegram</div>
+                        <div>{settings.telegramLink}</div>
+                      </div>
+                    </a>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Social Media Channels */}
-          {(settings.facebookLink || settings.instagramLink || settings.tiktokLink || settings.youtubeLink) && (
-            <div className="space-y-3 pt-2 border-t border-gray-100 dark:border-gray-800">
-              <h4 className="text-xs font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
-                <span>🌐</span>
-                <span>صفحاتنا الرسمية على مواقع التواصل الاجتماعي:</span>
-              </h4>
+          {(() => {
+            const hasFacebook = Boolean(settings.facebookLink && settings.facebookLink.trim() !== "");
+            const hasInstagram = Boolean(settings.instagramLink && settings.instagramLink.trim() !== "");
+            const hasTiktok = Boolean(settings.tiktokLink && settings.tiktokLink.trim() !== "");
+            const hasYoutube = Boolean(settings.youtubeLink && settings.youtubeLink.trim() !== "");
 
-              <div className="flex flex-wrap items-center gap-2">
-                {settings.facebookLink && (
-                  <a
-                    href={settings.facebookLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
-                  >
-                    <span>📘</span> Facebook
-                  </a>
-                )}
+            if (!hasFacebook && !hasInstagram && !hasTiktok && !hasYoutube) return null;
 
-                {settings.instagramLink && (
-                  <a
-                    href={settings.instagramLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-2 bg-gradient-to-r from-pink-600 to-purple-600 hover:opacity-90 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
-                  >
-                    <span>📸</span> Instagram
-                  </a>
-                )}
+            return (
+              <div className="space-y-3 pt-2 border-t border-gray-100 dark:border-gray-800">
+                <h4 className="text-xs font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
+                  <span>🌐</span>
+                  <span>صفحاتنا الرسمية على مواقع التواصل الاجتماعي:</span>
+                </h4>
 
-                {settings.tiktokLink && (
-                  <a
-                    href={settings.tiktokLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-2 bg-black hover:bg-gray-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
-                  >
-                    <span>🎵</span> TikTok
-                  </a>
-                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  {hasFacebook && (
+                    <a
+                      href={settings.facebookLink!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs"
+                    >
+                      <span>📘</span> Facebook
+                    </a>
+                  )}
 
-                {settings.youtubeLink && (
-                  <a
-                    href={settings.youtubeLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
-                  >
-                    <span>▶️</span> YouTube
-                  </a>
-                )}
+                  {hasInstagram && (
+                    <a
+                      href={settings.instagramLink!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-2 bg-gradient-to-r from-pink-600 to-purple-600 hover:opacity-90 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs"
+                    >
+                      <span>📸</span> Instagram
+                    </a>
+                  )}
+
+                  {hasTiktok && (
+                    <a
+                      href={settings.tiktokLink!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-2 bg-black hover:bg-gray-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs"
+                    >
+                      <span>🎵</span> TikTok
+                    </a>
+                  )}
+
+                  {hasYoutube && (
+                    <a
+                      href={settings.youtubeLink!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs"
+                    >
+                      <span>▶️</span> YouTube
+                    </a>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
 
         {/* Modal Footer */}

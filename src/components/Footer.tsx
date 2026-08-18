@@ -286,89 +286,138 @@ export default function Footer() {
         )}
       </div>
 
-      {/* ─── 3. Social Media & Store Links Sub-Bar (100% Mobile & Desktop Responsive) ─── */}
-      {(footerSettings.showSocialLinks || footerSettings.showAppDownloadLinks) && (
-        <div className="max-w-7xl mx-auto mt-8 pt-6 border-t border-gray-100 dark:border-gray-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-bold text-gray-500 dark:text-gray-400 w-full max-w-full overflow-x-auto">
-          {footerSettings.showSocialLinks && (
-            <div className="flex items-center gap-2.5 flex-wrap justify-center sm:justify-start w-full sm:w-auto">
-              <span className="text-gray-700 dark:text-gray-300 font-extrabold shrink-0 flex items-center gap-1">
-                <span>🌐</span>
-                <span>تابعنا على وسائل التواصل الاجتماعي:</span>
-              </span>
-              
-              {(settings.facebookLink || true) && (
-                <a
-                  href={settings.facebookLink || "https://facebook.com"}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-600 hover:text-white text-blue-600 dark:text-blue-400 rounded-xl text-xs font-bold transition-all border border-blue-200 dark:border-blue-800/60 flex items-center gap-1 shadow-2xs shrink-0"
-                >
-                  <span>📘</span> فيسبوك
-                </a>
-              )}
+      {/* ─── 3. Social Media & Store Links Sub-Bar (Strict Dynamic Conditional Rendering) ─── */}
+      {(() => {
+        const hasFacebook = Boolean(settings.facebookLink && settings.facebookLink.trim() !== "");
+        const hasInstagram = Boolean(settings.instagramLink && settings.instagramLink.trim() !== "");
+        const hasTiktok = Boolean(settings.tiktokLink && settings.tiktokLink.trim() !== "");
+        const hasYoutube = Boolean(settings.youtubeLink && settings.youtubeLink.trim() !== "");
+        const hasWhatsapp = Boolean(settings.whatsappLink && settings.whatsappLink.trim() !== "");
+        const hasPhone = Boolean(settings.phoneLink && settings.phoneLink.trim() !== "");
+        const hasPhone2 = Boolean(settings.phoneLink2 && settings.phoneLink2.trim() !== "");
+        const hasAnySocial = hasFacebook || hasInstagram || hasTiktok || hasYoutube || hasWhatsapp || hasPhone || hasPhone2;
+        const hasAppLinks = Boolean(footerSettings.showAppDownloadLinks && (settings.androidAppUrl || settings.iosAppUrl));
 
-              {(settings.instagramLink || true) && (
-                <a
-                  href={settings.instagramLink || "https://instagram.com"}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1.5 bg-pink-50 dark:bg-pink-950/60 hover:bg-gradient-to-r hover:from-pink-600 hover:to-purple-600 hover:text-white text-pink-600 dark:text-pink-400 rounded-xl text-xs font-bold transition-all border border-pink-200 dark:border-pink-800/60 flex items-center gap-1 shadow-2xs shrink-0"
-                >
-                  <span>📸</span> انستغرام
-                </a>
-              )}
+        if ((!footerSettings.showSocialLinks || !hasAnySocial) && !hasAppLinks) {
+          return null;
+        }
 
-              {settings.tiktokLink && (
-                <a
-                  href={settings.tiktokLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-black hover:text-white text-gray-900 dark:text-white rounded-xl text-xs font-bold transition-all border border-gray-300 dark:border-gray-700 flex items-center gap-1 shadow-2xs shrink-0"
-                >
-                  <span>🎵</span> تيك توك
-                </a>
-              )}
+        return (
+          <div className="max-w-7xl mx-auto mt-8 pt-6 border-t border-gray-100 dark:border-gray-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-bold text-gray-500 dark:text-gray-400 w-full max-w-full overflow-x-auto">
+            {footerSettings.showSocialLinks && hasAnySocial && (
+              <div className="flex items-center gap-2.5 flex-wrap justify-center sm:justify-start w-full sm:w-auto">
+                <span className="text-gray-700 dark:text-gray-300 font-extrabold shrink-0 flex items-center gap-1">
+                  <span>🌐</span>
+                  <span>تابعنا على وسائل التواصل الاجتماعي:</span>
+                </span>
+                
+                {hasFacebook && (
+                  <a
+                    href={settings.facebookLink!}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-600 hover:text-white text-blue-600 dark:text-blue-400 rounded-xl text-xs font-bold transition-all border border-blue-200 dark:border-blue-800/60 flex items-center gap-1 shadow-2xs shrink-0"
+                  >
+                    <span>📘</span> فيسبوك
+                  </a>
+                )}
 
-              {settings.youtubeLink && (
-                <a
-                  href={settings.youtubeLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1.5 bg-red-50 dark:bg-red-950/60 hover:bg-red-600 hover:text-white text-red-600 dark:text-red-400 rounded-xl text-xs font-bold transition-all border border-red-200 dark:border-red-800/60 flex items-center gap-1 shadow-2xs shrink-0"
-                >
-                  <span>▶️</span> يوتيوب
-                </a>
-              )}
-            </div>
-          )}
+                {hasInstagram && (
+                  <a
+                    href={settings.instagramLink!}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-pink-50 dark:bg-pink-950/60 hover:bg-gradient-to-r hover:from-pink-600 hover:to-purple-600 hover:text-white text-pink-600 dark:text-pink-400 rounded-xl text-xs font-bold transition-all border border-pink-200 dark:border-pink-800/60 flex items-center gap-1 shadow-2xs shrink-0"
+                  >
+                    <span>📸</span> انستغرام
+                  </a>
+                )}
 
-          {footerSettings.showAppDownloadLinks && (settings.androidAppUrl || settings.iosAppUrl) && (
-            <div className="flex items-center gap-2 flex-wrap justify-center shrink-0">
-              <span className="text-gray-700 dark:text-gray-300 font-extrabold">تطبيق الهاتف:</span>
-              {settings.androidAppUrl && (
-                <a
-                  href={settings.androidAppUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1.5 bg-emerald-100 dark:bg-emerald-950/60 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-bold transition-all border border-emerald-200 dark:border-emerald-800 flex items-center gap-1"
-                >
-                  <span>🤖</span> أندرويد
-                </a>
-              )}
-              {settings.iosAppUrl && (
-                <a
-                  href={settings.iosAppUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-900 hover:text-white text-gray-800 dark:text-gray-200 rounded-xl text-xs font-bold transition-all border border-gray-300 dark:border-gray-700 flex items-center gap-1"
-                >
-                  <span>🍎</span> آيفون
-                </a>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+                {hasTiktok && (
+                  <a
+                    href={settings.tiktokLink!}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-black hover:text-white text-gray-900 dark:text-white rounded-xl text-xs font-bold transition-all border border-gray-300 dark:border-gray-700 flex items-center gap-1 shadow-2xs shrink-0"
+                  >
+                    <span>🎵</span> تيك توك
+                  </a>
+                )}
+
+                {hasYoutube && (
+                  <a
+                    href={settings.youtubeLink!}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-red-50 dark:bg-red-950/60 hover:bg-red-600 hover:text-white text-red-600 dark:text-red-400 rounded-xl text-xs font-bold transition-all border border-red-200 dark:border-red-800/60 flex items-center gap-1 shadow-2xs shrink-0"
+                  >
+                    <span>▶️</span> يوتيوب
+                  </a>
+                )}
+
+                {hasWhatsapp && (
+                  <a
+                    href={
+                      settings.whatsappLink!.startsWith("http")
+                        ? settings.whatsappLink!
+                        : `https://wa.me/${settings.whatsappLink!.replace(/[^0-9]/g, "")}`
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-600 hover:text-white text-emerald-600 dark:text-emerald-400 rounded-xl text-xs font-bold transition-all border border-emerald-200 dark:border-emerald-800/60 flex items-center gap-1 shadow-2xs shrink-0"
+                  >
+                    <span>💬</span> واتساب
+                  </a>
+                )}
+
+                {hasPhone && (
+                  <a
+                    href={`tel:${settings.phoneLink}`}
+                    className="px-3 py-1.5 bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-600 hover:text-white text-purple-600 dark:text-purple-400 rounded-xl text-xs font-bold transition-all border border-purple-200 dark:border-purple-800/60 flex items-center gap-1 shadow-2xs shrink-0"
+                  >
+                    <span>📞</span> {settings.phoneLink}
+                  </a>
+                )}
+
+                {hasPhone2 && (
+                  <a
+                    href={`tel:${settings.phoneLink2}`}
+                    className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-600 hover:text-white text-indigo-600 dark:text-indigo-400 rounded-xl text-xs font-bold transition-all border border-indigo-200 dark:border-indigo-800/60 flex items-center gap-1 shadow-2xs shrink-0"
+                  >
+                    <span>☎️</span> {settings.phoneLink2}
+                  </a>
+                )}
+              </div>
+            )}
+
+            {hasAppLinks && (
+              <div className="flex items-center gap-2 flex-wrap justify-center shrink-0">
+                <span className="text-gray-700 dark:text-gray-300 font-extrabold">تطبيق الهاتف:</span>
+                {settings.androidAppUrl && (
+                  <a
+                    href={settings.androidAppUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-emerald-100 dark:bg-emerald-950/60 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-bold transition-all border border-emerald-200 dark:border-emerald-800 flex items-center gap-1"
+                  >
+                    <span>🤖</span> أندرويد
+                  </a>
+                )}
+                {settings.iosAppUrl && (
+                  <a
+                    href={settings.iosAppUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-900 hover:text-white text-gray-800 dark:text-gray-200 rounded-xl text-xs font-bold transition-all border border-gray-300 dark:border-gray-700 flex items-center gap-1"
+                  >
+                    <span>🍎</span> آيفون
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </footer>
   );
 }

@@ -68,7 +68,13 @@ export default function ContactSupportModal({ isOpen, onClose }: ContactSupportM
 
   if (!isOpen) return null;
 
-  const rawWa = settings.whatsappLink || settings.phoneLink || "07800000000";
+  const hasWa = Boolean(settings.whatsappLink && settings.whatsappLink.trim() !== "");
+  const hasPhone = Boolean(settings.phoneLink && settings.phoneLink.trim() !== "");
+  const hasPhone2 = Boolean(settings.phoneLink2 && settings.phoneLink2.trim() !== "");
+  const hasTelegram = Boolean(settings.telegramLink && settings.telegramLink.trim() !== "");
+  const hasMessenger = Boolean(settings.messengerLink && settings.messengerLink.trim() !== "");
+
+  const rawWa = settings.whatsappLink?.trim() || "";
   const cleanWaNumber = rawWa.replace(/[^0-9]/g, "");
   const formattedWaNumber = cleanWaNumber.startsWith("964")
     ? cleanWaNumber
@@ -76,12 +82,23 @@ export default function ContactSupportModal({ isOpen, onClose }: ContactSupportM
     ? `964${cleanWaNumber.substring(1)}`
     : `964${cleanWaNumber}`;
 
-  const waUrl = `https://wa.me/${formattedWaNumber}?text=${encodeURIComponent(
-    `سلام عليكم، استفسار من متجر ${settings.siteName || "أحمد بحري"}:`
-  )}`;
-  const phoneUrl = `tel:${settings.phoneLink || "07800000000"}`;
-  const telegramUrl = settings.telegramLink || "";
-  const messengerUrl = settings.messengerLink || "";
+  const waUrl = rawWa.startsWith("http")
+    ? rawWa
+    : `https://wa.me/${formattedWaNumber}?text=${encodeURIComponent(
+        `سلام عليكم، استفسار من متجر ${settings.siteName || "أحمد بحري"}:`
+      )}`;
+  const phoneUrl = `tel:${settings.phoneLink?.trim() || ""}`;
+  const phone2Url = `tel:${settings.phoneLink2?.trim() || ""}`;
+  const telegramUrl = hasTelegram
+    ? settings.telegramLink!.startsWith("http")
+      ? settings.telegramLink!
+      : `https://t.me/${settings.telegramLink!.replace("@", "")}`
+    : "";
+  const messengerUrl = hasMessenger
+    ? settings.messengerLink!.startsWith("http")
+      ? settings.messengerLink!
+      : `https://m.me/${settings.messengerLink!}`
+    : "";
 
   // Derived categories
   const categories = ["الكل", ...Array.from(new Set(inquiries.map((i) => i.category)))];
@@ -227,42 +244,63 @@ export default function ContactSupportModal({ isOpen, onClose }: ContactSupportM
                 <span className="text-violet-400 group-hover:translate-x-1 transition-transform">←</span>
               </button>
 
-              {/* Direct Contact Buttons */}
-              <div className="grid grid-cols-2 gap-2.5">
-                <a href={waUrl} target="_blank" rel="noreferrer"
-                  className="flex items-center justify-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 rounded-2xl font-extrabold text-xs border border-emerald-200 dark:border-emerald-800/40 hover:scale-[1.02] transition-transform shadow-xs">
-                  <span className="text-lg">💬</span> محادثة واتساب
-                </a>
-                <a href={phoneUrl}
-                  className="flex items-center justify-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 rounded-2xl font-extrabold text-xs border border-blue-200 dark:border-blue-800/40 hover:scale-[1.02] transition-transform shadow-xs">
-                  <span className="text-lg">📞</span> اتصال هاتفي
-                </a>
-                {telegramUrl && (
-                  <a href={telegramUrl} target="_blank" rel="noreferrer"
-                    className="flex items-center justify-center gap-2 p-3 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 rounded-2xl font-extrabold text-xs border border-sky-200 dark:border-sky-800/40 hover:scale-[1.02] transition-transform shadow-xs">
-                    <span className="text-lg">✈️</span> قناة تليجرام
-                  </a>
-                )}
-                {messengerUrl && (
-                  <a href={messengerUrl} target="_blank" rel="noreferrer"
-                    className="flex items-center justify-center gap-2 p-3 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded-2xl font-extrabold text-xs border border-indigo-200 dark:border-indigo-800/40 hover:scale-[1.02] transition-transform shadow-xs">
-                    <span className="text-lg">⚡</span> ماسنجر
-                  </a>
-                )}
-              </div>
-
-              {/* Social Links */}
-              {(settings.facebookLink || settings.instagramLink || settings.tiktokLink || settings.youtubeLink) && (
-                <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-200 dark:border-gray-700/60">
-                  <p className="text-[11px] font-bold text-gray-500 dark:text-gray-400 mb-2">تابعنا على وسائل التواصل الاجتماعي:</p>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {settings.facebookLink && <a href={settings.facebookLink} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:opacity-90">📘 فيسبوك</a>}
-                    {settings.instagramLink && <a href={settings.instagramLink} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-pink-600 text-white rounded-xl text-xs font-bold hover:opacity-90">📷 إنستغرام</a>}
-                    {settings.tiktokLink && <a href={settings.tiktokLink} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-gray-900 text-white rounded-xl text-xs font-bold hover:opacity-90">🎵 تيك توك</a>}
-                    {settings.youtubeLink && <a href={settings.youtubeLink} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-red-600 text-white rounded-xl text-xs font-bold hover:opacity-90">▶️ يوتيوب</a>}
-                  </div>
+              {/* Direct Contact Buttons (Strict Dynamic Conditional Rendering) */}
+              {(hasWa || hasPhone || hasPhone2 || hasTelegram || hasMessenger) && (
+                <div className="flex flex-wrap gap-2.5">
+                  {hasWa && (
+                    <a href={waUrl} target="_blank" rel="noreferrer"
+                      className="flex-1 min-w-[140px] flex items-center justify-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 rounded-2xl font-extrabold text-xs border border-emerald-200 dark:border-emerald-800/40 hover:scale-[1.02] transition-transform shadow-2xs">
+                      <span className="text-lg">💬</span> محادثة واتساب
+                    </a>
+                  )}
+                  {hasPhone && (
+                    <a href={phoneUrl}
+                      className="flex-1 min-w-[140px] flex items-center justify-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 rounded-2xl font-extrabold text-xs border border-blue-200 dark:border-blue-800/40 hover:scale-[1.02] transition-transform shadow-2xs">
+                      <span className="text-lg">📞</span> {settings.phoneLink}
+                    </a>
+                  )}
+                  {hasPhone2 && (
+                    <a href={phone2Url}
+                      className="flex-1 min-w-[140px] flex items-center justify-center gap-2 p-3 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded-2xl font-extrabold text-xs border border-indigo-200 dark:border-indigo-800/40 hover:scale-[1.02] transition-transform shadow-2xs">
+                      <span className="text-lg">☎️</span> {settings.phoneLink2} (ثانوي)
+                    </a>
+                  )}
+                  {hasTelegram && (
+                    <a href={telegramUrl} target="_blank" rel="noreferrer"
+                      className="flex-1 min-w-[140px] flex items-center justify-center gap-2 p-3 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 rounded-2xl font-extrabold text-xs border border-sky-200 dark:border-sky-800/40 hover:scale-[1.02] transition-transform shadow-2xs">
+                      <span className="text-lg">✈️</span> قناة تليجرام
+                    </a>
+                  )}
+                  {hasMessenger && (
+                    <a href={messengerUrl} target="_blank" rel="noreferrer"
+                      className="flex-1 min-w-[140px] flex items-center justify-center gap-2 p-3 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 rounded-2xl font-extrabold text-xs border border-indigo-200 dark:border-indigo-800/40 hover:scale-[1.02] transition-transform shadow-2xs">
+                      <span className="text-lg">⚡</span> ماسنجر
+                    </a>
+                  )}
                 </div>
               )}
+
+              {/* Social Links (Strict Dynamic Conditional Rendering) */}
+              {(() => {
+                const hasFacebook = Boolean(settings.facebookLink && settings.facebookLink.trim() !== "");
+                const hasInstagram = Boolean(settings.instagramLink && settings.instagramLink.trim() !== "");
+                const hasTiktok = Boolean(settings.tiktokLink && settings.tiktokLink.trim() !== "");
+                const hasYoutube = Boolean(settings.youtubeLink && settings.youtubeLink.trim() !== "");
+
+                if (!hasFacebook && !hasInstagram && !hasTiktok && !hasYoutube) return null;
+
+                return (
+                  <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-200 dark:border-gray-700/60">
+                    <p className="text-[11px] font-bold text-gray-500 dark:text-gray-400 mb-2">تابعنا على وسائل التواصل الاجتماعي:</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {hasFacebook && <a href={settings.facebookLink!} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-blue-600 text-white rounded-xl text-xs font-bold hover:opacity-90">📘 فيسبوك</a>}
+                      {hasInstagram && <a href={settings.instagramLink!} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-pink-600 text-white rounded-xl text-xs font-bold hover:opacity-90">📷 إنستغرام</a>}
+                      {hasTiktok && <a href={settings.tiktokLink!} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-gray-900 text-white rounded-xl text-xs font-bold hover:opacity-90">🎵 تيك توك</a>}
+                      {hasYoutube && <a href={settings.youtubeLink!} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-red-600 text-white rounded-xl text-xs font-bold hover:opacity-90">▶️ يوتيوب</a>}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Auto-Reply shown if matched */}
               {autoReplyMsg && (
