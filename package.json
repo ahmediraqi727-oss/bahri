@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "npx tsx src/__tests__/interactive-buttons.test.tsx && npx tsx src/__tests__/auth-database-flow.test.tsx && npx tsx src/__tests__/rls-check.test.ts && npx tsx src/__tests__/messages-notifications-security.test.ts && npx tsx src/__tests__/new-user-signup-flow.test.ts && npx tsx src/__tests__/live-chat-security.test.ts"
+    "test": "npx tsx src/__tests__/interactive-buttons.test.tsx && npx tsx src/__tests__/auth-database-flow.test.tsx && npx tsx src/__tests__/rls-check.test.ts && npx tsx src/__tests__/messages-notifications-security.test.ts && npx tsx src/__tests__/new-user-signup-flow.test.ts && npx tsx src/__tests__/live-chat-security.test.ts && npx tsx src/__tests__/customer-hub-security.test.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",
