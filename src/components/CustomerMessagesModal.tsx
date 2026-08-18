@@ -18,6 +18,8 @@ interface Message {
   is_guest?: boolean;
   matched_keyword: string | null;
   thread_id: string | null;
+  user_id?: string | null;
+  session_id?: string | null;
   created_at: string;
 }
 
@@ -46,21 +48,25 @@ export default function CustomerMessagesModal({ isOpen, onClose }: CustomerMessa
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const isGuest = !user || user.isGuest || !user.email || user.id?.startsWith("guest-");
+  const guestSessionId = getOrCreateGuestSessionId();
 
+  // جلب الرسائل الخاصة بهذا الزبون حصرياً مع منع أي تداخل
   const loadCustomerMessages = useCallback(async () => {
     if (!isOpen) return;
     try {
       setLoading(true);
-      const guestSessionId = getOrCreateGuestSessionId();
       
-      // Strict Tenant Isolation Query
-      let query = supabase.from("messages").select("*").order("created_at", { ascending: true }).limit(200);
+      let query = supabase
+        .from("messages")
+        .select("*")
+        .order("created_at", { ascending: true })
+        .limit(200);
 
       if (user?.id && !user.id.startsWith("guest-")) {
-        // Registered Customer: fetch strictly matching user_id or session_id
+        // زبون مسجل: جلب الرسائل المطابقة لـ user_id أو session_id المرتبط به
         query = query.or(`user_id.eq.${user.id},session_id.eq.${guestSessionId}`);
       } else {
-        // Guest User: fetch strictly matching dynamic anonymous guest session ID
+        // زبون زائر (Guest): جلب الرسائل الخاصة بجلسة المتصفح المؤقتة فقط
         query = query.eq("session_id", guestSessionId);
       }
 
@@ -75,28 +81,51 @@ export default function CustomerMessagesModal({ isOpen, onClose }: CustomerMessa
     } finally {
       setLoading(false);
     }
-  }, [isOpen, user?.id, user?.fullName]);
+  }, [isOpen, user?.id, guestSessionId]);
 
+  // إدارة تحميل الرسائل والاشتراك الفوري (Realtime Channel) لتحديث الشاشة لحظياً
   useEffect(() => {
     if (!isOpen) return;
     loadCustomerMessages();
 
-    // Supabase Realtime channel for instant message sync
+    // قناة اشتراك فورية مع فلترة دقيقة لضمان ظهور رسائل المدير وردوده فوراً
+    const channelName = `customer-chat-${user?.id || guestSessionId}`;
     const channel = supabase
-      .channel("customer-messages-realtime")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, () => {
-        loadCustomerMessages();
-      })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, () => {
-        loadCustomerMessages();
-      })
+      .channel(channelName)
+      .on(
+        "postgres_changes",
+        {
+          event: "*", // الاستماع للإدخال أو التحديث (إرسال الزبون أو رد المدير)
+          schema: "public",
+          table: "messages",
+        },
+        (payload) => {
+          const newMsg = payload.new as Message;
+          // التحقق الذكي من أن الرسالة الجديدة تخص هذا المستخدم تحديداً قبل إضافتها للقائمة
+          const isRelevant = user?.id && !user.id.startsWith("guest-")
+            ? newMsg.user_id === user.id || newMsg.session_id === guestSessionId
+            : newMsg.session_id === guestSessionId;
+
+          if (isRelevant) {
+            setMessages((prev) => {
+              // منع تكرار الرسائل إذا كانت موجودة مسبقاً
+              const exists = prev.some((m) => m.id === newMsg.id);
+              if (exists) {
+                return prev.map((m) => (m.id === newMsg.id ? newMsg : m));
+              }
+              return [...prev, newMsg];
+            });
+          }
+        }
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [isOpen, loadCustomerMessages]);
+  }, [isOpen, loadCustomerMessages, user?.id, guestSessionId]);
 
+  // التمرير التلقائي لأسفل عند وصول رسالة جديدة
   useEffect(() => {
     if (isOpen && messages.length > 0) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -109,7 +138,6 @@ export default function CustomerMessagesModal({ isOpen, onClose }: CustomerMessa
     if (!newText.trim()) return;
     setSending(true);
     try {
-      const guestSessionId = getOrCreateGuestSessionId();
       const threadId = messages.length > 0 ? (messages[0].thread_id || crypto.randomUUID()) : crypto.randomUUID();
       const customerUserId = user && !user.isGuest && !user.id?.startsWith("guest-") ? user.id : null;
 
@@ -135,7 +163,11 @@ export default function CustomerMessagesModal({ isOpen, onClose }: CustomerMessa
         console.error("Error sending message:", error);
         alert("حدث خطأ أثناء إرسال الرسالة، يرجى المحاولة لاحقاً.");
       } else if (insertedMsg) {
-        setMessages((prev) => [...prev, insertedMsg as Message]);
+        // تحديث محلي فوري لمنع أي تأخير
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === insertedMsg.id)) return prev;
+          return [...prev, insertedMsg as Message];
+        });
         setNewText("");
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
       }
