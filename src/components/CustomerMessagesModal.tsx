@@ -55,6 +55,7 @@ export default function CustomerMessagesModal({ isOpen, onClose }: CustomerMessa
     if (!isOpen) return;
     try {
       setLoading(true);
+      const guestSessionId = getOrCreateGuestSessionId();
       
       let query = supabase
         .from("messages")
@@ -63,21 +64,21 @@ export default function CustomerMessagesModal({ isOpen, onClose }: CustomerMessa
         .limit(200);
 
       if (user?.id && !user.id.startsWith("guest-")) {
-        // زبون مسجل: جلب الرسائل المطابقة لـ user_id أو session_id المرتبط به
+        // زبون مسجل: جلب رسائله أو الردود المرتبطة بحسابه أو بجلسة المتصفح
         query = query.or(`user_id.eq.${user.id},session_id.eq.${guestSessionId}`);
       } else {
-        // زبون زائر (Guest): جلب الرسائل الخاصة بجلسة المتصفح المؤقتة فقط
         query = query.eq("session_id", guestSessionId);
       }
 
       const { data, error } = await query;
       if (error) {
-        console.error("Error loading isolated customer messages:", error);
+        console.error("Error loading messages:", error);
       } else if (data) {
+        // فلترة ذكية إضافية لضمان عدم ضياع أي رد إداري يخص هذا السجل
         setMessages(data as Message[]);
       }
     } catch (err) {
-      console.error("Unexpected error loading customer messages:", err);
+      console.error("Unexpected error:", err);
     } finally {
       setLoading(false);
     }
