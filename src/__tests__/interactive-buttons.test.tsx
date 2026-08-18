@@ -11,9 +11,22 @@
 
 import React from "react";
 
-// تعريف أدوات الاختبار القياسية لدعم مجمع TypeScript المستقل
-const describe = (name: string, fn: () => void) => fn();
-const test = async (name: string, fn: () => Promise<void> | void) => { await fn(); };
+// تعريف أدوات الاختبار القياسية لدعم مجمع TypeScript المستقل وتوثيق مخرجات التشغيل
+const describe = (name: string, fn: () => void | Promise<void>) => {
+  console.log(`\n🧪 **مجموعة اختبارات: ${name}**`);
+  return fn();
+};
+
+const test = async (name: string, fn: () => Promise<void> | void) => {
+  try {
+    await fn();
+    console.log(`  ✅ [PASS] ${name}`);
+  } catch (err: any) {
+    console.error(`  ❌ [FAIL] ${name}: ${err.message}`);
+    throw err;
+  }
+};
+
 const expect = <T,>(actual: T) => ({
   toBe: (expected: T) => {
     if (actual !== expected) throw new Error(`توقعت ${expected} ولكن وجد ${actual}`);
