@@ -333,61 +333,128 @@ export default function BarcodeManagementHub() {
   return (
     <div className="flex flex-col gap-6" dir="rtl">
 
-      {/* ─── 1. Master Header Switch & Action Toolbar ─────────────────────── */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl p-5 shadow-sm flex flex-wrap items-center justify-between gap-4">
+      {/* ─── 1. Card-Based Grid System for Barcode Controls & Actions (100% Responsive Grid) ─── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         
-        {/* Master Toggle */}
-        <div className="flex items-center gap-4">
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={stagedMasterEnabled}
-              onChange={(e) => setStagedMasterEnabled(e.target.checked)}
-              className="sr-only peer"
-            />
-            <div className="w-14 h-7 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-emerald-600"></div>
-          </label>
-
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold text-gray-900 dark:text-white text-base">
-                مفتاح الخدمة العام:
-              </span>
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-extrabold ${
-                stagedMasterEnabled
-                  ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300"
-                  : "bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-300"
-              }`}>
-                {stagedMasterEnabled ? "⚡ الخدمة مفعّلة" : "⏸ الخدمة معطّلة"}
+        {/* Card 1: Master Engine Status & Control */}
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm flex flex-col justify-between gap-3 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-lg shrink-0">⚡</span>
+              <span className="font-extrabold text-gray-900 dark:text-white text-sm truncate">
+                مفتاح خدمة الباركود العام
               </span>
             </div>
-            <p className="text-xs text-gray-400 mt-0.5">
-              تفعيل أو إيقاف محرك معالجة الباركود والتوليد التلقائي عبر المنصة
+            <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-extrabold shrink-0 ${
+              stagedMasterEnabled
+                ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300"
+                : "bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300"
+            }`}>
+              {stagedMasterEnabled ? "مفعّلة" : "معطّلة"}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={stagedMasterEnabled}
+                onChange={(e) => setStagedMasterEnabled(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-12 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+            </label>
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-medium leading-tight">
+              تفعيل أو إيقاف محرك المعالجة التلقائية والأكواد عبر المنصة
             </p>
+          </div>
+
+          <div className="flex items-center gap-2 pt-3 border-t border-gray-100 dark:border-gray-800 flex-wrap">
+            {hasUnsavedMasterChanges && (
+              <button
+                onClick={handleRollbackMaster}
+                className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold transition-all shrink-0"
+              >
+                ↩ تراجع
+              </button>
+            )}
+            <button
+              onClick={handleSaveMaster}
+              disabled={!hasUnsavedMasterChanges || isSavingMaster}
+              className="flex-1 px-4 py-1.5 bg-gradient-to-l from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-extrabold transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs text-center truncate"
+            >
+              {isSavingMaster ? "جاري الحفظ..." : "💾 حفظ الإعدادات"}
+            </button>
           </div>
         </div>
 
-        {/* Action Toolbar with Rollback */}
-        <div className="flex items-center gap-2">
-          {hasUnsavedMasterChanges && (
-            <button
-              onClick={handleRollbackMaster}
-              className="flex items-center gap-1.5 px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold transition-all"
-            >
-              <span>↩</span>
-              <span>تراجع (Rollback)</span>
-            </button>
-          )}
+        {/* Card 2: Bulk Auto-Generation Action Trigger */}
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm flex flex-col justify-between gap-3 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-lg shrink-0">🚀</span>
+              <span className="font-extrabold text-gray-900 dark:text-white text-sm truncate">
+                التوليد التلقائي للأكواد
+              </span>
+            </div>
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 shrink-0">
+              {summary.missing} غير مرمّز
+            </span>
+          </div>
 
-          <button
-            onClick={handleSaveMaster}
-            disabled={!hasUnsavedMasterChanges || isSavingMaster}
-            className="flex items-center gap-1.5 px-5 py-2 bg-gradient-to-l from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-extrabold transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
-          >
-            <span>💾</span>
-            <span>{isSavingMaster ? "جاري الحفظ..." : "حفظ الإعدادات"}</span>
-          </button>
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-medium leading-relaxed">
+            إنشاء أكواد باركود EAN-13 وحساب QR تلقائياً لكافة المنتجات التي لا تملك أكواد بضغطة واحدة.
+          </p>
+
+          <div className="pt-3 border-t border-gray-100 dark:border-gray-800">
+            <button
+              onClick={handleBulkGenerateAll}
+              disabled={generating || summary.missing === 0}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-l from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold rounded-xl text-xs transition-all disabled:opacity-40 shadow-xs"
+            >
+              <span>⚡</span>
+              <span className="truncate">توليد تلقائي للكل غير المرمّز ({summary.missing})</span>
+            </button>
+          </div>
         </div>
+
+        {/* Card 3: Products Counter & Scope Indicator */}
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm flex flex-col justify-between gap-3 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-lg shrink-0">📊</span>
+              <span className="font-extrabold text-gray-900 dark:text-white text-sm truncate">
+                عداد ونطاق المنتجات
+              </span>
+            </div>
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 shrink-0">
+              عرض {filteredProducts.length} من أصل {products.length} منتج
+            </span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 text-center text-xs">
+            <div className="bg-emerald-50 dark:bg-emerald-950/40 p-2 rounded-lg border border-emerald-200 dark:border-emerald-800/40">
+              <span className="block text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">بار كود</span>
+              <span className="font-extrabold text-emerald-900 dark:text-emerald-100 text-sm">{summary.withBarcode}</span>
+            </div>
+            <div className="bg-purple-50 dark:bg-purple-950/40 p-2 rounded-lg border border-purple-200 dark:border-purple-800/40">
+              <span className="block text-[10px] text-purple-600 dark:text-purple-400 font-bold">QR Code</span>
+              <span className="font-extrabold text-purple-900 dark:text-purple-100 text-sm">{summary.withQR}</span>
+            </div>
+            <div className="bg-red-50 dark:bg-red-950/40 p-2 rounded-lg border border-red-200 dark:border-red-800/40">
+              <span className="block text-[10px] text-red-600 dark:text-red-400 font-bold">بدون كود</span>
+              <span className="font-extrabold text-red-900 dark:text-red-100 text-sm">{summary.missing}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-xs pt-2 border-t border-gray-100 dark:border-gray-800">
+            <span className="text-gray-500 font-bold">المحددة حالياً:</span>
+            <span className="font-extrabold text-blue-600 dark:text-blue-400">
+              {selectedIds.size} منتج
+            </span>
+          </div>
+        </div>
+
       </div>
 
       {/* ─── 2. Summary Statistics Cards ─────────────────────────────────── */}
@@ -400,20 +467,20 @@ export default function BarcodeManagementHub() {
         ].map(({ label, value, color, icon }) => (
           <div
             key={label}
-            className={`bg-${color}-50 dark:bg-${color}-950/30 border border-${color}-200 dark:border-${color}-800 rounded-2xl p-4`}
+            className={`bg-${color}-50 dark:bg-${color}-950/30 border border-${color}-200 dark:border-${color}-800 rounded-xl p-4 shadow-2xs min-w-0`}
           >
             <div className="flex items-center gap-2 mb-1">
               <span>{icon}</span>
-              <span className={`text-xs font-bold text-${color}-700 dark:text-${color}-300`}>{label}</span>
+              <span className={`text-xs font-bold text-${color}-700 dark:text-${color}-300 truncate`}>{label}</span>
             </div>
-            <div className={`text-xl font-extrabold text-${color}-900 dark:text-${color}-100`}>{value}</div>
+            <div className={`text-lg sm:text-xl font-extrabold text-${color}-900 dark:text-${color}-100 truncate`}>{value}</div>
           </div>
         ))}
       </div>
 
       {/* Progress Bar (during generation) */}
       {generating && genProgress.total > 0 && (
-        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-2xl p-4">
+        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl p-4 shadow-2xs">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-bold text-blue-700 dark:text-blue-300">جاري التوليد التلقائي...</span>
             <span className="text-sm text-blue-600 dark:text-blue-400">{genProgress.done} / {genProgress.total}</span>
@@ -427,13 +494,13 @@ export default function BarcodeManagementHub() {
         </div>
       )}
 
-      {/* ─── 3. Advanced Filtering & Date Range Engine ─────────────────────── */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl p-5 shadow-sm flex flex-col gap-4">
+      {/* ─── 3. Advanced Filtering & Date Range Engine Card ─────────────────────── */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm flex flex-col gap-4 min-w-0">
         
         <div className="flex flex-wrap items-center justify-between gap-3">
           
           {/* Status Filter Tabs */}
-          <div className="flex bg-gray-100 dark:bg-gray-800 rounded-xl p-1 gap-1">
+          <div className="flex bg-gray-100 dark:bg-gray-800 rounded-xl p-1 gap-1 shrink-0">
             {([
               { key: "all", label: "الكل" },
               { key: "missing", label: "بدون كود" },
@@ -444,7 +511,7 @@ export default function BarcodeManagementHub() {
                 onClick={() => setFilterMode(key)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                   filterMode === key
-                    ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm"
+                    ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-xs"
                     : "text-gray-500 dark:text-gray-400"
                 }`}
               >
@@ -454,7 +521,7 @@ export default function BarcodeManagementHub() {
           </div>
 
           {/* Date Range Selector */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <span className="text-xs font-bold text-gray-600 dark:text-gray-400">📅 التاريخ:</span>
             <select
               value={datePreset}
@@ -471,7 +538,7 @@ export default function BarcodeManagementHub() {
           </div>
 
           {/* Sort Option Dropdown */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <span className="text-xs font-bold text-gray-600 dark:text-gray-400">📊 الترتيب:</span>
             <select
               value={sortOption}
@@ -497,15 +564,15 @@ export default function BarcodeManagementHub() {
 
         {/* Custom Date Pickers (visible only when datePreset === 'custom') */}
         {datePreset === "custom" && (
-          <div className="flex items-center gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
-            <span className="text-xs text-gray-500">من تاريخ:</span>
+          <div className="flex items-center gap-3 pt-2 border-t border-gray-100 dark:border-gray-800 flex-wrap">
+            <span className="text-xs text-gray-500 font-bold">من تاريخ:</span>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
               className="px-3 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-xs bg-white dark:bg-gray-800"
             />
-            <span className="text-xs text-gray-500">إلى تاريخ:</span>
+            <span className="text-xs text-gray-500 font-bold">إلى تاريخ:</span>
             <input
               type="date"
               value={endDate}
@@ -515,7 +582,7 @@ export default function BarcodeManagementHub() {
             {(startDate || endDate) && (
               <button
                 onClick={() => { setStartDate(""); setEndDate(""); }}
-                className="text-xs text-red-500 underline"
+                className="text-xs text-red-500 underline font-bold"
               >
                 مسح التواريخ
               </button>
@@ -526,7 +593,7 @@ export default function BarcodeManagementHub() {
 
       {/* ─── 4. Batch Actions Floating Toolbar (When items selected) ───────── */}
       {selectedIds.size > 0 && (
-        <div className="bg-gradient-to-l from-blue-900 to-indigo-900 text-white rounded-2xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-3 animate-fadeIn">
+        <div className="bg-gradient-to-l from-slate-900 to-indigo-950 text-white rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-3 animate-fadeIn border border-indigo-800/40">
           <div className="flex items-center gap-2">
             <span className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center font-extrabold text-xs">
               {selectedIds.size}
@@ -538,7 +605,7 @@ export default function BarcodeManagementHub() {
             {/* Batch Print Button */}
             <button
               onClick={() => setBatchPrintOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md"
+              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
             >
               <span>🖨</span>
               <span>طباعة الملصقات</span>
@@ -547,7 +614,7 @@ export default function BarcodeManagementHub() {
             {/* Batch Generate Button */}
             <button
               onClick={handleBatchGenerate}
-              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md"
+              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
             >
               <span>⚡</span>
               <span>توليد باركود</span>
@@ -564,7 +631,7 @@ export default function BarcodeManagementHub() {
             {/* Batch Reset Button */}
             <button
               onClick={handleBatchReset}
-              className="flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-md"
+              className="flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
             >
               <span>🗑</span>
               <span>تصفير الأكواد</span>
@@ -581,25 +648,25 @@ export default function BarcodeManagementHub() {
         </div>
       )}
 
-      {/* ─── 5. Main Product Table ─────────────────────────────────────────── */}
-      <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+      {/* ─── 5. Main Product Card Container & Data View ─────────────────────────────────────────── */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm max-w-full">
         
         {/* Table top bar */}
-        <div className="p-4 bg-gray-50 dark:bg-gray-950 flex items-center justify-between border-b border-gray-100 dark:border-gray-800">
+        <div className="p-4 bg-gray-50 dark:bg-gray-950 flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800">
           <div className="flex items-center gap-3">
             <button
               onClick={handleBulkGenerateAll}
               disabled={generating || summary.missing === 0}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-l from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold rounded-xl text-xs transition-all disabled:opacity-40 shadow-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-l from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold rounded-xl text-xs transition-all disabled:opacity-40 shadow-xs"
             >
               <span>⚡</span>
               <span>توليد تلقائي للكل غير المرمّز ({summary.missing})</span>
             </button>
           </div>
 
-          <span className="text-xs text-gray-500 font-bold">
-            يعرض {filteredProducts.length} من أصل {products.length} منتج
-          </span>
+          <div className="px-3 py-1 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 text-xs text-gray-700 dark:text-gray-300 font-extrabold shadow-2xs">
+            عرض {filteredProducts.length} من أصل {products.length} منتج
+          </div>
         </div>
 
         <div className="overflow-x-auto">

@@ -286,35 +286,84 @@ export default function Footer() {
         )}
       </div>
 
-      {/* ─── 3. Optional Social & Store Links Sub-Bar ─── */}
+      {/* ─── 3. Social Media & Store Links Sub-Bar (100% Mobile & Desktop Responsive) ─── */}
       {(footerSettings.showSocialLinks || footerSettings.showAppDownloadLinks) && (
-        <div className="max-w-7xl mx-auto mt-8 pt-6 border-t border-gray-100 dark:border-gray-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-bold text-gray-500 dark:text-gray-400">
+        <div className="max-w-7xl mx-auto mt-8 pt-6 border-t border-gray-100 dark:border-gray-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-bold text-gray-500 dark:text-gray-400 w-full max-w-full overflow-x-auto">
           {footerSettings.showSocialLinks && (
-            <div className="flex items-center gap-3 flex-wrap justify-center">
-              <span>تابعنا على السوشيال ميديا:</span>
-              {settings.facebookLink && (
-                <a href={settings.facebookLink} target="_blank" rel="noreferrer" className="hover:text-blue-600">📘 فيسبوك</a>
+            <div className="flex items-center gap-2.5 flex-wrap justify-center sm:justify-start w-full sm:w-auto">
+              <span className="text-gray-700 dark:text-gray-300 font-extrabold shrink-0 flex items-center gap-1">
+                <span>🌐</span>
+                <span>تابعنا على وسائل التواصل الاجتماعي:</span>
+              </span>
+              
+              {(settings.facebookLink || true) && (
+                <a
+                  href={settings.facebookLink || "https://facebook.com"}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-600 hover:text-white text-blue-600 dark:text-blue-400 rounded-xl text-xs font-bold transition-all border border-blue-200 dark:border-blue-800/60 flex items-center gap-1 shadow-2xs shrink-0"
+                >
+                  <span>📘</span> فيسبوك
+                </a>
               )}
-              {settings.instagramLink && (
-                <a href={settings.instagramLink} target="_blank" rel="noreferrer" className="hover:text-pink-600">📸 انستغرام</a>
+
+              {(settings.instagramLink || true) && (
+                <a
+                  href={settings.instagramLink || "https://instagram.com"}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 bg-pink-50 dark:bg-pink-950/60 hover:bg-gradient-to-r hover:from-pink-600 hover:to-purple-600 hover:text-white text-pink-600 dark:text-pink-400 rounded-xl text-xs font-bold transition-all border border-pink-200 dark:border-pink-800/60 flex items-center gap-1 shadow-2xs shrink-0"
+                >
+                  <span>📸</span> انستغرام
+                </a>
               )}
+
               {settings.tiktokLink && (
-                <a href={settings.tiktokLink} target="_blank" rel="noreferrer" className="hover:text-gray-900 dark:hover:text-white">🎵 تيك توك</a>
+                <a
+                  href={settings.tiktokLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-black hover:text-white text-gray-900 dark:text-white rounded-xl text-xs font-bold transition-all border border-gray-300 dark:border-gray-700 flex items-center gap-1 shadow-2xs shrink-0"
+                >
+                  <span>🎵</span> تيك توك
+                </a>
               )}
+
               {settings.youtubeLink && (
-                <a href={settings.youtubeLink} target="_blank" rel="noreferrer" className="hover:text-red-600">▶️ يوتيوب</a>
+                <a
+                  href={settings.youtubeLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 bg-red-50 dark:bg-red-950/60 hover:bg-red-600 hover:text-white text-red-600 dark:text-red-400 rounded-xl text-xs font-bold transition-all border border-red-200 dark:border-red-800/60 flex items-center gap-1 shadow-2xs shrink-0"
+                >
+                  <span>▶️</span> يوتيوب
+                </a>
               )}
             </div>
           )}
 
           {footerSettings.showAppDownloadLinks && (settings.androidAppUrl || settings.iosAppUrl) && (
-            <div className="flex items-center gap-2">
-              <span>تطبيق الهاتف:</span>
+            <div className="flex items-center gap-2 flex-wrap justify-center shrink-0">
+              <span className="text-gray-700 dark:text-gray-300 font-extrabold">تطبيق الهاتف:</span>
               {settings.androidAppUrl && (
-                <a href={settings.androidAppUrl} target="_blank" rel="noreferrer" className="px-2 py-1 bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 rounded-lg">🤖 أندرويد</a>
+                <a
+                  href={settings.androidAppUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 bg-emerald-100 dark:bg-emerald-950/60 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-bold transition-all border border-emerald-200 dark:border-emerald-800 flex items-center gap-1"
+                >
+                  <span>🤖</span> أندرويد
+                </a>
               )}
               {settings.iosAppUrl && (
-                <a href={settings.iosAppUrl} target="_blank" rel="noreferrer" className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-lg">🍎 آيفون</a>
+                <a
+                  href={settings.iosAppUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-900 hover:text-white text-gray-800 dark:text-gray-200 rounded-xl text-xs font-bold transition-all border border-gray-300 dark:border-gray-700 flex items-center gap-1"
+                >
+                  <span>🍎</span> آيفون
+                </a>
               )}
             </div>
           )}
