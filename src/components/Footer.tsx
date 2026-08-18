@@ -286,7 +286,7 @@ export default function Footer() {
         )}
       </div>
 
-      {/* ─── 3. Social Media & Store Links Sub-Bar (Responsive Alignment & Grid Sync) ─── */}
+      {/* ─── 3. Social Media & Store Links Sub-Bar (Mobile-First Fluid Flex-Wrap Overhaul) ─── */}
       {(() => {
         const hasFacebook = Boolean(settings.facebookLink && settings.facebookLink.trim() !== "");
         const hasInstagram = Boolean(settings.instagramLink && settings.instagramLink.trim() !== "");
@@ -304,14 +304,14 @@ export default function Footer() {
 
         return (
           <div
-            className="max-w-7xl mx-auto mt-8 pt-6 border-t border-gray-100 dark:border-gray-800/80 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 text-xs font-bold text-gray-500 dark:text-gray-400 w-full max-w-full overflow-x-hidden"
+            className="max-w-7xl mx-auto mt-8 pt-6 border-t border-gray-100 dark:border-gray-800/80 flex flex-wrap items-center justify-center lg:justify-between gap-2.5 text-xs font-bold text-gray-500 dark:text-gray-400 w-full max-w-full"
             style={{
               paddingLeft: `${footerSettings.containerPaddingX}px`,
               paddingRight: `${footerSettings.containerPaddingX}px`,
             }}
           >
             {footerSettings.showSocialLinks && hasAnySocial && (
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-3 gap-y-2 text-xs">
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 text-xs w-full lg:w-auto">
                 <span className="text-gray-700 dark:text-gray-300 font-extrabold flex items-center gap-1.5 shrink-0">
                   <span>🌐</span>
                   <span>تابعنا على وسائل التواصل الاجتماعي:</span>
@@ -322,7 +322,7 @@ export default function Footer() {
                     href={settings.facebookLink!}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-600 hover:text-white text-blue-600 dark:text-blue-400 rounded-xl text-xs font-bold transition-all border border-blue-200 dark:border-blue-800/60 shadow-2xs max-w-full active:scale-95"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-600 hover:text-white text-blue-600 dark:text-blue-400 rounded-xl text-[11px] sm:text-xs font-bold transition-all border border-blue-200 dark:border-blue-800/60 shadow-2xs active:scale-95"
                   >
                     <span>📘</span> فيسبوك
                   </a>
@@ -333,7 +333,7 @@ export default function Footer() {
                     href={settings.instagramLink!}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-pink-50 dark:bg-pink-950/60 hover:bg-gradient-to-r hover:from-pink-600 hover:to-purple-600 hover:text-white text-pink-600 dark:text-pink-400 rounded-xl text-xs font-bold transition-all border border-pink-200 dark:border-pink-800/60 shadow-2xs max-w-full active:scale-95"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 bg-pink-50 dark:bg-pink-950/60 hover:bg-gradient-to-r hover:from-pink-600 hover:to-purple-600 hover:text-white text-pink-600 dark:text-pink-400 rounded-xl text-[11px] sm:text-xs font-bold transition-all border border-pink-200 dark:border-pink-800/60 shadow-2xs active:scale-95"
                   >
                     <span>📸</span> انستغرام
                   </a>
@@ -344,7 +344,7 @@ export default function Footer() {
                     href={settings.tiktokLink!}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-black hover:text-white text-gray-900 dark:text-white rounded-xl text-xs font-bold transition-all border border-gray-300 dark:border-gray-700 shadow-2xs max-w-full active:scale-95"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-black hover:text-white text-gray-900 dark:text-white rounded-xl text-[11px] sm:text-xs font-bold transition-all border border-gray-300 dark:border-gray-700 shadow-2xs active:scale-95"
                   >
                     <span>🎵</span> تيك توك
                   </a>
@@ -355,7 +355,7 @@ export default function Footer() {
                     href={settings.youtubeLink!}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 dark:bg-red-950/60 hover:bg-red-600 hover:text-white text-red-600 dark:text-red-400 rounded-xl text-xs font-bold transition-all border border-red-200 dark:border-red-800/60 shadow-2xs max-w-full active:scale-95"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 bg-red-50 dark:bg-red-950/60 hover:bg-red-600 hover:text-white text-red-600 dark:text-red-400 rounded-xl text-[11px] sm:text-xs font-bold transition-all border border-red-200 dark:border-red-800/60 shadow-2xs active:scale-95"
                   >
                     <span>▶️</span> يوتيوب
                   </a>
@@ -370,7 +370,7 @@ export default function Footer() {
                     }
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-600 hover:text-white text-emerald-600 dark:text-emerald-400 rounded-xl text-xs font-bold transition-all border border-emerald-200 dark:border-emerald-800/60 shadow-2xs max-w-full active:scale-95"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-600 hover:text-white text-emerald-600 dark:text-emerald-400 rounded-xl text-[11px] sm:text-xs font-bold transition-all border border-emerald-200 dark:border-emerald-800/60 shadow-2xs active:scale-95"
                   >
                     <span>💬</span> واتساب
                   </a>
@@ -379,7 +379,7 @@ export default function Footer() {
                 {hasPhone && (
                   <a
                     href={`tel:${settings.phoneLink}`}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-600 hover:text-white text-purple-600 dark:text-purple-400 rounded-xl text-xs font-bold transition-all border border-purple-200 dark:border-purple-800/60 shadow-2xs max-w-full active:scale-95"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-600 hover:text-white text-purple-600 dark:text-purple-400 rounded-xl text-[11px] sm:text-xs font-bold transition-all border border-purple-200 dark:border-purple-800/60 shadow-2xs active:scale-95"
                   >
                     <span>📞</span> {settings.phoneLink}
                   </a>
@@ -388,7 +388,7 @@ export default function Footer() {
                 {hasPhone2 && (
                   <a
                     href={`tel:${settings.phoneLink2}`}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-600 hover:text-white text-indigo-600 dark:text-indigo-400 rounded-xl text-xs font-bold transition-all border border-indigo-200 dark:border-indigo-800/60 shadow-2xs max-w-full active:scale-95"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-600 hover:text-white text-indigo-600 dark:text-indigo-400 rounded-xl text-[11px] sm:text-xs font-bold transition-all border border-indigo-200 dark:border-indigo-800/60 shadow-2xs active:scale-95"
                   >
                     <span>☎️</span> {settings.phoneLink2}
                   </a>
@@ -397,14 +397,14 @@ export default function Footer() {
             )}
 
             {hasAppLinks && (
-              <div className="flex items-center justify-center gap-x-2 gap-y-1.5 flex-wrap shrink-0">
-                <span className="text-gray-700 dark:text-gray-300 font-extrabold">تطبيق الهاتف:</span>
+              <div className="flex items-center justify-center gap-2 flex-wrap shrink-0">
+                <span className="text-gray-700 dark:text-gray-300 font-extrabold shrink-0">تطبيق الهاتف:</span>
                 {settings.androidAppUrl && (
                   <a
                     href={settings.androidAppUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-100 dark:bg-emerald-950/60 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-bold transition-all border border-emerald-200 dark:border-emerald-800 shadow-2xs active:scale-95"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 sm:px-3 sm:py-1.5 bg-emerald-100 dark:bg-emerald-950/60 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-300 rounded-xl text-[11px] sm:text-xs font-bold transition-all border border-emerald-200 dark:border-emerald-800 shadow-2xs active:scale-95"
                   >
                     <span>🤖</span> أندرويد
                   </a>
@@ -414,7 +414,7 @@ export default function Footer() {
                     href={settings.iosAppUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-900 hover:text-white text-gray-800 dark:text-gray-200 rounded-xl text-xs font-bold transition-all border border-gray-300 dark:border-gray-700 shadow-2xs active:scale-95"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 sm:px-3 sm:py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-900 hover:text-white text-gray-800 dark:text-gray-200 rounded-xl text-[11px] sm:text-xs font-bold transition-all border border-gray-300 dark:border-gray-700 shadow-2xs active:scale-95"
                   >
                     <span>🍎</span> آيفون
                   </a>
