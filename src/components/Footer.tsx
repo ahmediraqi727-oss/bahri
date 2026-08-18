@@ -29,7 +29,6 @@ export default function Footer() {
         if (data && !error) {
           setFooterSettings(rowToFooterSettings(data));
         } else {
-          // Fallback to legacy SiteSettings if footer_settings row doesn't exist yet
           setFooterSettings((prev) => ({
             ...prev,
             footerMinHeight: settings.footerHeight || prev.footerMinHeight,
@@ -46,7 +45,6 @@ export default function Footer() {
     }
     loadFooterDb();
 
-    // Supabase Real-Time Settings Subscription for Footer
     const channel = supabase
       .channel("public:footer_settings")
       .on(
@@ -63,27 +61,63 @@ export default function Footer() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [
-    settings.footerHeight,
-    settings.footerRightText,
-    settings.footerCenterText,
-    settings.footerLeftText,
-    settings.footerImage,
-    settings.logo,
-    settings.phoneLink,
-  ]);
+  }, [settings]);
 
   const { right, center, left, fullWidth } = footerSettings;
 
-  // Dynamic social & contact links from admin settings
+  // 🛡️ Enhanced Robust Social Links Mapping with Custom Vivid Colors & Icons
   const socialLinks = [
-    { cond: Boolean(settings.facebookLink?.trim()), label: "فيسبوك", url: settings.facebookLink, icon: "📘" },
-    { cond: Boolean(settings.instagramLink?.trim()), label: "انستغرام", url: settings.instagramLink, icon: "📸" },
-    { cond: Boolean(settings.tiktokLink?.trim()), label: "تيك توك", url: settings.tiktokLink, icon: "🎵" },
-    { cond: Boolean(settings.youtubeLink?.trim()), label: "يوتيوب", url: settings.youtubeLink, icon: "▶️" },
-    { cond: Boolean(settings.whatsappLink?.trim()), label: "واتساب", url: settings.whatsappLink?.startsWith("http") ? settings.whatsappLink : `https://wa.me/${settings.whatsappLink?.replace(/[^0-9]/g, "")}`, icon: "💬" },
-    { cond: Boolean(settings.phoneLink?.trim()), label: settings.phoneLink, url: `tel:${settings.phoneLink}`, icon: "📞" },
-    { cond: Boolean(settings.phoneLink2?.trim()), label: settings.phoneLink2, url: `tel:${settings.phoneLink2}`, icon: "☎️" },
+    {
+      cond: Boolean(settings.facebookLink && settings.facebookLink.trim() !== ""),
+      label: "فيسبوك",
+      url: settings.facebookLink,
+      icon: "📘",
+      className: "bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-600 hover:text-white text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800/60",
+    },
+    {
+      cond: Boolean(settings.instagramLink && settings.instagramLink.trim() !== ""),
+      label: "انستغرام",
+      url: settings.instagramLink,
+      icon: "📸",
+      className: "bg-pink-50 dark:bg-pink-950/60 hover:bg-gradient-to-r hover:from-pink-600 hover:to-purple-600 hover:text-white text-pink-600 dark:text-pink-400 border-pink-200 dark:border-pink-800/60",
+    },
+    {
+      cond: Boolean(settings.tiktokLink && settings.tiktokLink.trim() !== ""),
+      label: "تيك توك",
+      url: settings.tiktokLink,
+      icon: "🎵",
+      className: "bg-gray-100 dark:bg-gray-800 hover:bg-black hover:text-white text-gray-900 dark:text-white border-gray-300 dark:border-gray-700",
+    },
+    {
+      cond: Boolean(settings.youtubeLink && settings.youtubeLink.trim() !== ""),
+      label: "يوتيوب",
+      url: settings.youtubeLink,
+      icon: "▶️",
+      className: "bg-red-50 dark:bg-red-950/60 hover:bg-red-600 hover:text-white text-red-600 dark:text-red-400 border-red-200 dark:border-red-800/60",
+    },
+    {
+      cond: Boolean(settings.whatsappLink && settings.whatsappLink.trim() !== ""),
+      label: "واتساب",
+      url: settings.whatsappLink?.startsWith("http")
+        ? settings.whatsappLink
+        : `https://wa.me/${settings.whatsappLink?.replace(/[^0-9]/g, "")}`,
+      icon: "💬",
+      className: "bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-600 hover:text-white text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60",
+    },
+    {
+      cond: Boolean(settings.phoneLink && settings.phoneLink.trim() !== ""),
+      label: settings.phoneLink,
+      url: `tel:${settings.phoneLink}`,
+      icon: "📞",
+      className: "bg-purple-50 dark:bg-purple-950/60 hover:bg-purple-600 hover:text-white text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800/60",
+    },
+    {
+      cond: Boolean(settings.phoneLink2 && settings.phoneLink2.trim() !== ""),
+      label: settings.phoneLink2,
+      url: `tel:${settings.phoneLink2}`,
+      icon: "☎️",
+      className: "bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-600 hover:text-white text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800/60",
+    },
   ].filter((link) => link.cond);
 
   const hasAppLinks = Boolean(footerSettings.showAppDownloadLinks && (settings.androidAppUrl || settings.iosAppUrl));
@@ -98,7 +132,7 @@ export default function Footer() {
       }}
       dir="rtl"
     >
-      {/* ─── 1. Full-Width Span Banner (وضع العرض الكامل) ─── */}
+      {/* ─── 1. Full-Width Span Banner ─── */}
       {fullWidth.enabled && (
         <div
           className="w-full py-4 px-6 mb-8 rounded-2xl shadow-sm transition-all text-center sm:text-right border border-gray-200/20"
@@ -151,43 +185,22 @@ export default function Footer() {
                 <span>{right.title}</span>
               </h3>
             )}
-
             {right.imageUrl && (
               <div
                 className="relative overflow-hidden rounded-xl shadow-sm border border-gray-100 dark:border-gray-800"
-                style={{
-                  width: `${right.imageWidth}px`,
-                  height: `${right.imageHeight}px`,
-                }}
+                style={{ width: `${right.imageWidth}px`, height: `${right.imageHeight}px` }}
               >
-                <Image
-                  src={right.imageUrl}
-                  alt={right.title || "شعار المتجر"}
-                  fill
-                  sizes={`${right.imageWidth}px`}
-                  className="object-contain"
-                />
+                <Image src={right.imageUrl} alt={right.title || "شعار المتجر"} fill sizes={`${right.imageWidth}px`} className="object-contain" />
               </div>
             )}
-
             {right.text && (
-              <p
-                className="font-medium text-gray-600 dark:text-gray-300 leading-relaxed"
-                style={{ fontSize: `${right.fontSize}px` }}
-              >
+              <p className="font-medium text-gray-600 dark:text-gray-300 leading-relaxed" style={{ fontSize: `${right.fontSize}px` }}>
                 {right.text}
               </p>
             )}
-
             {right.linkUrl && (
-              <a
-                href={right.linkUrl}
-                target={right.linkUrl.startsWith("http") ? "_blank" : "_self"}
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline pt-1"
-              >
-                <span>المزيد التفاصيل</span>
-                <span>←</span>
+              <a href={right.linkUrl} target={right.linkUrl.startsWith("http") ? "_blank" : "_self"} rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline pt-1">
+                <span>المزيد التفاصيل</span><span>←</span>
               </a>
             )}
           </div>
@@ -199,49 +212,24 @@ export default function Footer() {
             {center.imageUrl ? (
               <div
                 className="relative overflow-hidden rounded-2xl shadow-md border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800"
-                style={{
-                  width: `${center.imageWidth}px`,
-                  height: `${center.imageHeight}px`,
-                }}
+                style={{ width: `${center.imageWidth}px`, height: `${center.imageHeight}px` }}
               >
-                <Image
-                  src={center.imageUrl}
-                  alt={center.title || settings.siteName}
-                  fill
-                  sizes={`${center.imageWidth}px`}
-                  className="object-contain p-1"
-                />
+                <Image src={center.imageUrl} alt={center.title || settings.siteName} fill sizes={`${center.imageWidth}px`} className="object-contain p-1" />
               </div>
             ) : settings.logo ? (
               <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-md">
                 <Image src={settings.logo} alt={settings.siteName} fill className="object-cover" />
               </div>
             ) : null}
-
-            {center.title && (
-              <h3 className="font-extrabold text-base text-gray-900 dark:text-white">
-                {center.title}
-              </h3>
-            )}
-
+            {center.title && <h3 className="font-extrabold text-base text-gray-900 dark:text-white">{center.title}</h3>}
             {center.text && (
-              <p
-                className="font-extrabold text-gray-900 dark:text-white leading-relaxed max-w-sm"
-                style={{ fontSize: `${center.fontSize}px` }}
-              >
+              <p className="font-extrabold text-gray-900 dark:text-white leading-relaxed max-w-sm" style={{ fontSize: `${center.fontSize}px` }}>
                 {center.text}
               </p>
             )}
-
             {center.linkUrl && (
-              <a
-                href={center.linkUrl}
-                target={center.linkUrl.startsWith("http") ? "_blank" : "_self"}
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
-              >
-                <span>رابط الخدمة المباشر</span>
-                <span>🔗</span>
+              <a href={center.linkUrl} target={center.linkUrl.startsWith("http") ? "_blank" : "_self"} rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline">
+                <span>رابط الخدمة المباشر</span><span>🔗</span>
               </a>
             )}
           </div>
@@ -252,54 +240,32 @@ export default function Footer() {
           <div className="flex flex-col items-center md:items-end text-center md:text-left space-y-3">
             {left.title && (
               <h3 className="font-extrabold text-base text-gray-900 dark:text-white flex items-center gap-2">
-                <span>{left.title}</span>
-                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                <span>{left.title}</span><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
               </h3>
             )}
-
             {left.imageUrl && (
               <div
                 className="relative overflow-hidden rounded-xl shadow-sm border border-gray-100 dark:border-gray-800"
-                style={{
-                  width: `${left.imageWidth}px`,
-                  height: `${left.imageHeight}px`,
-                }}
+                style={{ width: `${left.imageWidth}px`, height: `${left.imageHeight}px` }}
               >
-                <Image
-                  src={left.imageUrl}
-                  alt={left.title || "تواصل معنا"}
-                  fill
-                  sizes={`${left.imageWidth}px`}
-                  className="object-contain"
-                />
+                <Image src={left.imageUrl} alt={left.title || "تواصل معنا"} fill sizes={`${left.imageWidth}px`} className="object-contain" />
               </div>
             )}
-
             {left.text && (
-              <p
-                className="font-bold text-gray-700 dark:text-gray-200 leading-relaxed"
-                style={{ fontSize: `${left.fontSize}px` }}
-              >
+              <p className="font-bold text-gray-700 dark:text-gray-200 leading-relaxed" style={{ fontSize: `${left.fontSize}px` }}>
                 {left.text}
               </p>
             )}
-
             {left.linkUrl && (
-              <a
-                href={left.linkUrl}
-                target={left.linkUrl.startsWith("http") ? "_blank" : "_self"}
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition-all hover:scale-[1.02]"
-              >
-                <span>📞</span>
-                <span>تواصل معنا الآن</span>
+              <a href={left.linkUrl} target={left.linkUrl.startsWith("http") ? "_blank" : "_self"} rel="noreferrer" className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition-all hover:scale-[1.02]">
+                <span>📞</span><span>تواصل معنا الآن</span>
               </a>
             )}
           </div>
         )}
       </div>
 
-      {/* ─── 3. Fully Responsive Social Media Sub-Bar ─── */}
+      {/* ─── 3. Fully Responsive Social Media & Contacts Sub-Bar (Fixed for Mobile & Tablet) ─── */}
       {((footerSettings.showSocialLinks && socialLinks.length > 0) || hasAppLinks) && (
         <div
           className="max-w-7xl mx-auto mt-6 pt-6 border-t border-gray-100 dark:border-gray-800/80"
@@ -315,18 +281,18 @@ export default function Footer() {
                   <span>🌐</span> تابعنا على وسائل التواصل الاجتماعي:
                 </span>
 
-                {/* Adaptive Grid Layout based on user specification */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {/* Adaptive Grid Layout that guarantees display across Mobile, Tablet, and Desktop */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 w-full">
                   {socialLinks.map((link, idx) => (
                     <a
                       key={idx}
                       href={link.url!}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex items-center justify-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 dark:bg-gray-800/80 dark:hover:bg-gray-700/80 text-gray-800 dark:text-gray-200 rounded-xl text-xs font-bold border border-gray-200 dark:border-gray-700/80 transition-all active:scale-95 shadow-2xs"
+                      className={`flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all border shadow-2xs active:scale-95 ${link.className}`}
                     >
-                      <span>{link.icon}</span>
-                      <span>{link.label}</span>
+                      <span className="shrink-0">{link.icon}</span>
+                      <span className="truncate">{link.label}</span>
                     </a>
                   ))}
                 </div>
