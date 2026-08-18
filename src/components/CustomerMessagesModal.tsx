@@ -57,10 +57,10 @@ export default function CustomerMessagesModal({ isOpen, onClose }: CustomerMessa
       let query = supabase.from("messages").select("*").order("created_at", { ascending: true }).limit(200);
 
       if (user?.id && !user.id.startsWith("guest-")) {
-        // Registered Customer: fetch strictly by matching user_id = auth.uid()
-        query = query.eq("user_id", user.id);
+        // Registered Customer: fetch strictly matching user_id or session_id
+        query = query.or(`user_id.eq.${user.id},session_id.eq.${guestSessionId}`);
       } else {
-        // Guest User: fetch strictly matching this dynamic anonymous guest session ID
+        // Guest User: fetch strictly matching dynamic anonymous guest session ID
         query = query.eq("session_id", guestSessionId);
       }
 
