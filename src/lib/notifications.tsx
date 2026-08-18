@@ -147,12 +147,16 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   const fetchNotifications = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from("notifications")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(50);
+      let query = supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(50);
 
+      // 🔒 تصفية دقيقة بناءً على معرف المستخدم المسجل أو النشرات العامة فقط للضيوف
+      if (user?.id && !user.id.startsWith("guest-")) {
+        query = query.or(`user_id.eq.${user.id},user_id.is.null`);
+      } else {
+        query = query.is("user_id", null);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
 
       if (data) {
@@ -161,8 +165,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           id: row.id,
           type: row.type || "message",
           title: row.title,
-          message: row.message || "",
-          read: row.read || false,
+          message: row.message || row.content || "",
+          read: row.read || row.is_read || false,
           timestamp: row.created_at,
           user_id: row.user_id,
           productId: row.product_id || undefined,
