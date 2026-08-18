@@ -52,18 +52,21 @@ export default function CustomerMessagesModal({ isOpen, onClose }: CustomerMessa
     try {
       setLoading(true);
       const guestSessionId = getOrCreateGuestSessionId();
-      // Fetch messages relevant to this user or general broadcasts
+      
+      // Strict Tenant Isolation Query
       let query = supabase.from("messages").select("*").order("created_at", { ascending: true }).limit(200);
 
       if (user?.id && !user.id.startsWith("guest-")) {
-        query = query.or(`user_id.eq.${user.id},user_id.is.null`);
+        // Registered Customer: fetch strictly by matching user_id = auth.uid()
+        query = query.eq("user_id", user.id);
       } else {
-        query = query.or(`session_id.eq.${guestSessionId},sender_phone.eq.${guestSessionId},user_id.is.null`);
+        // Guest User: fetch strictly matching this dynamic anonymous guest session ID
+        query = query.eq("session_id", guestSessionId);
       }
 
       const { data, error } = await query;
       if (error) {
-        console.error("Error loading customer messages:", error);
+        console.error("Error loading isolated customer messages:", error);
       } else if (data) {
         setMessages(data as Message[]);
       }
@@ -78,10 +81,13 @@ export default function CustomerMessagesModal({ isOpen, onClose }: CustomerMessa
     if (!isOpen) return;
     loadCustomerMessages();
 
-    // Supabase Realtime channel
+    // Supabase Realtime channel for instant message sync
     const channel = supabase
       .channel("customer-messages-realtime")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, () => {
+        loadCustomerMessages();
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, () => {
         loadCustomerMessages();
       })
       .subscribe();
@@ -113,9 +119,10 @@ export default function CustomerMessagesModal({ isOpen, onClose }: CustomerMessa
           user_id: customerUserId,
           session_id: isGuest ? guestSessionId : null,
           serial_id: isGuest ? guestSessionId : null,
-          sender_name: user?.fullName || (isGuest ? "ضيف عزيز" : "مستخدم"),
+          sender_name: user?.fullName || (isGuest ? `ضيف #${guestSessionId.slice(-4)}` : "مستخدم"),
           sender_phone: isGuest ? guestSessionId : (user as any)?.phone || "",
           content: newText.trim(),
+          role: isGuest ? "guest" : "customer",
           is_admin_reply: false,
           is_read: false,
           is_guest: isGuest,
@@ -146,7 +153,7 @@ export default function CustomerMessagesModal({ isOpen, onClose }: CustomerMessa
       dir="rtl"
     >
       <div
-        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden text-right flex flex-col h-[85vh] max-h-[700px]"
+        className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden text-right flex flex-col h-[85vh] max-h-[700px] max-w-full"
         onClick={(e) => e.stopPropagation()}
         style={{ animation: "scaleUp 0.2s ease" }}
       >
@@ -157,8 +164,8 @@ export default function CustomerMessagesModal({ isOpen, onClose }: CustomerMessa
               💬
             </div>
             <div>
-              <h3 className="font-extrabold text-base text-gray-900 dark:text-white">الرسائل والإشعارات</h3>
-              <p className="text-xs text-gray-400">محادثتك المباشرة والعروض من إدارة المتجر</p>
+              <h3 className="font-extrabold text-base text-gray-900 dark:text-white">المحادثة المباشرة مع الدعم</h3>
+              <p className="text-xs text-gray-400">تواصل مباشر وسريع مع إدارة متجر أحمد بحري</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 text-lg">
@@ -166,21 +173,21 @@ export default function CustomerMessagesModal({ isOpen, onClose }: CustomerMessa
           </button>
         </div>
 
-        {/* Guest Expiry Retention Warning Banner */}
+        {/* Visual Alert Banner for Guest Users */}
         {isGuest && (
-          <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800/40 flex items-center justify-between gap-3 flex-shrink-0">
+          <div className="p-3.5 bg-amber-50 dark:bg-amber-950/50 border-b border-amber-200 dark:border-amber-800/60 flex items-center justify-between gap-3 flex-shrink-0 flex-wrap sm:flex-nowrap">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-xl flex-shrink-0">⚠️</span>
               <p className="text-xs font-bold text-amber-900 dark:text-amber-200 leading-tight">
-                رسائلك ستحذف. رقي حسابك مجاناً إلى حساب رسمي بتسجيلك بالموقع عبر الإيميل
+                تنبيه: محادثتك مؤقتة وتتم عبر جلسة مؤقتة (Guest Session). لن يتم حفظ السجل بشكل دائم عند مسح بيانات المتصفح. يمكنك إنشاء حساب مجاناً لضمان حفظ سجل محادثاتك وسهولة التواصل.
               </p>
             </div>
             <Link
               href="/login?mode=signup&upgrade=true"
               onClick={onClose}
-              className="px-3 py-1.5 rounded-xl text-xs font-extrabold text-white bg-amber-600 hover:bg-amber-700 transition-all shadow-sm flex-shrink-0"
+              className="px-3 py-1.5 rounded-xl text-xs font-extrabold text-white bg-amber-600 hover:bg-amber-700 transition-all shadow-sm flex-shrink-0 whitespace-nowrap"
             >
-              ترقية الحساب 🔑
+              إنشاء حساب مجاني 🔑
             </Link>
           </div>
         )}
