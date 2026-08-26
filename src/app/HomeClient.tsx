@@ -746,20 +746,27 @@ export default function HomeClient() {
 
                       {/* Map Button */}
                       {homeVis.showMap !== false && (
-                        <button
-                          onClick={() => { openMap(); setMenuOpen(false); }}
+                        <a
+                          href={
+                            (settings as any)?.google_maps_url ||
+                            settings?.storeMapLink ||
+                            `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                              (settings as any)?.store_address || settings?.storeAddress || "العراق كركوك"
+                            )}`
+                          }
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => setMenuOpen(false)}
                           className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors text-right"
                         >
                           <span className="text-xl" aria-hidden="true">📍</span>
                           <div className="flex-1 text-right">
                             <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">موقعنا على الخريطة</span>
                             <p className="text-xs text-gray-400 mt-0.5">
-                              {storeLocation?.city
-                                ? `${storeLocation.city} — ${storeLocation.address}`
-                                : (settings.storeAddress || "بغداد، العراق")}
+                              {(settings as any)?.store_address || settings?.storeAddress || "العراق — كركوك"}
                             </p>
                           </div>
-                        </button>
+                        </a>
                       )}
 
                       {/* Contact Button */}
