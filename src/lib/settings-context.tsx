@@ -319,7 +319,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
       if (!updatedSettings) return;
 
-      const currentRowPayload: Record<string, unknown> = settingsToRow(updatedSettings);
+      const currentRowPayload: Record<string, unknown> = {
+        ...settingsToRow(updatedSettings),
+      };
       let attempts = 0;
       const maxAttempts = 15;
       let targetId = settingsId;
@@ -327,12 +329,21 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       while (attempts < maxAttempts) {
         attempts++;
         try {
+          // 1. التحديث في حال وجود معرف السجل
           if (targetId) {
-            const res = await supabase.from("settings").update(currentRowPayload).eq("id", targetId).select().maybeSingle();
+            const res = await supabase
+              .from("settings")
+              .update(currentRowPayload)
+              .eq("id", targetId)
+              .select()
+              .maybeSingle();
+
             if (!res.error) {
               if (res.data?.id) setSettingsId(res.data.id);
-              return;
+              return res.data;
             }
+
+            // فحص وتحليل الخطأ لاستخراج اسم العمود المفقود
             const errMsg = res.error.message || "";
             const missingColMatch =
               errMsg.match(/Could not find the '([^']+)' column/i) ||
@@ -341,47 +352,59 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
             if (missingColMatch && missingColMatch[1]) {
               const colToStrip = missingColMatch[1];
-              console.warn(`[Settings Schema Cache Sync]: Column '${colToStrip}' not found in DB schema cache. Stripping key and retrying...`);
+              console.warn(
+                `[Settings Schema Cache Sync]: Column '${colToStrip}' not found in DB schema cache. Stripping key and retrying (${attempts}/${maxAttempts})...`
+              );
               delete currentRowPayload[colToStrip];
-              continue;
-            } else {
-              console.warn("Error updating settings DB:", res.error.message);
-              throw new Error(res.error.message);
+              continue; // إعادة المحاولة بعد إزالة الحقل المسبب للخطأ
             }
+
+            throw new Error(res.error.message);
           } else {
+            // 2. حالة الإدراج كأول سجل (Fallback Insert / Upsert)
             const existing = await supabase.from("settings").select("id").limit(1).maybeSingle();
             if (existing.data?.id) {
               targetId = existing.data.id;
               setSettingsId(existing.data.id);
               continue;
-            } else {
-              const res = await supabase.from("settings").insert(currentRowPayload).select().maybeSingle();
-              if (!res.error) {
-                if (res.data?.id) setSettingsId(res.data.id);
-                return;
-              }
-              const errMsg = res.error.message || "";
-              const missingColMatch =
-                errMsg.match(/Could not find the '([^']+)' column/i) ||
-                errMsg.match(/column ["']?([^"'\s]+)["']? of relation/i) ||
-                errMsg.match(/column ["']?([^"'\s]+)["']? does not exist/i);
-
-              if (missingColMatch && missingColMatch[1]) {
-                const colToStrip = missingColMatch[1];
-                console.warn(`[Settings Schema Cache Sync]: Column '${colToStrip}' not found in DB schema cache. Stripping key and retrying...`);
-                delete currentRowPayload[colToStrip];
-                continue;
-              } else {
-                console.warn("Error inserting settings DB:", res.error.message);
-                throw new Error(res.error.message);
-              }
             }
+
+            const res = await supabase
+              .from("settings")
+              .insert(currentRowPayload)
+              .select()
+              .maybeSingle();
+
+            if (!res.error) {
+              if (res.data?.id) setSettingsId(res.data.id);
+              return res.data;
+            }
+
+            const errMsg = res.error.message || "";
+            const missingColMatch =
+              errMsg.match(/Could not find the '([^']+)' column/i) ||
+              errMsg.match(/column ["']?([^"'\s]+)["']? of relation/i) ||
+              errMsg.match(/column ["']?([^"'\s]+)["']? does not exist/i);
+
+            if (missingColMatch && missingColMatch[1]) {
+              const colToStrip = missingColMatch[1];
+              console.warn(
+                `[Settings Schema Cache Sync]: Column '${colToStrip}' not found in DB schema cache. Stripping key and retrying (${attempts}/${maxAttempts})...`
+              );
+              delete currentRowPayload[colToStrip];
+              continue;
+            }
+
+            throw new Error(res.error.message);
           }
         } catch (err) {
           console.error("Database query exception in updateSettings:", err);
           throw err;
         }
       }
+
+      // رمي خطأ صريح عند استنفاد كافة المحاولات دون نجاح
+      throw new Error("Failed to save settings: Exceeded maximum retry attempts due to multiple missing schema columns.");
     },
     [settingsId]
   );
