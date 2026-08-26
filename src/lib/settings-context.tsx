@@ -46,8 +46,10 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
     youtubeLink: (row.youtube_link as string) || "",
 
     // Store Location & Map
-    storeAddress: (row.address as string) || (row.store_address as string) || DEFAULT_SETTINGS.storeAddress,
-    storeMapLink: (row.map_url as string) || (row.store_map_link as string) || DEFAULT_SETTINGS.storeMapLink,
+    storeAddress: (row.store_address as string) || (row.address as string) || DEFAULT_SETTINGS.storeAddress,
+    store_address: (row.store_address as string) || (row.address as string) || DEFAULT_SETTINGS.storeAddress,
+    storeMapLink: (row.google_maps_url as string) || (row.map_url as string) || (row.store_map_link as string) || DEFAULT_SETTINGS.storeMapLink,
+    google_maps_url: (row.google_maps_url as string) || (row.map_url as string) || (row.store_map_link as string) || DEFAULT_SETTINGS.storeMapLink,
     storeMapEmbedUrl: (row.store_map_embed_url as string) || "",
 
     // App Download Links
@@ -181,10 +183,11 @@ function settingsToRow(settings: SiteSettings): Record<string, unknown> {
     tiktok: settings.tiktokLink || "",
     tiktok_link: settings.tiktokLink || "",
     youtube_link: settings.youtubeLink || "",
-    address: settings.storeAddress || "",
-    store_address: settings.storeAddress || "",
-    map_url: settings.storeMapLink || "",
-    store_map_link: settings.storeMapLink || "",
+    address: settings.store_address || settings.storeAddress || "",
+    store_address: settings.store_address || settings.storeAddress || "",
+    map_url: settings.google_maps_url || settings.storeMapLink || "",
+    store_map_link: settings.google_maps_url || settings.storeMapLink || "",
+    google_maps_url: settings.google_maps_url || settings.storeMapLink || "",
     store_map_embed_url: settings.storeMapEmbedUrl || "",
     app_download_url: settings.appDownloadUrl || "",
     android_app_url: settings.androidAppUrl || "",
