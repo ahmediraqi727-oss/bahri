@@ -56,12 +56,12 @@ export default function ContactLocationModal({
               <span>موقع المعرض / المحل الجغرافي:</span>
             </h4>
             <p className="text-xs text-gray-700 dark:text-gray-300 font-medium">
-              {settings?.store_address || settings?.storeAddress || "العراق — كركوك"}
+              {settings.storeAddress || "العراق - بغداد - الشارع التجاري الرئيسي"}
             </p>
 
-            {(settings?.google_maps_url || settings?.storeMapLink) && (
+            {settings.storeMapLink && (
               <a
-                href={settings?.google_maps_url || settings?.storeMapLink}
+                href={settings.storeMapLink}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md transition-all mt-1"

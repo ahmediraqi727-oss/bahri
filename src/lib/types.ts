@@ -120,9 +120,7 @@ export interface SiteSettings {
   youtubeLink?: string;
   // Location & Map Info
   storeAddress?: string;
-  store_address?: string;
   storeMapLink?: string;
-  google_maps_url?: string;
   storeMapEmbedUrl?: string;
   // App Download Links
   appDownloadUrl?: string;
@@ -217,9 +215,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   tiktokLink: "",
   youtubeLink: "",
   storeAddress: "العراق - كركوك - الشارع التجاري الرئيسي",
-  store_address: "العراق - كركوك - الشارع التجاري الرئيسي",
-  storeMapLink: "https://maps.app.goo.gl/6KKevHhH6RgSHKtj7",
-  google_maps_url: "https://maps.app.goo.gl/6KKevHhH6RgSHKtj7",
+  storeMapLink: "https://maps.google.com",
   storeMapEmbedUrl: "",
   appDownloadUrl: "",
   androidAppUrl: "",

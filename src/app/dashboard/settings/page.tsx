@@ -672,7 +672,7 @@ export default function SettingsPage() {
             </label>
             <input
               type="text"
-              placeholder="مثال: العراق - كركوك - احمد اغا - قرب الدفاع المدنى رابع متجر"
+              placeholder="مثال: العراق - بغداد - الشارع التجاري الرئيسي"
               value={formData.storeAddress || ""}
               onChange={(e) => handleChange({ storeAddress: e.target.value })}
               className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-xs outline-none"

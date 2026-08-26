@@ -312,13 +312,12 @@ export default function HomeClient() {
 
   const openMap = () => {
     const rawMapUrl =
-      settings?.google_maps_url ||
-      settings?.storeMapLink ||
       storeLocation?.google_maps_url ||
-      settings?.storeMapEmbedUrl ||
-      (settings?.store_address || settings?.storeAddress
-        ? `https://maps.google.com/?q=${encodeURIComponent(settings?.store_address || settings?.storeAddress || "")}`
-        : "https://maps.app.goo.gl/6KKevHhH6RgSHKtj7");
+      settings.storeMapLink ||
+      settings.storeMapEmbedUrl ||
+      (settings.storeAddress
+        ? `https://maps.google.com/?q=${encodeURIComponent(settings.storeAddress)}`
+        : "https://maps.google.com/?q=أحمد+بحري+متجر");
 
     const isCapacitor = typeof window !== "undefined" && !!(window as typeof window & { Capacitor?: { isNativePlatform: () => boolean } }).Capacitor?.isNativePlatform?.();
 
@@ -747,35 +746,20 @@ export default function HomeClient() {
 
                       {/* Map Button */}
                       {homeVis.showMap !== false && (
-                        <a
-                          href={
-                            settings?.google_maps_url ||
-                            settings?.storeMapLink ||
-                            storeLocation?.google_maps_url ||
-                            (settings?.store_address || settings?.storeAddress
-                              ? `https://maps.google.com/?q=${encodeURIComponent(settings?.store_address || settings?.storeAddress || "")}`
-                              : "https://maps.app.goo.gl/6KKevHhH6RgSHKtj7")
-                          }
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => {
-                            const isCapacitor = typeof window !== "undefined" && !!(window as typeof window & { Capacitor?: { isNativePlatform: () => boolean } }).Capacitor?.isNativePlatform?.();
-                            if (isCapacitor) {
-                              e.preventDefault();
-                              openMap();
-                            }
-                            setMenuOpen(false);
-                          }}
+                        <button
+                          onClick={() => { openMap(); setMenuOpen(false); }}
                           className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors text-right"
                         >
                           <span className="text-xl" aria-hidden="true">📍</span>
                           <div className="flex-1 text-right">
                             <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">موقعنا على الخريطة</span>
                             <p className="text-xs text-gray-400 mt-0.5">
-                              {settings?.store_address || settings?.storeAddress || (storeLocation?.city ? `${storeLocation.city} — ${storeLocation.address}` : "العراق — كركوك")}
+                              {storeLocation?.city
+                                ? `${storeLocation.city} — ${storeLocation.address}`
+                                : (settings.storeAddress || "بغداد، العراق")}
                             </p>
                           </div>
-                        </a>
+                        </button>
                       )}
 
                       {/* Contact Button */}
@@ -1350,10 +1334,9 @@ export default function HomeClient() {
           {/* Right Side: Store Name & Database Address */}
           <a
             href={
-              settings?.google_maps_url ||
-              settings?.storeMapLink ||
+              settings.storeMapLink ||
               storeLocation?.google_maps_url ||
-              `https://maps.google.com/?q=${encodeURIComponent(settings?.store_address || settings?.storeAddress || "العراق — كركوك")}`
+              `https://maps.google.com/?q=${encodeURIComponent(settings.storeAddress || "متجر أحمد بحري كركوك")}`
             }
             target="_blank"
             rel="noopener noreferrer"
@@ -1362,10 +1345,10 @@ export default function HomeClient() {
             <span className="text-2xl group-hover:scale-110 transition-transform" aria-hidden="true">📍</span>
             <div>
               <p className="font-extrabold text-sm sm:text-base">
-                {settings?.siteName || storeLocation?.name || "متجر أحمد بحري"}
+                {settings.siteName || storeLocation?.name || "متجر أحمد بحري"}
               </p>
               <p className="text-xs text-emerald-100 font-medium">
-                {settings?.store_address || settings?.storeAddress || (storeLocation ? `${storeLocation.city ? storeLocation.city + " — " : ""}${storeLocation.address}` : "العراق — كركوك")}
+                {settings.storeAddress || (storeLocation ? `${storeLocation.city ? storeLocation.city + " — " : ""}${storeLocation.address}` : "")}
               </p>
             </div>
           </a>
@@ -1373,10 +1356,9 @@ export default function HomeClient() {
           {/* Left Side: Interactive Map Link labeled "موقعنا" */}
           <a
             href={
-              settings?.google_maps_url ||
-              settings?.storeMapLink ||
+              settings.storeMapLink ||
               storeLocation?.google_maps_url ||
-              `https://maps.google.com/?q=${encodeURIComponent(settings?.store_address || settings?.storeAddress || "العراق — كركوك")}`
+              `https://maps.google.com/?q=${encodeURIComponent(settings.storeAddress || "متجر أحمد بحري كركوك")}`
             }
             target="_blank"
             rel="noopener noreferrer"
