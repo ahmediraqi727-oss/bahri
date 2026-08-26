@@ -4,6 +4,9 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { supabase } from "./supabase-client";
 import { useAuth } from "./auth-context";
 import { isUUID } from "./data-context";
+import { getOrCreateGuestSessionId, clearGuestSessionId, getActiveIdentity } from "./session";
+
+export { getOrCreateGuestSessionId, clearGuestSessionId };
 
 export interface Notification {
   id: string;
@@ -13,6 +16,8 @@ export interface Notification {
   message: string;
   read: boolean;
   user_id?: string | null;
+  session_id?: string | null;
+  serial_id?: string | null;
   productId?: string;
 }
 
@@ -36,51 +41,6 @@ interface NotificationsContextType {
 const NotificationsContext = createContext<NotificationsContextType | undefined>(undefined);
 const MUTE_STORAGE_KEY = "customer_notification_mute_until";
 const MUTE_DURATION_KEY = "customer_notification_mute_duration";
-
-const SERIAL_STORAGE_KEY = "ahmed_bahri_guest_serial";
-const SERIAL_TIME_KEY = "ahmed_bahri_guest_serial_time";
-const GUEST_STORAGE_KEY = "ahmed_bahri_guest_session";
-const GUEST_TIME_KEY = "ahmed_bahri_guest_time";
-const EXPIRATION_MS = 24 * 60 * 60 * 1000; // 24 Hours
-
-/**
- * دالة توليد والحصول على الرقم التسلسلي الفريد للضيف (صالح لمدة 24 ساعة فقط)
- * يتم تجديد الرقم التسلسلي وحذف القديم تلقائياً بعد مرور 24 ساعة لضمان الخصوصية والمنع التام لتداخل البيانات
- */
-export function getOrCreateGuestSerialId(): string {
-  if (typeof window === "undefined") return "";
-
-  const now = Date.now();
-  const savedTime = localStorage.getItem(SERIAL_TIME_KEY) || localStorage.getItem(GUEST_TIME_KEY);
-  let serialId = localStorage.getItem(SERIAL_STORAGE_KEY) || localStorage.getItem(GUEST_STORAGE_KEY);
-
-  if (!serialId || !savedTime || now - Number(savedTime) > EXPIRATION_MS) {
-    serialId = "guest_serial_" + Math.random().toString(36).substring(2) + now.toString(36);
-    localStorage.setItem(SERIAL_STORAGE_KEY, serialId);
-    localStorage.setItem(SERIAL_TIME_KEY, now.toString());
-    localStorage.setItem(GUEST_STORAGE_KEY, serialId);
-    localStorage.setItem(GUEST_TIME_KEY, now.toString());
-  }
-
-  return serialId;
-}
-
-export function getOrCreateGuestSessionId(): string {
-  return getOrCreateGuestSerialId();
-}
-
-/**
- * مسح بيانات ورقم الضيف التسلسلي المؤقت بعد دمج البيانات بالحساب الرسمي
- */
-export function clearGuestSessionId(): void {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(SERIAL_STORAGE_KEY);
-  localStorage.removeItem(SERIAL_TIME_KEY);
-  localStorage.removeItem(GUEST_STORAGE_KEY);
-  localStorage.removeItem(GUEST_TIME_KEY);
-  localStorage.removeItem("store_guest_session_id");
-  localStorage.removeItem("store_guest_session_time");
-}
 
 export function playNotificationChime(soundUrl?: string, volume = 0.8) {
   try {
@@ -147,13 +107,14 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   const fetchNotifications = useCallback(async () => {
     try {
+      const identity = getActiveIdentity(user);
       let query = supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(50);
 
-      // 🔒 تصفية دقيقة بناءً على معرف المستخدم المسجل أو النشرات العامة فقط للضيوف
-      if (user?.id && !user.id.startsWith("guest-")) {
-        query = query.or(`user_id.eq.${user.id},user_id.is.null`);
+      // 🔒 Scoped query for active identity
+      if (identity.isRegistered) {
+        query = query.or(`user_id.eq.${identity.id},user_id.is.null`);
       } else {
-        query = query.is("user_id", null);
+        query = query.or(`session_id.eq.${identity.id},serial_id.eq.${identity.id},user_id.is.null`);
       }
 
       const { data, error } = await query;
@@ -164,18 +125,20 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         const parsed: Notification[] = data.map((row: any) => ({
           id: row.id,
           type: row.type || "message",
-          title: row.title,
+          title: row.title || "",
           message: row.message || row.content || "",
           read: row.read || row.is_read || false,
           timestamp: row.created_at,
-          user_id: row.user_id,
+          user_id: row.user_id || null,
+          session_id: row.session_id || row.guest_session_id || null,
+          serial_id: row.serial_id || null,
           productId: row.product_id || undefined,
         }));
 
-        // 🔒 فلتر الأمان الصارم للضيوف والزبائن العاديين
+        // 🔒 Strict isolation filter
         if (!isAdmin) {
           const safeFiltered = parsed.filter((n) => {
-            const isOrderOrAdminType = [
+            const isPrivateType = [
               "low_stock",
               "out_of_stock",
               "admin_log",
@@ -184,13 +147,22 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
               "order",
               "new_order",
               "whatsapp_order",
+              "support_reply",
+              "private_chat",
             ].includes(n.type);
 
             const hasOrderKeywords = n.title.includes("طلب") || n.message.includes("طلب");
 
-            // إذا كان الإشعار طلب أو إداري، فلا يظهر أبداً إلا إذا كان موجهة للمستخدم نفسه بصورة خاصة
-            if (isOrderOrAdminType || hasOrderKeywords) {
-              return n.user_id === user?.id;
+            if (isPrivateType || hasOrderKeywords) {
+              if (identity.isRegistered) {
+                return n.user_id === identity.id;
+              } else {
+                return (
+                  n.session_id === identity.id ||
+                  n.serial_id === identity.id ||
+                  n.user_id === identity.id
+                );
+              }
             }
 
             return true;
@@ -205,10 +177,12 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     } finally {
       setLoading(false);
     }
-  }, [user?.id, user?.role]);
+  }, [user?.id, user?.role, user?.isGuest]);
 
   useEffect(() => {
     fetchNotifications();
+
+    const identity = getActiveIdentity(user);
 
     const channel = supabase
       .channel("notifications-realtime-channel")
@@ -220,16 +194,18 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           const newNotif: Notification = {
             id: newRow.id,
             type: newRow.type || "message",
-            title: newRow.title,
+            title: newRow.title || "",
             message: newRow.message || "",
             read: false,
             timestamp: newRow.created_at,
-            user_id: newRow.user_id,
+            user_id: newRow.user_id || null,
+            session_id: newRow.session_id || newRow.guest_session_id || null,
+            serial_id: newRow.serial_id || null,
             productId: newRow.product_id || undefined,
           };
 
           const isAdmin = user && (user.role === "manager" || user.role === "admin");
-          const isOrderOrAdminType = [
+          const isPrivateType = [
             "low_stock",
             "out_of_stock",
             "admin_log",
@@ -238,13 +214,23 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
             "order",
             "new_order",
             "whatsapp_order",
+            "support_reply",
+            "private_chat",
           ].includes(newNotif.type);
           const hasOrderKeywords = newNotif.title.includes("طلب") || newNotif.message.includes("طلب");
 
-          // تطبيق نفس فلتر الأمان اللحظي
-          if (!isAdmin && (isOrderOrAdminType || hasOrderKeywords)) {
-            if (newNotif.user_id !== user?.id) {
-              return; // تجاهل الإشعار إذا لم يكن يخص هذا الضيف/الزبون
+          // Strict realtime privacy filter
+          if (!isAdmin && (isPrivateType || hasOrderKeywords)) {
+            if (identity.isRegistered) {
+              if (newNotif.user_id !== identity.id) return;
+            } else {
+              if (
+                newNotif.session_id !== identity.id &&
+                newNotif.serial_id !== identity.id &&
+                newNotif.user_id !== identity.id
+              ) {
+                return;
+              }
             }
           }
 
@@ -260,21 +246,20 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [fetchNotifications, isMuted, user?.id, user?.role]);
+  }, [fetchNotifications, isMuted, user?.id, user?.role, user?.isGuest]);
 
   const addNotification = useCallback(
     async (n: Omit<Notification, "id" | "timestamp" | "read">) => {
-      const guestSerialId = getOrCreateGuestSerialId();
-      const isRegistered = user?.id && isUUID(user.id) && !user.isGuest;
+      const identity = getActiveIdentity(user);
 
       const row = {
         type: n.type || "message",
         title: n.title,
         message: n.message,
         product_id: n.productId || "",
-        user_id: isRegistered ? user.id : null,
-        session_id: !isRegistered ? guestSerialId : null,
-        serial_id: !isRegistered ? guestSerialId : null,
+        user_id: identity.isRegistered ? identity.id : null,
+        session_id: !identity.isRegistered ? identity.id : null,
+        serial_id: !identity.isRegistered ? identity.id : null,
         read: false,
       };
       const { data: created, error } = await supabase.from("notifications").insert(row).select().single();
@@ -288,6 +273,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           read: false,
           timestamp: created.created_at,
           user_id: created.user_id,
+          session_id: created.session_id,
+          serial_id: created.serial_id,
           productId: created.product_id || undefined,
         };
         setNotifications((prev) => [newNotif, ...prev]);
@@ -296,7 +283,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         }
       }
     },
-    [user?.id, isMuted]
+    [user?.id, user?.isGuest, isMuted]
   );
 
   const markAsRead = useCallback(async (id: string) => {
@@ -305,14 +292,24 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, []);
 
   const markAllAsRead = useCallback(async () => {
-    await supabase.from("notifications").update({ read: true }).eq("read", false);
+    const identity = getActiveIdentity(user);
+    if (identity.isRegistered) {
+      await supabase.from("notifications").update({ read: true }).eq("user_id", identity.id);
+    } else {
+      await supabase.from("notifications").update({ read: true }).or(`session_id.eq.${identity.id},serial_id.eq.${identity.id}`);
+    }
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  }, []);
+  }, [user?.id, user?.isGuest]);
 
   const clearAll = useCallback(async () => {
-    await supabase.from("notifications").delete().neq("id", "");
+    const identity = getActiveIdentity(user);
+    if (identity.isRegistered) {
+      await supabase.from("notifications").delete().eq("user_id", identity.id);
+    } else {
+      await supabase.from("notifications").delete().or(`session_id.eq.${identity.id},serial_id.eq.${identity.id}`);
+    }
     setNotifications([]);
-  }, []);
+  }, [user?.id, user?.isGuest]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 

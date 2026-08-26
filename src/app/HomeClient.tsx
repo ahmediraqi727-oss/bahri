@@ -143,18 +143,18 @@ export default function HomeClient() {
     setScannedCode(code);
   };
 
-  // Sync Wishlist / Favorites state
+  // Sync Wishlist / Favorites state strictly scoped by active user/guest identity
   useEffect(() => {
-    setFavoriteIds(getFavoriteProductIds());
+    setFavoriteIds(getFavoriteProductIds(user));
     const handleUpdated = (e: CustomEvent<string[]>) => {
       setFavoriteIds(e.detail || []);
     };
     window.addEventListener("favorites_updated" as never, handleUpdated);
     return () => window.removeEventListener("favorites_updated" as never, handleUpdated);
-  }, []);
+  }, [user]);
 
   const handleToggleFavorite = (productId: string, productName: string) => {
-    const updated = toggleFavoriteProductId(productId);
+    const updated = toggleFavoriteProductId(productId, user);
     const isFavNow = updated.includes(productId);
     setFavoriteIds(updated);
     setFavToast(isFavNow ? `❤️ تمت إضافة "${productName}" إلى المفضلة` : `💔 تم إزالة "${productName}" من المفضلة`);

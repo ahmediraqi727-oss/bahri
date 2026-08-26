@@ -5,28 +5,43 @@ import { useData } from "@/lib/data-context";
 import { useCart } from "@/lib/cart-context";
 import { useSettings } from "@/lib/settings-context";
 import { useLang } from "@/lib/lang-context";
+import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/lib/supabase-client";
 import { Product } from "@/lib/types";
 import { CartItem } from "@/lib/order-types";
+import { getActiveIdentity, getIsolatedStorageKey } from "@/lib/session";
 
-const FAVORITES_STORAGE_KEY = "customer_favorites";
-
-export function getFavoriteProductIds(): string[] {
+export function getFavoriteProductIds(user?: any): string[] {
   if (typeof window === "undefined") return [];
   try {
-    const stored = localStorage.getItem(FAVORITES_STORAGE_KEY);
+    const key = getIsolatedStorageKey("customer_favorites", user);
+    const stored = localStorage.getItem(key);
     if (stored) return JSON.parse(stored);
+    // Backward compatibility fallback to generic key if isolated key isn't populated yet
+    const fallback = localStorage.getItem("customer_favorites");
+    if (fallback) return JSON.parse(fallback);
   } catch { /* ignore */ }
   return [];
 }
 
-export function toggleFavoriteProductId(productId: string): string[] {
+export function toggleFavoriteProductId(productId: string, user?: any): string[] {
   if (typeof window === "undefined") return [];
-  const current = getFavoriteProductIds();
+  const key = getIsolatedStorageKey("customer_favorites", user);
+  const current = getFavoriteProductIds(user);
   const exists = current.includes(productId);
   const updated = exists ? current.filter((id) => id !== productId) : [...current, productId];
-  localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(updated));
+  localStorage.setItem(key, JSON.stringify(updated));
   window.dispatchEvent(new CustomEvent("favorites_updated", { detail: updated }));
+
+  // Async sync with Supabase for registered users
+  const identity = getActiveIdentity(user);
+  if (identity.isRegistered) {
+    if (exists) {
+      supabase.from("favorites").delete().eq("user_id", identity.id).eq("product_id", productId).then();
+    } else {
+      supabase.from("favorites").upsert({ user_id: identity.id, product_id: productId }).then();
+    }
+  }
   return updated;
 }
 
@@ -36,6 +51,7 @@ interface CustomerProductsModalProps {
 }
 
 export default function CustomerProductsModal({ isOpen, onClose }: CustomerProductsModalProps) {
+  const { user } = useAuth();
   const { products, getEffectiveTiers } = useData();
   const { addItem } = useCart();
   const { settings } = useSettings();
@@ -49,45 +65,76 @@ export default function CustomerProductsModal({ isOpen, onClose }: CustomerProdu
 
   // Sync favorites state
   useEffect(() => {
-    setFavoriteIds(getFavoriteProductIds());
+    setFavoriteIds(getFavoriteProductIds(user));
+
+    // Also fetch remote favorites for registered user
+    const identity = getActiveIdentity(user);
+    if (identity.isRegistered) {
+      supabase
+        .from("favorites")
+        .select("product_id")
+        .eq("user_id", identity.id)
+        .then(({ data }) => {
+          if (data && data.length > 0) {
+            const dbFavs = data.map((f: any) => f.product_id).filter(Boolean);
+            setFavoriteIds((prev) => Array.from(new Set([...prev, ...dbFavs])));
+          }
+        });
+    }
+
     const handleUpdated = (e: CustomEvent<string[]>) => {
       setFavoriteIds(e.detail || []);
     };
     window.addEventListener("favorites_updated" as any, handleUpdated);
     return () => window.removeEventListener("favorites_updated" as any, handleUpdated);
-  }, []);
+  }, [user]);
 
-  // Fetch customer purchase history from Supabase orders
+  // Fetch customer purchase history strictly scoped by identity
   useEffect(() => {
     if (!isOpen) return;
 
     async function fetchPurchasedItems() {
       setLoadingHistory(true);
       try {
-        // Read guest/customer identity from localStorage or cookies
+        const identity = getActiveIdentity(user);
         let customerPhone = "";
-        let customerName = "";
         if (typeof window !== "undefined") {
           const guestCookie = document.cookie.match(/app_guest_user=([^;]+)/);
           if (guestCookie) {
             try {
               const parsed = JSON.parse(decodeURIComponent(guestCookie[1]));
               customerPhone = parsed.phone || "";
-              customerName = parsed.name || "";
             } catch { /* ignore */ }
           }
         }
 
-        const { data: ordersData } = await supabase
-          .from("orders")
-          .select("items, customer_phone, customer_name")
-          .order("created_at", { ascending: false })
-          .limit(50);
+        let ordersData: any[] = [];
+        if (identity.isRegistered) {
+          const res = await supabase
+            .from("orders")
+            .select("items")
+            .eq("user_id", identity.id)
+            .order("created_at", { ascending: false })
+            .limit(50);
+          ordersData = res.data || [];
+        } else {
+          // Scope guest orders strictly by guest session or guest phone
+          let guestFilter = `session_id.eq.${identity.id},guest_session_id.eq.${identity.id}`;
+          if (customerPhone && customerPhone.length > 5) {
+            guestFilter += `,customer_phone.eq.${customerPhone}`;
+          }
+          const res = await supabase
+            .from("orders")
+            .select("items")
+            .or(guestFilter)
+            .order("created_at", { ascending: false })
+            .limit(50);
+          ordersData = res.data || [];
+        }
 
         if (ordersData && ordersData.length > 0) {
           const matchedItemIds = new Set<string>();
           ordersData.forEach((order) => {
-            // Match order if tied to customer or include general orders
             const items = (order.items as CartItem[]) || [];
             items.forEach((item) => {
               if (item.productId) matchedItemIds.add(item.productId);
@@ -96,16 +143,19 @@ export default function CustomerProductsModal({ isOpen, onClose }: CustomerProdu
 
           const foundProducts = products.filter((p) => matchedItemIds.has(p.id));
           setPurchasedProducts(foundProducts);
+        } else {
+          setPurchasedProducts([]);
         }
       } catch (err) {
         console.warn("Failed to load customer purchased products:", err);
+        setPurchasedProducts([]);
       } finally {
         setLoadingHistory(false);
       }
     }
 
     fetchPurchasedItems();
-  }, [isOpen, products]);
+  }, [isOpen, products, user]);
 
   const favoriteProducts = useMemo(
     () => products.filter((p) => favoriteIds.includes(p.id)),

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase-client";
 import { useAuth } from "@/lib/auth-context";
+import { getActiveIdentity } from "@/lib/session";
 
 interface MyProductsHubProps {
   userId?: string;
@@ -10,40 +11,48 @@ interface MyProductsHubProps {
 
 export default function MyProductsHub({ userId: propUserId }: MyProductsHubProps) {
   const { user } = useAuth();
-  const userId = propUserId || (user && !user.isGuest && !user.id?.startsWith("guest-") ? user.id : "");
-
   const [favorites, setFavorites] = useState<any[]>([]);
   const [purchased, setPurchased] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchCustomerData() {
-      if (!userId) {
-        setLoading(false);
-        return;
-      }
+      const identity = getActiveIdentity(user);
 
       try {
         setLoading(true);
 
-        // 1. جلب المفضلة الخاصة بالزبون حصرياً
-        const { data: favData, error: favErr } = await supabase
-          .from("favorites")
-          .select("*")
-          .eq("user_id", userId);
+        if (identity.isRegistered) {
+          // 1. Registered Customer Favorites
+          const { data: favData, error: favErr } = await supabase
+            .from("favorites")
+            .select("*")
+            .eq("user_id", identity.id);
 
-        if (favData) setFavorites(favData);
-        if (favErr) console.warn("Notice: favorites query:", favErr.message);
+          if (favData) setFavorites(favData);
+          if (favErr) console.warn("Notice: favorites query:", favErr.message);
 
-        // 2. جلب المشتريات السابقة الخاصة بالزبون حصرياً
-        const { data: orderData, error: orderErr } = await supabase
-          .from("orders")
-          .select("*")
-          .eq("user_id", userId)
-          .order("created_at", { ascending: false });
+          // 2. Registered Customer Orders
+          const { data: orderData, error: orderErr } = await supabase
+            .from("orders")
+            .select("*")
+            .eq("user_id", identity.id)
+            .order("created_at", { ascending: false });
 
-        if (orderData) setPurchased(orderData);
-        if (orderErr) console.warn("Notice: orders query:", orderErr.message);
+          if (orderData) setPurchased(orderData);
+          if (orderErr) console.warn("Notice: orders query:", orderErr.message);
+        } else {
+
+          // Guest Visitor Orders
+          const { data: orderData, error: orderErr } = await supabase
+            .from("orders")
+            .select("*")
+            .or(`session_id.eq.${identity.id},guest_session_id.eq.${identity.id}`)
+            .order("created_at", { ascending: false });
+
+          if (orderData) setPurchased(orderData);
+          if (orderErr) console.warn("Notice: guest orders query:", orderErr.message);
+        }
       } catch (err) {
         console.error("Error fetching personal hub data:", err);
       } finally {
@@ -52,7 +61,7 @@ export default function MyProductsHub({ userId: propUserId }: MyProductsHubProps
     }
 
     fetchCustomerData();
-  }, [userId]);
+  }, [user, propUserId]);
 
   if (loading) {
     return (
