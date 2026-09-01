@@ -144,6 +144,67 @@ SET
   updated_at = now();
 
 -- ==============================================================================
--- 5. إنعاش فوري لذاكرة PostgREST المؤقتة
+-- 5. دالة إنشاء إشعار فوري عند حدوث طلب شراء أو فاتورة جديدة
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.notify_on_new_order()
+RETURNS TRIGGER AS $$
+DECLARE
+    order_title TEXT;
+    order_msg TEXT;
+    customer_name TEXT;
+    total_val TEXT;
+BEGIN
+    customer_name := COALESCE(NEW.customer_name, NEW.name, 'زبون');
+    total_val := COALESCE(NEW.total_price::text, NEW.total_amount::text, NEW.grand_total::text, '0');
+    
+    order_title := '🛒 طلب شراء جديد #' || COALESCE(NEW.order_number, NEW.invoice_number, NEW.id::text);
+    order_msg := 'قام الزبون (' || customer_name || ') بطلب شراء جديد بقيمة إجمالية: ' || total_val || ' د.ع';
+
+    INSERT INTO public.notifications (
+        type,
+        title,
+        message,
+        is_broadcast,
+        read,
+        created_at
+    ) VALUES (
+        'order',
+        order_title,
+        order_msg,
+        false,
+        false,
+        now()
+    );
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ربط الـ Trigger بجدول الطلبات orders إن وجد
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'orders') THEN
+        DROP TRIGGER IF EXISTS trigger_notify_new_order ON public.orders;
+        CREATE TRIGGER trigger_notify_new_order
+        AFTER INSERT ON public.orders
+        FOR EACH ROW
+        EXECUTE FUNCTION public.notify_on_new_order();
+    END IF;
+END $$;
+
+-- ربط الـ Trigger بجدول الفواتير invoices إن وجد
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'invoices') THEN
+        DROP TRIGGER IF EXISTS trigger_notify_new_invoice ON public.invoices;
+        CREATE TRIGGER trigger_notify_new_invoice
+        AFTER INSERT ON public.invoices
+        FOR EACH ROW
+        EXECUTE FUNCTION public.notify_on_new_order();
+    END IF;
+END $$;
+
+-- ==============================================================================
+-- 6. إنعاش فوري لذاكرة PostgREST المؤقتة
 -- ==============================================================================
 NOTIFY pgrst, 'reload config';
