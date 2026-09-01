@@ -107,50 +107,62 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   const fetchNotifications = useCallback(async () => {
     try {
-      const isRegistered = Boolean(
-        user?.id && !user?.isGuest && !user?.id.startsWith("guest-")
-      );
+      const isManager = user?.role === "manager" || user?.role === "admin";
 
       let query = supabase.from("notifications").select("*");
 
-      if (isRegistered) {
-        query = query.or(`user_id.eq.${user!.id},is_broadcast.eq.true`);
+      if (isManager) {
+        query = query.order("created_at", { ascending: false }).limit(50);
       } else {
-        query = query.eq("is_broadcast", true);
+        const isRegistered = Boolean(
+          user?.id && !user?.isGuest && !user?.id.startsWith("guest-")
+        );
+
+        query = query.not("type", "in", '("order","low_stock","out_of_stock")');
+
+        if (isRegistered) {
+          query = query.or(`user_id.eq.${user!.id},is_broadcast.eq.true`);
+        } else {
+          query = query.eq("is_broadcast", true);
+        }
+
+        query = query.order("created_at", { ascending: false }).limit(50);
       }
 
-      const { data, error } = await query
-        .order("created_at", { ascending: false })
-        .limit(50);
+      const { data, error } = await query;
 
       if (error) throw error;
 
       if (data) {
-        const isAdmin = user && (user.role === "manager" || user.role === "admin");
-        const parsed: Notification[] = data.map((row: any) => ({
-          id: row.id,
-          type: row.type || "message",
-          title: row.title || "",
-          message: row.message || row.content || "",
-          read: row.read || row.is_read || false,
-          timestamp: row.created_at,
-          user_id: row.user_id || null,
-          session_id: row.session_id || row.guest_session_id || null,
-          serial_id: row.serial_id || null,
-          productId: row.product_id || undefined,
-        }));
-
-        if (!isAdmin) {
-          const safeFiltered = parsed.filter((n) => {
-            if (isRegistered) {
-              return n.user_id === user!.id || rowIsBroadcast(n);
+        const parsed: Notification[] = data
+          .map((row: any) => ({
+            id: row.id,
+            type: row.type || "message",
+            title: row.title || "",
+            message: row.message || row.content || "",
+            read: row.read || row.is_read || false,
+            timestamp: row.created_at,
+            user_id: row.user_id || null,
+            session_id: row.session_id || row.guest_session_id || null,
+            serial_id: row.serial_id || null,
+            productId: row.product_id || undefined,
+          }))
+          .filter((n) => {
+            if (!isManager) {
+              const typeLower = (n.type || "").toLowerCase();
+              if (
+                typeLower === "order" ||
+                typeLower === "low_stock" ||
+                typeLower === "out_of_stock" ||
+                typeLower.includes("order")
+              ) {
+                return false;
+              }
             }
-            return rowIsBroadcast(n);
+            return true;
           });
-          setNotifications(safeFiltered);
-        } else {
-          setNotifications(parsed);
-        }
+
+        setNotifications(parsed);
       }
     } catch (err) {
       console.error("Error fetching notifications:", err);
@@ -162,6 +174,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     fetchNotifications();
 
+    const isManager = user?.role === "manager" || user?.role === "admin";
     const isRegistered = Boolean(
       user?.id && !user?.isGuest && !user?.id.startsWith("guest-")
     );
@@ -173,6 +186,27 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         { event: "INSERT", schema: "public", table: "notifications" },
         (payload) => {
           const newRow = payload.new as any;
+          const typeLower = (newRow.type || "").toLowerCase();
+
+          if (!isManager) {
+            // Silently ignore order and stock notifications for non-manager customers
+            if (
+              typeLower === "order" ||
+              typeLower === "low_stock" ||
+              typeLower === "out_of_stock" ||
+              typeLower.includes("order")
+            ) {
+              return;
+            }
+
+            const isBroadcast = newRow.is_broadcast === true || newRow.is_broadcast === "true";
+            if (isRegistered) {
+              if (newRow.user_id !== user!.id && !isBroadcast) return;
+            } else {
+              if (!isBroadcast) return;
+            }
+          }
+
           const newNotif: Notification = {
             id: newRow.id,
             type: newRow.type || "message",
@@ -185,17 +219,6 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
             serial_id: newRow.serial_id || null,
             productId: newRow.product_id || undefined,
           };
-
-          const isAdmin = user && (user.role === "manager" || user.role === "admin");
-          const isBroadcast = newRow.is_broadcast === true || newRow.is_broadcast === "true";
-
-          if (!isAdmin) {
-            if (isRegistered) {
-              if (newNotif.user_id !== user!.id && !isBroadcast) return;
-            } else {
-              if (!isBroadcast) return;
-            }
-          }
 
           setNotifications((prev) => [newNotif, ...prev]);
 

@@ -61,13 +61,13 @@ export default function InvoicesPage() {
   // Quick Phone Login Modal State
   const [quickLoginOpen, setQuickLoginOpen] = useState(false);
 
-  const isManager = settings.currentRole === "manager" || settings.currentRole === "admin" || user?.role === "manager" || user?.role === "admin";
+  const isManager = user?.role === "manager" || user?.role === "admin" || (settings?.currentRole === "manager" && user?.role !== "customer");
 
   // Load Invoices / Orders from Supabase (Strict Scoping for Customers)
   const loadInvoices = useCallback(async () => {
     try {
       setLoading(true);
-      const isManagerRole = settings.currentRole === "manager" || settings.currentRole === "admin" || user?.role === "manager" || user?.role === "admin";
+      const isManagerRole = user?.role === "manager" || user?.role === "admin" || (settings?.currentRole === "manager" && user?.role !== "customer");
 
       let query = supabase.from("orders").select("*");
 
@@ -1209,13 +1209,15 @@ export default function InvoicesPage() {
                     إغلاق
                   </button>
 
-                  <button
-                    onClick={handleSaveInvoice}
-                    disabled={savingOrder}
-                    className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-extrabold text-xs hover:bg-emerald-700 disabled:opacity-50 shadow-md flex items-center gap-1.5"
-                  >
-                    {savingOrder ? "جاري الحفظ..." : "💾 حفظ الفاتورة وقاعدة البيانات"}
-                  </button>
+                  {isManager && (
+                    <button
+                      onClick={handleSaveInvoice}
+                      disabled={savingOrder}
+                      className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-extrabold text-xs hover:bg-emerald-700 disabled:opacity-50 shadow-md flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {savingOrder ? "جاري الحفظ..." : "💾 حفظ الفاتورة وقاعدة البيانات"}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

@@ -90,13 +90,17 @@ export default function NotificationsBell() {
 
   // Realtime Supabase Listeners across orders, messages, notifications
   useEffect(() => {
+    const isManager = user?.role === "manager" || user?.role === "admin";
+    
     const channel = supabase
       .channel("realtime-notifications-bell")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "orders" },
         () => {
-          playNotificationAudio(settings?.notificationSoundUrl, settings?.notificationVolume);
+          if (isManager && !isMuted) {
+            playNotificationAudio(settings?.notificationSoundUrl, settings?.notificationVolume);
+          }
         }
       )
       .on(
@@ -104,7 +108,7 @@ export default function NotificationsBell() {
         { event: "INSERT", schema: "public", table: "messages" },
         (payload) => {
           const newMsg = payload.new as any;
-          if (newMsg.is_admin_reply || user?.id) {
+          if (!isMuted && (newMsg.is_admin_reply || user?.id)) {
             playNotificationAudio(settings?.notificationSoundUrl, settings?.notificationVolume);
           }
         }
@@ -114,7 +118,7 @@ export default function NotificationsBell() {
         { event: "INSERT", schema: "public", table: "notifications" },
         (payload) => {
           const newNotif = payload.new as any;
-          if (!newNotif.user_id || newNotif.user_id === user?.id) {
+          if (!isMuted && (!newNotif.user_id || newNotif.user_id === user?.id)) {
             playNotificationAudio(settings?.notificationSoundUrl, settings?.notificationVolume);
           }
         }
@@ -124,7 +128,7 @@ export default function NotificationsBell() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id, settings?.notificationSoundUrl, settings?.notificationVolume]);
+  }, [user?.id, user?.role, settings?.notificationSoundUrl, settings?.notificationVolume, isMuted]);
 
   // Smart Routing Action Handler for "إظهار" Button & Card Click
   const handleNotificationAction = (n: Notification) => {
