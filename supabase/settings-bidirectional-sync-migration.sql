@@ -1,5 +1,12 @@
 -- ==============================================================================
--- 1. التأكد من وجود كافة أعمدة الإعدادات بدون استثناء
+-- 1. منح صلاحيات القراءة والكتابة الكاملة لأدوار Supabase على جدول الإعدادات
+-- ==============================================================================
+GRANT ALL ON TABLE public.settings TO postgres, anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO postgres, anon, authenticated, service_role;
+GRANT USAGE ON SCHEMA public TO postgres, anon, authenticated, service_role;
+
+-- ==============================================================================
+-- 2. التأكد من وجود كافة أعمدة الإعدادات بدون استثناء
 -- ==============================================================================
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS id UUID PRIMARY KEY DEFAULT gen_random_uuid();
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS site_name TEXT DEFAULT 'موقع أحمد بحري';
@@ -86,10 +93,11 @@ ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS customer_notification_categ
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 
 -- ==============================================================================
--- 2. فتح صلاحيات RLS بشكل كامل وصحيح لمنع الرفض الصامت للتعديلات
+-- 3. ضبط سياسات الأمان (RLS) لتمكين مدير النظام من التحكم الكامل بدون قيود
 -- ==============================================================================
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 
+-- حذف السياسات السابقة المقيدة
 DROP POLICY IF EXISTS "Public read settings" ON public.settings;
 DROP POLICY IF EXISTS "Public update settings" ON public.settings;
 DROP POLICY IF EXISTS "Public insert settings" ON public.settings;
@@ -98,13 +106,17 @@ DROP POLICY IF EXISTS "Allow all access to settings" ON public.settings;
 DROP POLICY IF EXISTS "Allow public select settings" ON public.settings;
 DROP POLICY IF EXISTS "Allow public insert settings" ON public.settings;
 DROP POLICY IF EXISTS "Allow public update settings" ON public.settings;
+DROP POLICY IF EXISTS "Full access for settings" ON public.settings;
 
-CREATE POLICY "Allow public select settings" ON public.settings FOR SELECT USING (true);
-CREATE POLICY "Allow public insert settings" ON public.settings FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow public update settings" ON public.settings FOR UPDATE USING (true) WITH CHECK (true);
+-- إنشاء سياسة شاملة تسمح بكافة العمليات (Select, Insert, Update, Delete)
+CREATE POLICY "Full access for settings" 
+ON public.settings 
+FOR ALL 
+USING (true) 
+WITH CHECK (true);
 
 -- ==============================================================================
--- 3. تحديث وتعبئة السجل الحالي بالبيانات المعتمدة للمتجر (إزالة قيم NULL / باطل)
+-- 4. تحديث وتعبئة السجل الحالي بالبيانات المعتمدة للمتجر (إزالة قيم NULL / باطل)
 -- ==============================================================================
 UPDATE public.settings
 SET
@@ -131,5 +143,7 @@ SET
   tiktok_link = 'https://tiktok.com/@ahmed_bahri',
   updated_at = now();
 
--- 4. إنعاش فوري لذاكرة PostgREST المؤقتة
+-- ==============================================================================
+-- 5. إنعاش فوري لذاكرة PostgREST المؤقتة
+-- ==============================================================================
 NOTIFY pgrst, 'reload config';
