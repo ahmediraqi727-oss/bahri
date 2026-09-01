@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase-client";
 import { useAuth } from "@/lib/auth-context";
+import { useSettings } from "@/lib/settings-context";
 
 const TYPE_ICONS: Record<string, string> = {
   low_stock: "⚠️",
@@ -13,6 +14,8 @@ const TYPE_ICONS: Record<string, string> = {
   info: "ℹ️",
   message: "💬",
   contact: "💬",
+  order: "🧾",
+  invoice: "🧾",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -21,6 +24,8 @@ const TYPE_LABELS: Record<string, string> = {
   info: "معلومات / طلب",
   message: "رسالة زبون",
   contact: "رسالة دعم فني",
+  order: "طلب جديد",
+  invoice: "فاتورة شراء",
 };
 
 function timeAgo(iso: string): string {
@@ -34,29 +39,42 @@ function timeAgo(iso: string): string {
   return `منذ ${days} يوم`;
 }
 
+function playNotificationAudio(soundUrl?: string, volume?: number) {
+  try {
+    const url = soundUrl || "/sounds/chime.mp3";
+    const audio = new Audio(url);
+    audio.volume = volume !== undefined ? Math.min(Math.max(volume, 0), 1) : 0.8;
+    audio.play().catch(() => {});
+  } catch {}
+}
+
 export default function NotificationsBell() {
   const { notifications, unreadCount, markAsRead, markAllAsRead, clearAll } = useNotifications();
   const { user } = useAuth();
+  const { settings } = useSettings();
   const [open, setOpen] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  // تفعيل الاستماع اللحظي (Realtime) للرسائل والإشعارات الجديدة وتشغيل الصوت
+  // تفعيل الاستماع اللحظي (Realtime) للطلبات والرسائل والإشعارات الجديدة وتشغيل النغمة الصوتية
   useEffect(() => {
     const channel = supabase
       .channel("realtime-notifications-bell")
       .on(
         "postgres_changes",
+        { event: "INSERT", schema: "public", table: "orders" },
+        () => {
+          playNotificationAudio(settings?.notificationSoundUrl, settings?.notificationVolume);
+        }
+      )
+      .on(
+        "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages" },
         (payload) => {
           const newMsg = payload.new as any;
-          // إذا كانت الرسالة رد إداري وتخص المستخدم الحالي أو زائر
-          if (newMsg.is_admin_reply) {
-            try {
-              const audio = new Audio("/sounds/chime.mp3");
-              audio.play().catch(() => {});
-            } catch {}
+          if (newMsg.is_admin_reply || user?.id) {
+            playNotificationAudio(settings?.notificationSoundUrl, settings?.notificationVolume);
           }
         }
       )
@@ -65,12 +83,8 @@ export default function NotificationsBell() {
         { event: "INSERT", schema: "public", table: "notifications" },
         (payload) => {
           const newNotif = payload.new as any;
-          // التحقق مما إذا كان الإشعار موجهاً للمستخدم أو عاماً
           if (!newNotif.user_id || newNotif.user_id === user?.id) {
-            try {
-              const audio = new Audio("/sounds/chime.mp3");
-              audio.play().catch(() => {});
-            } catch {}
+            playNotificationAudio(settings?.notificationSoundUrl, settings?.notificationVolume);
           }
         }
       )
@@ -79,7 +93,7 @@ export default function NotificationsBell() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user?.id]);
+  }, [user?.id, settings?.notificationSoundUrl, settings?.notificationVolume]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -93,11 +107,78 @@ export default function NotificationsBell() {
     if (!n.read) {
       markAsRead(n.id);
     }
-    setSelectedNotification(n);
     setOpen(false);
-    if (n.type === "message" || n.type === "contact") {
-      router.push("/dashboard/messages");
+
+    const typeLower = (n.type || "").toLowerCase();
+    const titleLower = (n.title || "").toLowerCase();
+    const msgLower = (n.message || "").toLowerCase();
+
+    // 1. فواتير وطلبات الشراء
+    if (
+      typeLower.includes("order") || 
+      typeLower.includes("invoice") || 
+      typeLower.includes("checkout") ||
+      typeLower.includes("purchase") ||
+      titleLower.includes("طلب") || 
+      titleLower.includes("شراء") ||
+      titleLower.includes("فاتورة") ||
+      msgLower.includes("طلب") ||
+      msgLower.includes("فاتورة")
+    ) {
+      router.push("/dashboard/invoices");
+      return;
     }
+
+    // 2. رسائل الدعم والمحادثات
+    if (
+      typeLower.includes("message") || 
+      typeLower.includes("contact") || 
+      typeLower.includes("chat") ||
+      typeLower.includes("ticket") ||
+      titleLower.includes("رسالة") ||
+      titleLower.includes("محادثة")
+    ) {
+      router.push("/dashboard/messages");
+      return;
+    }
+
+    // 3. تنبيهات المخزون والمنتجات
+    if (
+      typeLower.includes("stock") || 
+      typeLower.includes("product") ||
+      typeLower.includes("low_stock") ||
+      typeLower.includes("out_of_stock") ||
+      titleLower.includes("مخزون") ||
+      titleLower.includes("منتج")
+    ) {
+      router.push("/dashboard/products");
+      return;
+    }
+
+    // 4. استفسارات الزبائن
+    if (
+      typeLower.includes("inquiry") ||
+      typeLower.includes("question") ||
+      titleLower.includes("استفسار") ||
+      titleLower.includes("سؤال")
+    ) {
+      router.push("/dashboard/settings");
+      return;
+    }
+
+    // 5. إدارة العملاء والمستخدمين
+    if (
+      typeLower.includes("customer") ||
+      typeLower.includes("user_signup") ||
+      titleLower.includes("عميل") ||
+      titleLower.includes("مستخدم")
+    ) {
+      router.push("/dashboard/customers");
+      return;
+    }
+
+    // Fallback: فتح نافذة التفاصيل إذا كان إشعاراً عاماً
+    setSelectedNotification(n);
   };
 
   return (
