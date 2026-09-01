@@ -6,7 +6,7 @@ import { useSettings } from "@/lib/settings-context";
 import { useNotifications } from "@/lib/notifications";
 import { useActivityLog } from "@/lib/activity-log";
 import { updateGuestIdentity } from "@/lib/visitor-tracker";
-import { Order } from "@/lib/order-types";
+import { Order, formatInvoiceSerial } from "@/lib/order-types";
 import { createOrderAndNotify } from "@/lib/order-helpers";
 import { supabase } from "@/lib/supabase-client";
 
@@ -36,40 +36,42 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
 
   if (!isOpen) return null;
 
-  // Auto-formatted Order Message for Customer Communication (No Base64 or Image URLs)
-  const generateOrderMessage = (invoiceSerial?: string) => {
-    const serial = invoiceSerial || `INV-${Date.now().toString().slice(-6)}`;
-    let msg = `🧾 *فاتورة طلب شراء رسمية - متجر ${settings.siteName || "أحمد بحري"}*\n`;
-    msg += `🔖 *رقم الفاتورة:* ${serial}\n`;
+  // Auto-formatted Order Message with Direct Web Invoice Link (No Base64 or Image Strings)
+  const generateOrderMessage = (invoiceSerial: string, invoiceUrl: string) => {
+    let msg = `🧾 *فاتورة طلب شراء رسمية - ${settings.siteName || "متجر أحمد بحري"}*\n`;
+    msg += `🔖 *رقم الفاتورة:* ${invoiceSerial}\n`;
     msg += `📅 *التاريخ:* ${new Date().toLocaleDateString("ar-IQ")}\n`;
     msg += `-------------------------------------------\n`;
-    msg += `👤 *بيانات الزبون:*\n`;
+    msg += `👤 *معلومات الزبون والشحن:*\n`;
     msg += `• الاسم: ${name.trim()}\n`;
-    msg += `• الهاتف: ${phone.trim()}\n`;
+    msg += `• رقم الهاتف: ${phone.trim()}\n`;
     msg += `• المحافظة والعنوان: ${address.trim()}\n`;
     if (notes.trim()) msg += `• ملاحظات: ${notes.trim()}\n`;
     msg += `-------------------------------------------\n`;
-    msg += `📦 *قائمة المنتجات المطلوبة:*\n`;
+    msg += `🛍️ *قائمة المنتجات المطلوبة:*\n`;
 
     items.forEach((item, index) => {
       const unitPrice = item.appliedTierPrice ?? item.retailPrice;
       msg += `${index + 1}. *${item.name}*\n`;
       msg += `   • الكمية: ${item.quantity} قطعة\n`;
       msg += `   • السعر الفردي: ${unitPrice.toLocaleString()} د.ع\n`;
-      msg += `   • المجموع: ${(unitPrice * item.quantity).toLocaleString()} د.ع\n`;
+      msg += `   • الإجمالي: ${(unitPrice * item.quantity).toLocaleString()} د.ع\n`;
     });
 
     msg += `-------------------------------------------\n`;
-    msg += `💵 مجموع المنتجات: ${total.toLocaleString()} د.ع\n`;
-    msg += `🚚 أجور الشحن (${deliveryDuration}): ${deliveryFee ? deliveryFee.toLocaleString() + ' د.ع' : 'مجاني'}\n`;
-    msg += `💰 *المبلغ الإجمالي الكلي المطلوب: ${grandTotal.toLocaleString()} د.ع*\n`;
+    msg += `📦 مجموع المنتجات: ${total.toLocaleString()} د.ع\n`;
+    msg += `🚚 تكلفة التوصيل (${deliveryDuration}): ${deliveryFee ? `${deliveryFee.toLocaleString()} د.ع` : "مجاني"}\n`;
+    msg += `💰 *الإجمالي النهائي الكلي:* *${grandTotal.toLocaleString()} د.ع*\n`;
     msg += `-------------------------------------------\n`;
-    msg += `🙏 شكراً لتسوقكم معنا! سيتم الاتصال بكم هاتفياً لتأكيد الشحن فوراً.`;
+    msg += `📄 *رابط الفاتورة الرسمية للطباعة والمعاينة:*\n`;
+    msg += `${invoiceUrl}\n`;
+    msg += `-------------------------------------------\n`;
+    msg += `🙏 شكراً لتسوقكم معنا! يرجى تأكيد استلام الطلب لتجهيز الشحن فوراً.`;
     return msg;
   };
 
   // Helper to record order in Supabase and trigger Admin Real-Time Notification
-  const recordOrderAndNotify = async (contactMethod: string): Promise<Order | null> => {
+  const recordOrderAndNotify = async (contactMethod: string): Promise<{ createdOrder: Order; invoiceSerial: string; invoiceUrl: string } | null> => {
     setSubmitting(true);
     try {
       // Automatically upgrade Anonymous guest ("مجهول X") to identified customer in database
@@ -92,15 +94,23 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
         platform: contactMethod,
       });
 
+      const serialStr = createdOrder.serialNumber
+        ? formatInvoiceSerial(createdOrder)
+        : `INV-2026-${createdOrder.id.substring(0, 4).toUpperCase()}`;
+
+      const origin = typeof window !== "undefined" ? window.location.origin : "https://ahmed-bahri.com";
+      const invoiceParam = createdOrder.serialNumber ? String(createdOrder.serialNumber) : createdOrder.id;
+      const invoiceUrl = `${origin}/invoice/${invoiceParam}`;
+
       await logActivity({
         user: "customer",
         action: "create",
         entity: "طلب زبون",
         entityId: createdOrder.id,
-        details: `طلب من ${name} عبر ${contactMethod} - الهاتف: ${phone} - الإجمالي: ${grandTotal.toLocaleString()} د.ع`,
+        details: `طلب من ${name} عبر ${contactMethod} - الرقم الفردي: ${serialStr} - الهاتف: ${phone} - الإجمالي: ${grandTotal.toLocaleString()} د.ع`,
       });
 
-      return createdOrder;
+      return { createdOrder, invoiceSerial: serialStr, invoiceUrl };
     } catch (err) {
       console.warn("Order recording background error:", err);
       return null;
@@ -120,9 +130,12 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
 
   // Deep Link Launchers (STRICTLY TOWARDS STORE MANAGER / ADMIN RECIPIENTS)
   const handleWhatsApp = async () => {
-    const createdOrder = await recordOrderAndNotify("واتساب");
-    const serial = createdOrder?.serialNumber ? `INV-${createdOrder.serialNumber}` : `INV-${Date.now().toString().slice(-6)}`;
-    const msg = generateOrderMessage(serial);
+    const res = await recordOrderAndNotify("واتساب");
+    const serial = res?.invoiceSerial || `INV-2026-${Date.now().toString().slice(-4)}`;
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://ahmed-bahri.com";
+    const invoiceUrl = res?.invoiceUrl || `${origin}/invoice/${serial}`;
+
+    const msg = generateOrderMessage(serial, invoiceUrl);
     let target = settings.whatsappLink?.trim() || "";
 
     // Parse Store Admin WhatsApp Target
@@ -152,9 +165,12 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
   };
 
   const handleTelegram = async () => {
-    const createdOrder = await recordOrderAndNotify("تليجرام");
-    const serial = createdOrder?.serialNumber ? `INV-${createdOrder.serialNumber}` : `INV-${Date.now().toString().slice(-6)}`;
-    const msg = generateOrderMessage(serial);
+    const res = await recordOrderAndNotify("تليجرام");
+    const serial = res?.invoiceSerial || `INV-2026-${Date.now().toString().slice(-4)}`;
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://ahmed-bahri.com";
+    const invoiceUrl = res?.invoiceUrl || `${origin}/invoice/${serial}`;
+
+    const msg = generateOrderMessage(serial, invoiceUrl);
     let target = settings.telegramLink?.trim() || "";
     let url = "";
 
@@ -180,9 +196,12 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
   };
 
   const handleMessenger = async () => {
-    const createdOrder = await recordOrderAndNotify("ماسنجر");
-    const serial = createdOrder?.serialNumber ? `INV-${createdOrder.serialNumber}` : `INV-${Date.now().toString().slice(-6)}`;
-    const msg = generateOrderMessage(serial);
+    const res = await recordOrderAndNotify("ماسنجر");
+    const serial = res?.invoiceSerial || `INV-2026-${Date.now().toString().slice(-4)}`;
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://ahmed-bahri.com";
+    const invoiceUrl = res?.invoiceUrl || `${origin}/invoice/${serial}`;
+
+    const msg = generateOrderMessage(serial, invoiceUrl);
     let target = settings.messengerLink?.trim() || "";
     let url = "";
 

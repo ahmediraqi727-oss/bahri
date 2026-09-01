@@ -50,6 +50,8 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
 
   const grandTotal = total + (Number(cartDeliveryFee) || 0);
 
+  const [lastCreatedOrder, setLastCreatedOrder] = useState<Order | null>(null);
+
   const handleOrder = async () => {
     if (!name.trim() || !phone.trim() || !address.trim()) return;
     setSubmitting(true);
@@ -66,6 +68,8 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
         notes,
         platform: "تأكيد مباشر",
       });
+
+      setLastCreatedOrder(createdOrder);
 
       const saleItems = items.map((item) => {
         const product = products.find((p) => p.id === item.productId);
@@ -98,7 +102,7 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
           action: "create",
           entity: "طلب",
           entityId: createdOrder.id,
-          details: `طلب جديد من ${name} (${phone}) - العنوان: ${address} - الإجمالي: ${total.toLocaleString()} د.ع`,
+          details: `طلب جديد من ${name} (${phone}) - العنوان: ${address} - الإجمالي: ${grandTotal.toLocaleString()} د.ع`,
         });
       } catch (e) {
         console.warn("logActivity error:", e);
@@ -112,7 +116,11 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
   };
 
   const generateWhatsAppMessage = () => {
-    let msg = `🛒 *طلب جديد من المتجر - ${settings.siteName}*\n\n`;
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://ahmed-bahri.com";
+    const invoiceParam = lastCreatedOrder?.serialNumber ? String(lastCreatedOrder.serialNumber) : (lastCreatedOrder?.id || "latest");
+    const invoiceUrl = `${origin}/invoice/${invoiceParam}`;
+
+    let msg = `🧾 *طلب جديد وتوثيق فاتورة - ${settings.siteName || "متجر أحمد بحري"}*\n\n`;
     msg += `👤 *الزبون:* ${name}\n`;
     msg += `📞 *الهاتف:* ${phone}\n`;
     msg += `📍 *العنوان:* ${address}\n\n`;
@@ -120,8 +128,9 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
     items.forEach((item, i) => {
       msg += `${i + 1}. ${item.name} × ${item.quantity} = ${(item.retailPrice * item.quantity).toLocaleString()} د.ع\n`;
     });
-    msg += `\n💰 *المجموع الكلي:* ${total.toLocaleString()} د.ع\n`;
-    if (notes) msg += `\n📝 *ملاحظات:* ${notes}\n`;
+    msg += `\n💰 *المجموع الكلي:* ${grandTotal.toLocaleString()} د.ع\n`;
+    if (notes) msg += `📝 *ملاحظات:* ${notes}\n`;
+    msg += `\n📄 *معاينة وتوثيق الفاتورة الرسمية:*\n${invoiceUrl}\n`;
     return msg;
   };
 
