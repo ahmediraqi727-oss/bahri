@@ -22,33 +22,58 @@ export default function PublicInvoicePage() {
     async function fetchOrder() {
       setLoading(true);
       try {
-        let query = supabase.from("orders").select("*");
+        const cleanId = decodeURIComponent(rawId).trim();
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const isUuid = uuidRegex.test(cleanId);
 
-        const numericVal = parseInt(rawId.replace(/\D/g, ""), 10);
+        let data: any = null;
 
-        if (!isNaN(numericVal) && (rawId.startsWith("INV-") || !isNaN(Number(rawId)))) {
-          query = query.or(`serial_number.eq.${numericVal},id.eq.${rawId},invoice_serial.eq.${rawId}`);
-        } else {
-          query = query.or(`id.eq.${rawId},invoice_serial.eq.${rawId}`);
+        // 1. If cleanId is a valid UUID, query by id
+        if (isUuid) {
+          const { data: res } = await supabase.from("orders").select("*").eq("id", cleanId).maybeSingle();
+          if (res) data = res;
         }
 
-        const { data, error } = await query.maybeSingle();
+        // 2. Query by invoice_serial matching cleanId directly
+        if (!data) {
+          const { data: res } = await supabase.from("orders").select("*").eq("invoice_serial", cleanId).maybeSingle();
+          if (res) data = res;
+        }
 
-        if (error || !data) {
-          // Retry search with ilike id fallback
-          const { data: retryData } = await supabase
+        // 3. If numeric or formatted (like "15" or "INV-2026-0015"), query serial_number or candidate invoice_serials
+        const digitsOnly = cleanId.replace(/\D/g, "");
+        const numericVal = parseInt(digitsOnly, 10);
+
+        if (!data && !isNaN(numericVal)) {
+          // Query by serial_number integer
+          const { data: resBySerial } = await supabase
             .from("orders")
             .select("*")
-            .ilike("id", `${rawId}%`)
+            .eq("serial_number", numericVal)
             .maybeSingle();
 
-          if (retryData) {
-            mapAndSetOrder(retryData);
+          if (resBySerial) {
+            data = resBySerial;
           } else {
-            setNotFound(true);
+            // Try invoice_serial matching candidate padded strings
+            const padded4 = String(numericVal).padStart(4, "0");
+            const candidate1 = `INV-2026-${padded4}`;
+            const candidate2 = `INV-2026-${numericVal}`;
+
+            const { data: resByPadded } = await supabase
+              .from("orders")
+              .select("*")
+              .or(`invoice_serial.eq.${candidate1},invoice_serial.eq.${candidate2}`)
+              .maybeSingle();
+
+            if (resByPadded) data = resByPadded;
           }
-        } else {
+        }
+
+        if (data) {
           mapAndSetOrder(data);
+        } else {
+          setNotFound(true);
         }
       } catch (err) {
         console.error("Invoice fetch exception:", err);

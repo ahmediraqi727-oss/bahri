@@ -94,13 +94,12 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
         platform: contactMethod,
       });
 
-      const serialStr = createdOrder.serialNumber
-        ? formatInvoiceSerial(createdOrder)
-        : `INV-2026-${createdOrder.id.substring(0, 4).toUpperCase()}`;
+      const serialStr = createdOrder.invoiceSerial || (createdOrder.serialNumber
+        ? `INV-2026-${String(createdOrder.serialNumber).padStart(4, "0")}`
+        : formatInvoiceSerial(createdOrder));
 
       const origin = typeof window !== "undefined" ? window.location.origin : "https://ahmed-bahri.com";
-      const invoiceParam = createdOrder.serialNumber ? String(createdOrder.serialNumber) : createdOrder.id;
-      const invoiceUrl = `${origin}/invoice/${invoiceParam}`;
+      const invoiceUrl = `${origin}/invoice/${serialStr}`;
 
       await logActivity({
         user: "customer",
@@ -168,12 +167,11 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
       return;
     }
 
-    const finalSerial = insertedOrder && insertedOrder.serial_number
-      ? `INV-2026-${String(insertedOrder.serial_number).padStart(4, "0")}`
-      : invSerial;
-    const finalInvoiceUrl = insertedOrder && insertedOrder.serial_number
-      ? `${origin}/invoice/${insertedOrder.serial_number}`
-      : invoiceUrl;
+    const serialNumberPadded = insertedOrder && insertedOrder.serial_number
+      ? String(insertedOrder.serial_number).padStart(4, "0")
+      : "";
+    const finalSerial = insertedOrder?.invoice_serial || (serialNumberPadded ? `INV-2026-${serialNumberPadded}` : invSerial);
+    const finalInvoiceUrl = `${origin}/invoice/${finalSerial}`;
 
     // Success: Generate clean message with invoice link and open WhatsApp
     const msg = generateOrderMessage(finalSerial, finalInvoiceUrl);
