@@ -24,6 +24,7 @@ import ContactSupportModal from "@/components/ContactSupportModal";
 import Footer from "@/components/Footer";
 import { useNotifications } from "@/lib/notifications";
 import { useFavorites } from "@/contexts/FavoritesContext";
+import { useAdaptiveProducts } from "@/lib/useAdaptiveProducts";
 import { supabase } from "@/lib/supabase-client";
 import { useLang } from "@/lib/lang-context";
 import { hasPermission } from "@/lib/permissions";
@@ -187,8 +188,20 @@ export default function HomeClient() {
     return Array.from(set).filter(Boolean);
   }, [products, categories]);
 
+  const {
+    products: streamingProducts,
+    loading: streamingLoading,
+    loadingMore: streamingLoadingMore,
+    hasMore: hasMoreProducts,
+    sentinelRef,
+  } = useAdaptiveProducts({
+    searchQuery: search,
+    selectedCategory: selectedCategory,
+    initialProducts: products,
+  });
+
   const textFilteredProducts = useMemo(() => {
-    let result = allAvailableProducts;
+    let result = streamingProducts.length > 0 ? streamingProducts : allAvailableProducts;
 
     if (selectedCategory) {
       result = result.filter((p) => p.notes && p.notes.toLowerCase().includes(selectedCategory.toLowerCase()));
@@ -203,7 +216,7 @@ export default function HomeClient() {
     }
 
     return result;
-  }, [allAvailableProducts, search, selectedCategory, suppliers]);
+  }, [allAvailableProducts, streamingProducts, search, selectedCategory, suppliers]);
 
   const similarProducts = useMemo(() => {
     if (!search || textFilteredProducts.length > 0 || !searchSubmitted) return [];
@@ -1023,7 +1036,20 @@ export default function HomeClient() {
         {/* H2: Products catalog section heading */}
         <h2 className="sr-only">{productsGridH2}</h2>
 
-        {availableProducts.length === 0 ? (
+        {streamingLoading && availableProducts.length === 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 animate-pulse">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 space-y-4 flex flex-col justify-between h-80">
+                <div className="bg-gray-200 dark:bg-gray-800 h-44 rounded-xl w-full" />
+                <div className="space-y-2">
+                  <div className="bg-gray-200 dark:bg-gray-800 h-4 rounded w-3/4" />
+                  <div className="bg-gray-200 dark:bg-gray-800 h-4 rounded w-1/2" />
+                </div>
+                <div className="bg-gray-200 dark:bg-gray-800 h-9 rounded-xl w-full" />
+              </div>
+            ))}
+          </div>
+        ) : availableProducts.length === 0 ? (
           <div className="text-center py-16 bg-white dark:bg-gray-900 rounded-3xl border border-gray-200 dark:border-gray-800 p-8 shadow-sm">
             <span className="text-6xl block mb-4" aria-hidden="true">📭</span>
             <p className="text-xl font-bold text-gray-700 dark:text-gray-200 mb-2">
@@ -1031,213 +1057,227 @@ export default function HomeClient() {
             </p>
             <button
               onClick={() => { setSearch(""); setSelectedCategory(null); setImageResults(null); }}
-              className="mt-4 px-6 py-2.5 rounded-xl text-white text-sm font-bold shadow-md"
+              className="mt-4 px-6 py-2.5 rounded-xl text-white text-sm font-bold shadow-md cursor-pointer"
               style={{ backgroundColor: theme.primary }}
             >
               عرض جميع المنتجات
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-            {availableProducts.map((product) => {
-              const isAdded = addedId === product.id;
-              const effectiveTiers = getEffectiveTiers(product.id, globalPricingConfig);
-              const qty = cardQty[product.id] ?? 1;
-              const activeTier = resolveTierForQty(qty, effectiveTiers);
-              const unitPrice = calculateTierPrice(product.retailPrice, activeTier);
-              const hasDiscount = activeTier.discountPct > 0;
-              const badgeText = buildTierBadgeText(effectiveTiers);
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+              {availableProducts.map((product, idx) => {
+                const isFirstFour = idx < 4;
+                const isAdded = addedId === product.id;
+                const effectiveTiers = getEffectiveTiers(product.id, globalPricingConfig);
+                const qty = cardQty[product.id] ?? 1;
+                const activeTier = resolveTierForQty(qty, effectiveTiers);
+                const unitPrice = calculateTierPrice(product.retailPrice, activeTier);
+                const hasDiscount = activeTier.discountPct > 0;
+                const badgeText = buildTierBadgeText(effectiveTiers);
 
-              const maxDiscountTier = effectiveTiers.reduce(
-                (max, t) => (t.discountPct > max.discountPct ? t : max),
-                effectiveTiers[0]
-              );
-              const lowestTierPrice = calculateTierPrice(product.retailPrice, maxDiscountTier);
-              const wholesalePriceVal =
-                product.wholesalePrice > 0 && product.wholesalePrice < product.retailPrice
-                  ? product.wholesalePrice
-                  : lowestTierPrice < product.retailPrice
-                  ? lowestTierPrice
-                  : Math.round(product.retailPrice * 0.9);
-              const isFav = favoriteIds.includes(product.id);
+                const maxDiscountTier = effectiveTiers.reduce(
+                  (max, t) => (t.discountPct > max.discountPct ? t : max),
+                  effectiveTiers[0]
+                );
+                const lowestTierPrice = calculateTierPrice(product.retailPrice, maxDiscountTier);
+                const wholesalePriceVal =
+                  product.wholesalePrice > 0 && product.wholesalePrice < product.retailPrice
+                    ? product.wholesalePrice
+                    : lowestTierPrice < product.retailPrice
+                    ? lowestTierPrice
+                    : Math.round(product.retailPrice * 0.9);
+                const isFav = favoriteIds.includes(product.id);
 
-              // SEO-optimized alt text using the utility
-              const productAlt = generateProductAltText(product, selectedCategory);
+                // SEO-optimized alt text using the utility
+                const productAlt = generateProductAltText(product, selectedCategory);
 
-              return (
-                <article
-                  key={product.id}
-                  className="group bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col justify-between"
-                  dir="rtl"
-                  aria-label={`منتج: ${product.name}`}
-                >
-                  {/* Product Image — click to open detail modal */}
-                  <div
-                    className="relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800 cursor-pointer"
-                    onClick={() => setDetailProduct(product)}
+                return (
+                  <article
+                    key={product.id}
+                    className="group bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col justify-between"
+                    dir="rtl"
+                    aria-label={`منتج: ${product.name}`}
                   >
-                    {product.image ? (
-                      <Image
-                        src={product.image}
-                        alt={productAlt}
-                        fill
-                        sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                        className="object-cover group-hover:scale-105 transition-transform duration-500"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-5xl text-gray-300" aria-hidden="true">📦</div>
-                    )}
+                    {/* Product Image — click to open detail modal */}
+                    <div
+                      className="relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800 cursor-pointer"
+                      onClick={() => setDetailProduct(product)}
+                    >
+                      {product.image ? (
+                        <Image
+                          src={product.image}
+                          alt={productAlt}
+                          fill
+                          sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                          className="object-cover group-hover:scale-105 transition-transform duration-500"
+                          priority={isFirstFour}
+                          loading={isFirstFour ? undefined : "lazy"}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-5xl text-gray-300" aria-hidden="true">📦</div>
+                      )}
 
-                    {/* Detail View Hint */}
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-                      <span className="px-3 py-1.5 rounded-xl bg-white/90 dark:bg-gray-900/90 text-xs font-bold text-gray-700 dark:text-gray-200 shadow-lg backdrop-blur-sm">
-                        🔍 عرض التفاصيل
-                      </span>
-                    </div>
-                    {/* Tier Mode Badge */}
-                    {hasDiscount && qty > 1 && (
-                      <div className="absolute top-2 right-2">
-                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-red-600 text-white shadow-md">
-                          -{activeTier.discountPct}%
+                      {/* Detail View Hint */}
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                        <span className="px-3 py-1.5 rounded-xl bg-white/90 dark:bg-gray-900/90 text-xs font-bold text-gray-700 dark:text-gray-200 shadow-lg backdrop-blur-sm">
+                          🔍 عرض التفاصيل
                         </span>
                       </div>
-                    )}
-                  </div>
-
-                  <div className="p-3 sm:p-4 space-y-3 flex-1 flex flex-col justify-between">
-                    <div>
-                      {/* H3: Product name — each product card has its own H3 */}
-                      <h3
-                        className="font-bold text-gray-900 dark:text-white text-sm leading-tight line-clamp-2 cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                        onClick={() => setDetailProduct(product)}
-                      >
-                        {product.name}
-                      </h3>
-                      {product.notes && (
-                        <p className="text-xs text-gray-400 mt-1 line-clamp-1">
-                          {extractCategoryFromNotes(product.notes)}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* ── Dual Price Display ── */}
-                    <div className="space-y-1.5">
-                      {qty === 1 || !hasDiscount ? (
-                        wholesalePriceVal < product.retailPrice ? (
-                          <div className="flex items-baseline gap-1.5 flex-wrap">
-                            <span className="text-xl sm:text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">
-                              {wholesalePriceVal.toLocaleString()}
-                            </span>
-                            <span className="text-sm sm:text-base font-bold text-gray-400 dark:text-gray-500">-</span>
-                            <span className="text-sm sm:text-base font-bold text-gray-600 dark:text-gray-300">
-                              {product.retailPrice.toLocaleString()}
-                            </span>
-                            <span className="text-xs font-normal text-gray-400">{t.dinar}</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-baseline gap-1.5 flex-wrap">
-                            <span className="text-xl sm:text-2xl font-extrabold text-blue-600 dark:text-blue-400">
-                              {product.retailPrice.toLocaleString()}
-                            </span>
-                            <span className="text-xs font-normal text-gray-400">{t.dinar}</span>
-                          </div>
-                        )
-                      ) : (
-                        <div>
-                          <div className="flex items-baseline gap-1.5 flex-wrap">
-                            <span className="text-xl sm:text-2xl font-extrabold text-red-600 dark:text-red-400">
-                              {unitPrice.toLocaleString()}
-                            </span>
-                            <span className="text-sm sm:text-base font-bold text-gray-400 dark:text-gray-500 line-through">
-                              {product.retailPrice.toLocaleString()}
-                            </span>
-                            <span className="text-xs font-normal text-gray-400">{t.dinar}</span>
-                            <span className="px-1.5 py-0.5 rounded-lg text-[10px] font-extrabold bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 leading-none">
-                              -{activeTier.discountPct}% ({activeTier.label})
-                            </span>
-                          </div>
-                          <div className="mt-1 flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded-md">
-                            <span>إجمالي ({qty} قطع):</span>
-                            <span className="font-extrabold">{(unitPrice * qty).toLocaleString()} {t.dinar}</span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Dynamic tier badge instruction */}
-                      <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-relaxed">
-                        {badgeText}
-                      </p>
-                    </div>
-
-                    {/* ── Quick Qty Stepper + Add to Cart + Wishlist Heart ── */}
-                    <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-2">
-                      {/* Qty stepper */}
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-bold text-gray-400 flex-shrink-0">الكمية:</span>
-                        <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden flex-1">
-                          <button
-                            onClick={() => setCardQty((prev) => ({ ...prev, [product.id]: Math.max(1, (prev[product.id] ?? 1) - 1) }))}
-                            className="w-7 h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 font-bold text-sm transition-colors flex-shrink-0"
-                            aria-label={`تقليل الكمية لـ ${product.name}`}
-                          >
-                            −
-                          </button>
-                          <span className="flex-1 text-center text-xs font-extrabold text-gray-900 dark:text-white" aria-live="polite">
-                            {qty}
+                      {/* Tier Mode Badge */}
+                      {hasDiscount && qty > 1 && (
+                        <div className="absolute top-2 right-2">
+                          <span className="px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-red-600 text-white shadow-md">
+                            -{activeTier.discountPct}%
                           </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="p-3 sm:p-4 space-y-3 flex-1 flex flex-col justify-between">
+                      <div>
+                        {/* H3: Product name — each product card has its own H3 */}
+                        <h3
+                          className="font-bold text-gray-900 dark:text-white text-sm leading-tight line-clamp-2 cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                          onClick={() => setDetailProduct(product)}
+                        >
+                          {product.name}
+                        </h3>
+                        {product.notes && (
+                          <p className="text-xs text-gray-400 mt-1 line-clamp-1">
+                            {extractCategoryFromNotes(product.notes)}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* ── Dual Price Display ── */}
+                      <div className="space-y-1.5">
+                        {qty === 1 || !hasDiscount ? (
+                          wholesalePriceVal < product.retailPrice ? (
+                            <div className="flex items-baseline gap-1.5 flex-wrap">
+                              <span className="text-xl sm:text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">
+                                {wholesalePriceVal.toLocaleString()}
+                              </span>
+                              <span className="text-sm sm:text-base font-bold text-gray-400 dark:text-gray-500">-</span>
+                              <span className="text-sm sm:text-base font-bold text-gray-600 dark:text-gray-300">
+                                {product.retailPrice.toLocaleString()}
+                              </span>
+                              <span className="text-xs font-normal text-gray-400">{t.dinar}</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-baseline gap-1.5 flex-wrap">
+                              <span className="text-xl sm:text-2xl font-extrabold text-blue-600 dark:text-blue-400">
+                                {product.retailPrice.toLocaleString()}
+                              </span>
+                              <span className="text-xs font-normal text-gray-400">{t.dinar}</span>
+                            </div>
+                          )
+                        ) : (
+                          <div>
+                            <div className="flex items-baseline gap-1.5 flex-wrap">
+                              <span className="text-xl sm:text-2xl font-extrabold text-red-600 dark:text-red-400">
+                                {unitPrice.toLocaleString()}
+                              </span>
+                              <span className="text-sm sm:text-base font-bold text-gray-400 dark:text-gray-500 line-through">
+                                {product.retailPrice.toLocaleString()}
+                              </span>
+                              <span className="text-xs font-normal text-gray-400">{t.dinar}</span>
+                              <span className="px-1.5 py-0.5 rounded-lg text-[10px] font-extrabold bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 leading-none">
+                                -{activeTier.discountPct}% ({activeTier.label})
+                              </span>
+                            </div>
+                            <div className="mt-1 flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded-md">
+                              <span>إجمالي ({qty} قطع):</span>
+                              <span className="font-extrabold">{(unitPrice * qty).toLocaleString()} {t.dinar}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Dynamic tier badge instruction */}
+                        <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-relaxed">
+                          {badgeText}
+                        </p>
+                      </div>
+
+                      {/* ── Quick Qty Stepper + Add to Cart + Wishlist Heart ── */}
+                      <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-2">
+                        {/* Qty stepper */}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-gray-400 flex-shrink-0">الكمية:</span>
+                          <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden flex-1">
+                            <button
+                              onClick={() => setCardQty((prev) => ({ ...prev, [product.id]: Math.max(1, (prev[product.id] ?? 1) - 1) }))}
+                              className="w-7 h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 font-bold text-sm transition-colors flex-shrink-0 cursor-pointer"
+                              aria-label={`تقليل الكمية لـ ${product.name}`}
+                            >
+                              −
+                            </button>
+                            <span className="flex-1 text-center text-xs font-extrabold text-gray-900 dark:text-white" aria-live="polite">
+                              {qty}
+                            </span>
+                            <button
+                              onClick={() => setCardQty((prev) => ({ ...prev, [product.id]: (prev[product.id] ?? 1) + 1 }))}
+                              className="w-7 h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 font-bold text-sm transition-colors flex-shrink-0 cursor-pointer"
+                              aria-label={`زيادة الكمية لـ ${product.name}`}
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Action Row: Add to Cart + Wishlist Heart button */}
+                        <div className="flex items-center gap-2">
                           <button
-                            onClick={() => setCardQty((prev) => ({ ...prev, [product.id]: (prev[product.id] ?? 1) + 1 }))}
-                            className="w-7 h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 font-bold text-sm transition-colors flex-shrink-0"
-                            aria-label={`زيادة الكمية لـ ${product.name}`}
+                            onClick={() => handleAdd(product)}
+                            disabled={isAdded}
+                            className="flex-1 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold text-white transition-all hover:scale-[1.02] active:scale-[0.98] disabled:scale-100 shadow-md min-h-[40px] flex items-center justify-center gap-1 cursor-pointer"
+                            style={{ backgroundColor: isAdded ? "#10b981" : theme.primary }}
+                            aria-label={`إضافة ${product.name} إلى السلة`}
                           >
-                            +
+                            {isAdded ? (
+                              <span>✓ تم الإضافة</span>
+                            ) : (
+                              <span>
+                                أضف {qty > 1 ? `${qty} قطع` : ""} للسلة 🛒
+                                {hasDiscount && <span className="mr-1 opacity-80">(-{activeTier.discountPct}%)</span>}
+                              </span>
+                            )}
+                          </button>
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleFavorite(product.id, product.name);
+                            }}
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg transition-all transform active:scale-125 border shrink-0 cursor-pointer ${
+                              isFav
+                                ? "bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800/80 text-rose-600 dark:text-rose-400 scale-105 shadow-sm shadow-rose-100 dark:shadow-none"
+                                : "bg-gray-50 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-rose-500 hover:bg-rose-50/50 hover:border-rose-200"
+                            }`}
+                            title={isFav ? "إزالة من المفضلة" : "إضافة للمفضلة"}
+                            aria-label={isFav ? `إزالة ${product.name} من المفضلة` : `إضافة ${product.name} للمفضلة`}
+                            aria-pressed={isFav}
+                          >
+                            {isFav ? "❤️" : "🤍"}
                           </button>
                         </div>
                       </div>
-
-                      {/* Action Row: Add to Cart + Wishlist Heart button */}
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleAdd(product)}
-                          disabled={isAdded}
-                          className="flex-1 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold text-white transition-all hover:scale-[1.02] active:scale-[0.98] disabled:scale-100 shadow-md min-h-[40px] flex items-center justify-center gap-1"
-                          style={{ backgroundColor: isAdded ? "#10b981" : theme.primary }}
-                          aria-label={`إضافة ${product.name} إلى السلة`}
-                        >
-                          {isAdded ? (
-                            <span>✓ تم الإضافة</span>
-                          ) : (
-                            <span>
-                              أضف {qty > 1 ? `${qty} قطع` : ""} للسلة 🛒
-                              {hasDiscount && <span className="mr-1 opacity-80">(-{activeTier.discountPct}%)</span>}
-                            </span>
-                          )}
-                        </button>
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleToggleFavorite(product.id, product.name);
-                          }}
-                          className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg transition-all transform active:scale-125 border shrink-0 ${
-                            isFav
-                              ? "bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800/80 text-rose-600 dark:text-rose-400 scale-105 shadow-sm shadow-rose-100 dark:shadow-none"
-                              : "bg-gray-50 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-rose-500 hover:bg-rose-50/50 hover:border-rose-200"
-                          }`}
-                          title={isFav ? "إزالة من المفضلة" : "إضافة للمفضلة"}
-                          aria-label={isFav ? `إزالة ${product.name} من المفضلة` : `إضافة ${product.name} للمفضلة`}
-                          aria-pressed={isFav}
-                        >
-                          {isFav ? "❤️" : "🤍"}
-                        </button>
-                      </div>
                     </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            {/* Recommendation 4: Sentinel Element with rootMargin 300px for infinite streaming */}
+            <div ref={sentinelRef} className="h-16 w-full flex items-center justify-center my-6">
+              {streamingLoadingMore && (
+                <div className="flex items-center gap-2 text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-5 py-2.5 rounded-2xl border border-blue-200 dark:border-blue-800/40 animate-pulse shadow-xs">
+                  <span className="animate-spin text-base">⏳</span>
+                  <span>جاري جلب المزيد من المنتجات تلقائياً...</span>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </section>
 

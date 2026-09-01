@@ -103,7 +103,7 @@ export function isUUID(str: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 }
 
-function rowToProduct(row: Record<string, unknown>): Product {
+export function rowToProduct(row: Record<string, unknown>): Product {
   const image = (row.image as string) || "";
   const origImage = (row.original_image_url as string) || image || "";
   return {
