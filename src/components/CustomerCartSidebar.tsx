@@ -36,40 +36,40 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
 
   if (!isOpen) return null;
 
-  // Auto-formatted Order Message for Customer Communication
-  const generateOrderMessage = () => {
-    let msg = `📦 *طلب شراء جديد من متجر ${settings.siteName || "أحمد بحري"}*\n`;
+  // Auto-formatted Order Message for Customer Communication (No Base64 or Image URLs)
+  const generateOrderMessage = (invoiceSerial?: string) => {
+    const serial = invoiceSerial || `INV-${Date.now().toString().slice(-6)}`;
+    let msg = `🧾 *فاتورة طلب شراء رسمية - متجر ${settings.siteName || "أحمد بحري"}*\n`;
+    msg += `🔖 *رقم الفاتورة:* ${serial}\n`;
+    msg += `📅 *التاريخ:* ${new Date().toLocaleDateString("ar-IQ")}\n`;
     msg += `-------------------------------------------\n`;
-    msg += `👤 *معلومات الزبون:*\n`;
+    msg += `👤 *بيانات الزبون:*\n`;
     msg += `• الاسم: ${name.trim()}\n`;
-    msg += `• رقم الهاتف: ${phone.trim()}\n`;
+    msg += `• الهاتف: ${phone.trim()}\n`;
     msg += `• المحافظة والعنوان: ${address.trim()}\n`;
-    if (notes.trim()) msg += `• ملاحظات إضافية: ${notes.trim()}\n`;
-    msg += `\n🛍️ *تفاصيل المنتجات المطلوبة:*\n`;
+    if (notes.trim()) msg += `• ملاحظات: ${notes.trim()}\n`;
+    msg += `-------------------------------------------\n`;
+    msg += `📦 *قائمة المنتجات المطلوبة:*\n`;
 
     items.forEach((item, index) => {
       const unitPrice = item.appliedTierPrice ?? item.retailPrice;
       msg += `${index + 1}. *${item.name}*\n`;
-      msg += `   • الكمية: ${item.quantity}\n`;
-      if (item.appliedTierLabel && item.appliedTierLabel !== "مفرد") {
-        msg += `   • فئة السعر: ${item.appliedTierLabel}\n`;
-      }
+      msg += `   • الكمية: ${item.quantity} قطعة\n`;
       msg += `   • السعر الفردي: ${unitPrice.toLocaleString()} د.ع\n`;
-      msg += `   • الإجمالي: ${(unitPrice * item.quantity).toLocaleString()} د.ع\n`;
-      if (item.image) msg += `   • رابط الصورة: ${item.image}\n`;
+      msg += `   • المجموع: ${(unitPrice * item.quantity).toLocaleString()} د.ع\n`;
     });
 
     msg += `-------------------------------------------\n`;
-    msg += `📦 *مجموع المنتجات:* ${total.toLocaleString()} د.ع\n`;
-    msg += `🚚 *تكلفة التوصيل (${deliveryDuration}):* ${deliveryFee.toLocaleString()} د.ع\n`;
-    msg += `💰 *الإجمالي النهائي الكلي:* ${grandTotal.toLocaleString()} د.ع\n`;
+    msg += `💵 مجموع المنتجات: ${total.toLocaleString()} د.ع\n`;
+    msg += `🚚 أجور الشحن (${deliveryDuration}): ${deliveryFee ? deliveryFee.toLocaleString() + ' د.ع' : 'مجاني'}\n`;
+    msg += `💰 *المبلغ الإجمالي الكلي المطلوب: ${grandTotal.toLocaleString()} د.ع*\n`;
     msg += `-------------------------------------------\n`;
-    msg += `شكراً لكم! أتطلع لتأكيد الطلب والشحن.`;
+    msg += `🙏 شكراً لتسوقكم معنا! سيتم الاتصال بكم هاتفياً لتأكيد الشحن فوراً.`;
     return msg;
   };
 
   // Helper to record order in Supabase and trigger Admin Real-Time Notification
-  const recordOrderAndNotify = async (contactMethod: string) => {
+  const recordOrderAndNotify = async (contactMethod: string): Promise<Order | null> => {
     setSubmitting(true);
     try {
       // Automatically upgrade Anonymous guest ("مجهول X") to identified customer in database
@@ -97,10 +97,13 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
         action: "create",
         entity: "طلب زبون",
         entityId: createdOrder.id,
-        details: `طلب من ${name} عبر ${contactMethod} - الهاتف: ${phone} - الإجمالي: ${total.toLocaleString()} د.ع`,
+        details: `طلب من ${name} عبر ${contactMethod} - الهاتف: ${phone} - الإجمالي: ${grandTotal.toLocaleString()} د.ع`,
       });
+
+      return createdOrder;
     } catch (err) {
       console.warn("Order recording background error:", err);
+      return null;
     } finally {
       setSubmitting(false);
     }
@@ -117,13 +120,14 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
 
   // Deep Link Launchers (STRICTLY TOWARDS STORE MANAGER / ADMIN RECIPIENTS)
   const handleWhatsApp = async () => {
-    const msg = generateOrderMessage();
+    const createdOrder = await recordOrderAndNotify("واتساب");
+    const serial = createdOrder?.serialNumber ? `INV-${createdOrder.serialNumber}` : `INV-${Date.now().toString().slice(-6)}`;
+    const msg = generateOrderMessage(serial);
     let target = settings.whatsappLink?.trim() || "";
 
     // Parse Store Admin WhatsApp Target
     if (target.startsWith("http")) {
       const url = `${target}${target.includes("?") ? "&" : "?"}text=${encodeURIComponent(msg)}`;
-      await recordOrderAndNotify("واتساب");
       window.open(url, "_blank");
       setStep("completed");
       clearCart();
@@ -142,14 +146,15 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
     }
 
     const url = `https://api.whatsapp.com/send?phone=${adminPhone}&text=${encodeURIComponent(msg)}`;
-    await recordOrderAndNotify("واتساب");
     window.open(url, "_blank");
     setStep("completed");
     clearCart();
   };
 
   const handleTelegram = async () => {
-    const msg = generateOrderMessage();
+    const createdOrder = await recordOrderAndNotify("تليجرام");
+    const serial = createdOrder?.serialNumber ? `INV-${createdOrder.serialNumber}` : `INV-${Date.now().toString().slice(-6)}`;
+    const msg = generateOrderMessage(serial);
     let target = settings.telegramLink?.trim() || "";
     let url = "";
 
@@ -169,14 +174,15 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
       url = `https://t.me/share/url?url=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "")}&text=${encodeURIComponent(msg)}`;
     }
 
-    await recordOrderAndNotify("تليجرام");
     window.open(url, "_blank");
     setStep("completed");
     clearCart();
   };
 
   const handleMessenger = async () => {
-    const msg = generateOrderMessage();
+    const createdOrder = await recordOrderAndNotify("ماسنجر");
+    const serial = createdOrder?.serialNumber ? `INV-${createdOrder.serialNumber}` : `INV-${Date.now().toString().slice(-6)}`;
+    const msg = generateOrderMessage(serial);
     let target = settings.messengerLink?.trim() || "";
     let url = "";
 
@@ -196,7 +202,6 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
       } catch { /* ignore */ }
     }
 
-    await recordOrderAndNotify("ماسنجر");
     window.open(url, "_blank");
     setStep("completed");
     clearCart();
