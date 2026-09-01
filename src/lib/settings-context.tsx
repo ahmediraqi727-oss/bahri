@@ -370,78 +370,71 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const updateSettings = useCallback(
     async (updates: Partial<SiteSettings>) => {
-      let updatedSettings: SiteSettings | null = null;
-
-      setSettings((prev) => {
-        const merged = { ...prev, ...updates };
-        updatedSettings = merged;
-        if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-        }
-        return merged;
-      });
-
-      if (!updatedSettings) return;
-
-      const currentRowPayload: Record<string, unknown> = {
-        ...settingsToRow(updatedSettings),
-      };
-      let targetId = settingsId;
+      // 1. دمج الإعدادات الجديدة مع الحالة الحالية
+      const mergedSettings: SiteSettings = { ...settings, ...updates };
+      const payload = settingsToRow(mergedSettings);
 
       try {
-        let resData: Record<string, unknown> | null = null;
+        let savedRow: Record<string, unknown> | null = null;
 
-        if (targetId) {
-          const res = await supabase
+        // 2. محاولة التحديث باستخدام المعرف الحالي إن وجد
+        if (settingsId) {
+          const { data, error } = await supabase
             .from("settings")
-            .update(currentRowPayload)
-            .eq("id", targetId)
+            .update(payload)
+            .eq("id", settingsId)
             .select()
             .maybeSingle();
 
-          if (res.error) throw new Error(res.error.message);
-          resData = res.data;
-        } else {
+          if (error) throw new Error(error.message);
+          savedRow = data;
+        }
+
+        // 3. في حال عدم وجود معرف أو عدم تعديل أي صف (Fallback to First Row / Insert)
+        if (!savedRow) {
           const existing = await supabase.from("settings").select("id").limit(1).maybeSingle();
+
           if (existing.data?.id) {
-            targetId = existing.data.id;
-            setSettingsId(existing.data.id);
-            const res = await supabase
+            const { data, error } = await supabase
               .from("settings")
-              .update(currentRowPayload)
+              .update(payload)
               .eq("id", existing.data.id)
               .select()
               .maybeSingle();
 
-            if (res.error) throw new Error(res.error.message);
-            resData = res.data;
+            if (error) throw new Error(error.message);
+            savedRow = data;
           } else {
-            const res = await supabase
+            const { data, error } = await supabase
               .from("settings")
-              .insert(currentRowPayload)
+              .insert(payload)
               .select()
               .maybeSingle();
 
-            if (res.error) throw new Error(res.error.message);
-            resData = res.data;
+            if (error) throw new Error(error.message);
+            savedRow = data;
           }
         }
 
-        // State Refresh with response data (res.data) from database
-        if (resData) {
-          if (resData.id) setSettingsId(String(resData.id));
-          const freshlyParsed = rowToSettings(resData);
-          setSettings(freshlyParsed);
-          if (typeof window !== "undefined") {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(freshlyParsed));
-          }
+        // 4. التحقق الصارم: إذا لم تُرجع قاعدة البيانات بيانات السجل المحدث
+        if (!savedRow) {
+          throw new Error("فشلت عملية الحفظ: لم يتم تعديل أي سجل في قاعدة البيانات. يرجى التأكد من سياسات RLS.");
+        }
+
+        // 5. المزامنة الرسمية فقط بعد تأكيد استجابة Supabase
+        if (savedRow.id) setSettingsId(String(savedRow.id));
+        const freshlyParsed = rowToSettings(savedRow);
+        setSettings(freshlyParsed);
+
+        if (typeof window !== "undefined") {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(freshlyParsed));
         }
       } catch (err) {
-        console.error("Database query exception in updateSettings:", err);
+        console.error("[Settings Database Sync Error]:", err);
         throw err;
       }
     },
-    [settingsId]
+    [settings, settingsId]
   );
 
   const updateRoleTheme = useCallback(
