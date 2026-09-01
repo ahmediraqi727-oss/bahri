@@ -23,6 +23,7 @@ import GuestRetentionModal from "@/components/GuestRetentionModal";
 import ContactSupportModal from "@/components/ContactSupportModal";
 import Footer from "@/components/Footer";
 import { useNotifications } from "@/lib/notifications";
+import { useFavorites } from "@/contexts/FavoritesContext";
 import { supabase } from "@/lib/supabase-client";
 import { useLang } from "@/lib/lang-context";
 import { hasPermission } from "@/lib/permissions";
@@ -105,7 +106,7 @@ export default function HomeClient() {
   // Per-card quick qty state: productId -> qty
   const [cardQty, setCardQty] = useState<Record<string, number>>({});
   // Favorites / Wishlist State
-  const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
+  const { favoriteIds, toggleFavorite } = useFavorites();
   const [favToast, setFavToast] = useState<string | null>(null);
 
   // ─── Barcode / QR Scanner State ──────────────────────────────────────────
@@ -143,20 +144,9 @@ export default function HomeClient() {
     setScannedCode(code);
   };
 
-  // Sync Wishlist / Favorites state strictly scoped by active user/guest identity
-  useEffect(() => {
-    setFavoriteIds(getFavoriteProductIds(user));
-    const handleUpdated = (e: CustomEvent<string[]>) => {
-      setFavoriteIds(e.detail || []);
-    };
-    window.addEventListener("favorites_updated" as never, handleUpdated);
-    return () => window.removeEventListener("favorites_updated" as never, handleUpdated);
-  }, [user]);
-
-  const handleToggleFavorite = (productId: string, productName: string) => {
-    const updated = toggleFavoriteProductId(productId, user);
+  const handleToggleFavorite = async (productId: string, productName: string) => {
+    const updated = await toggleFavorite(productId);
     const isFavNow = updated.includes(productId);
-    setFavoriteIds(updated);
     setFavToast(isFavNow ? `❤️ تمت إضافة "${productName}" إلى المفضلة` : `💔 تم إزالة "${productName}" من المفضلة`);
     setTimeout(() => setFavToast(null), 2500);
   };

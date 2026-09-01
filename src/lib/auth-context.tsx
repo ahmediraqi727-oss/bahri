@@ -8,6 +8,9 @@ import { getCookie, setCookie, eraseCookie } from "./visitor-tracker";
 import { updateGuestIdentity } from "./visitor-tracker";
 import { clearGuestSessionId } from "./notifications";
 
+import { syncGuestFavoritesToUser } from "@/contexts/FavoritesContext";
+import { syncGuestPurchasesToUser } from "@/contexts/PurchasesContext";
+
 interface AuthUser {
   id: string;
   email: string;
@@ -31,6 +34,13 @@ interface AuthContextType {
 
 export async function upgradeGuestDataToUser(userId: string): Promise<void> {
   if (typeof window === "undefined" || !userId) return;
+
+  // 1. Handover local favorites & purchases to user database record
+  await Promise.allSettled([
+    syncGuestFavoritesToUser(userId),
+    syncGuestPurchasesToUser(userId),
+  ]);
+
   const guestSessionId =
     localStorage.getItem("ahmed_bahri_guest_serial") ||
     localStorage.getItem("ahmed_bahri_guest_session") ||

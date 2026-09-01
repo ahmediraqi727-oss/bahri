@@ -107,17 +107,22 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   const fetchNotifications = useCallback(async () => {
     try {
-      const identity = getActiveIdentity(user);
-      let query = supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(50);
+      const isRegistered = Boolean(
+        user?.id && !user?.isGuest && !user?.id.startsWith("guest-")
+      );
 
-      // 🔒 Scoped query for active identity
-      if (identity.isRegistered) {
-        query = query.or(`user_id.eq.${identity.id},user_id.is.null`);
+      let query = supabase.from("notifications").select("*");
+
+      if (isRegistered) {
+        query = query.or(`user_id.eq.${user!.id},is_broadcast.eq.true`);
       } else {
-        query = query.or(`session_id.eq.${identity.id},serial_id.eq.${identity.id},user_id.is.null`);
+        query = query.eq("is_broadcast", true);
       }
 
-      const { data, error } = await query;
+      const { data, error } = await query
+        .order("created_at", { ascending: false })
+        .limit(50);
+
       if (error) throw error;
 
       if (data) {
@@ -135,37 +140,12 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           productId: row.product_id || undefined,
         }));
 
-        // 🔒 Strict isolation filter
         if (!isAdmin) {
           const safeFiltered = parsed.filter((n) => {
-            const isPrivateType = [
-              "low_stock",
-              "out_of_stock",
-              "admin_log",
-              "system",
-              "contact",
-              "order",
-              "new_order",
-              "whatsapp_order",
-              "support_reply",
-              "private_chat",
-            ].includes(n.type);
-
-            const hasOrderKeywords = n.title.includes("طلب") || n.message.includes("طلب");
-
-            if (isPrivateType || hasOrderKeywords) {
-              if (identity.isRegistered) {
-                return n.user_id === identity.id;
-              } else {
-                return (
-                  n.session_id === identity.id ||
-                  n.serial_id === identity.id ||
-                  n.user_id === identity.id
-                );
-              }
+            if (isRegistered) {
+              return n.user_id === user!.id || rowIsBroadcast(n);
             }
-
-            return true;
+            return rowIsBroadcast(n);
           });
           setNotifications(safeFiltered);
         } else {
@@ -182,7 +162,9 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     fetchNotifications();
 
-    const identity = getActiveIdentity(user);
+    const isRegistered = Boolean(
+      user?.id && !user?.isGuest && !user?.id.startsWith("guest-")
+    );
 
     const channel = supabase
       .channel("notifications-realtime-channel")
@@ -205,32 +187,13 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
           };
 
           const isAdmin = user && (user.role === "manager" || user.role === "admin");
-          const isPrivateType = [
-            "low_stock",
-            "out_of_stock",
-            "admin_log",
-            "system",
-            "contact",
-            "order",
-            "new_order",
-            "whatsapp_order",
-            "support_reply",
-            "private_chat",
-          ].includes(newNotif.type);
-          const hasOrderKeywords = newNotif.title.includes("طلب") || newNotif.message.includes("طلب");
+          const isBroadcast = newRow.is_broadcast === true || newRow.is_broadcast === "true";
 
-          // Strict realtime privacy filter
-          if (!isAdmin && (isPrivateType || hasOrderKeywords)) {
-            if (identity.isRegistered) {
-              if (newNotif.user_id !== identity.id) return;
+          if (!isAdmin) {
+            if (isRegistered) {
+              if (newNotif.user_id !== user!.id && !isBroadcast) return;
             } else {
-              if (
-                newNotif.session_id !== identity.id &&
-                newNotif.serial_id !== identity.id &&
-                newNotif.user_id !== identity.id
-              ) {
-                return;
-              }
+              if (!isBroadcast) return;
             }
           }
 
@@ -247,6 +210,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       supabase.removeChannel(channel);
     };
   }, [fetchNotifications, isMuted, user?.id, user?.role, user?.isGuest]);
+
+  function rowIsBroadcast(n: any): boolean {
+    return n.is_broadcast === true || n.is_broadcast === "true" || n.user_id === null;
+  }
 
   const addNotification = useCallback(
     async (n: Omit<Notification, "id" | "timestamp" | "read">) => {
