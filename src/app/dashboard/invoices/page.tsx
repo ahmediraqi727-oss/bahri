@@ -7,6 +7,7 @@ import { useActivityLog } from "@/lib/activity-log";
 import { supabase } from "@/lib/supabase-client";
 import { Order, CartItem, formatInvoiceSerial } from "@/lib/order-types";
 import PermissionGate from "@/components/PermissionGate";
+import PhoneQuickLoginModal from "@/components/PhoneQuickLoginModal";
 import { useAuth } from "@/lib/auth-context";
 import jsPDF from "jspdf";
 import DataTableWrapper from "@/components/DataTableWrapper";
@@ -57,11 +58,54 @@ export default function InvoicesPage() {
   const [savingOrder, setSavingOrder] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Load Invoices / Orders from Supabase
+  // Quick Phone Login Modal State
+  const [quickLoginOpen, setQuickLoginOpen] = useState(false);
+
+  const isManager = settings.currentRole === "manager" || settings.currentRole === "admin" || user?.role === "manager" || user?.role === "admin";
+
+  // Load Invoices / Orders from Supabase (Strict Scoping for Customers)
   const loadInvoices = useCallback(async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
+      const isManagerRole = settings.currentRole === "manager" || settings.currentRole === "admin" || user?.role === "manager" || user?.role === "admin";
+
+      let query = supabase.from("orders").select("*");
+
+      if (!isManagerRole) {
+        let customerPhone = "";
+        if (typeof window !== "undefined") {
+          customerPhone = localStorage.getItem("customer_profile_phone") || "";
+        }
+        const userPhone = (user as unknown as { phone?: string })?.phone;
+        if (!customerPhone && userPhone) {
+          customerPhone = userPhone;
+        }
+
+        let localOrderIds: string[] = [];
+        if (typeof window !== "undefined") {
+          try {
+            localOrderIds = JSON.parse(localStorage.getItem("my_local_orders") || "[]");
+          } catch {}
+        }
+
+        if (!customerPhone && localOrderIds.length === 0) {
+          setOrders([]);
+          setLoading(false);
+          return;
+        }
+
+        if (customerPhone && localOrderIds.length > 0) {
+          const idsFormatted = localOrderIds.map((id) => `"${id}"`).join(",");
+          query = query.or(`customer_phone.eq.${customerPhone},id.in.(${idsFormatted})`);
+        } else if (customerPhone) {
+          query = query.eq("customer_phone", customerPhone);
+        } else {
+          query = query.in("id", localOrderIds);
+        }
+      }
+
+      const { data, error } = await query.order("created_at", { ascending: false });
+
       if (error) {
         console.error("Fetch orders error:", error.message);
         return;
@@ -70,6 +114,7 @@ export default function InvoicesPage() {
         const mapped: Order[] = data.map((r) => ({
           id: r.id,
           serialNumber: r.serial_number ? Number(r.serial_number) : undefined,
+          invoiceSerial: r.invoice_serial || undefined,
           customerName: r.customer_name || "زبون",
           customerPhone: r.customer_phone || "",
           customerAddress: r.customer_address || "",
@@ -82,13 +127,15 @@ export default function InvoicesPage() {
           createdAt: r.created_at || new Date().toISOString(),
         }));
         setOrders(mapped);
+      } else {
+        setOrders([]);
       }
     } catch (err) {
       console.error("Load orders exception:", err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [settings.currentRole, user?.role, (user as unknown as { phone?: string })?.phone]);
 
   useEffect(() => {
     loadInvoices();
@@ -553,57 +600,72 @@ export default function InvoicesPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
               <span>🧾</span>
-              <span>نظام الفواتير والأرشيف التسلسلي الرسمـي</span>
+              <span>{isManager ? "نظام الفواتير والأرشيف التسلسلي الرسمـي" : "سجل فواتيري وطلباتي"}</span>
             </h1>
             <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm">
-              محرك بحث متطور ومؤرشف للفواتير بالرقم التسلسلي والتاريخ والهاتف والطباعة بالهوية الرسمية
+              {isManager
+                ? "محرك بحث متطور ومؤرشف للفواتير بالرقم التسلسلي والتاريخ والهاتف والطباعة بالهوية الرسمية"
+                : "عرض ومتابعة حالة كافة الطلبات والفواتير المسجلة برقم هاتفك"}
             </p>
           </div>
 
-          <button
-            onClick={loadInvoices}
-            className="px-4 py-2.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl font-bold text-xs hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors flex items-center gap-2 w-fit border border-blue-200 dark:border-blue-800 shadow-sm"
-          >
-            <span>🔄 تحديث الأرشيف</span>
-          </button>
-        </div>
-
-        {/* Analytics Stats Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-200 dark:border-gray-800 shadow-sm">
-            <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-              <span>إجمالي الفواتير المؤرشفة</span>
-              <span className="text-xl">📄</span>
-            </div>
-            <p className="text-2xl font-extrabold text-gray-900 dark:text-white">{stats.totalCount}</p>
-          </div>
-
-          <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-blue-200 dark:border-blue-800/60 bg-blue-50/20 shadow-sm">
-            <div className="flex items-center justify-between text-xs text-blue-600 dark:text-blue-400 mb-1">
-              <span>مجموع مبالغ الفواتير</span>
-              <span className="text-xl">💰</span>
-            </div>
-            <p className="text-xl font-extrabold text-blue-600 dark:text-blue-400 truncate">
-              {stats.totalRevenue.toLocaleString()} د.ع
-            </p>
-          </div>
-
-          <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/20 shadow-sm">
-            <div className="flex items-center justify-between text-xs text-emerald-600 dark:text-emerald-400 mb-1">
-              <span>فواتير مكتملة / مفرغة</span>
-              <span className="text-xl">✅</span>
-            </div>
-            <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{stats.completedCount}</p>
-          </div>
-
-          <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-amber-200 dark:border-amber-800/60 bg-amber-50/20 shadow-sm">
-            <div className="flex items-center justify-between text-xs text-amber-600 dark:text-amber-400 mb-1">
-              <span>فواتير قيد الانتظار</span>
-              <span className="text-xl">⏳</span>
-            </div>
-            <p className="text-2xl font-extrabold text-amber-600 dark:text-amber-400">{stats.pendingCount}</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            {!isManager && (
+              <button
+                onClick={() => setQuickLoginOpen(true)}
+                className="px-4 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-xl font-bold text-xs shadow-md hover:from-violet-700 hover:to-indigo-700 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>📱</span>
+                <span>دخول سريع برقم الهاتف</span>
+              </button>
+            )}
+            <button
+              onClick={loadInvoices}
+              className="px-4 py-2.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl font-bold text-xs hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors flex items-center gap-2 border border-blue-200 dark:border-blue-800 shadow-sm cursor-pointer"
+            >
+              <span>🔄 تحديث الأرشيف</span>
+            </button>
           </div>
         </div>
+
+        {/* Analytics Stats Grid (Shown exclusively to Managers/Admins) */}
+        {isManager && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-gray-200 dark:border-gray-800 shadow-sm">
+              <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                <span>إجمالي الفواتير المؤرشفة</span>
+                <span className="text-xl">📄</span>
+              </div>
+              <p className="text-2xl font-extrabold text-gray-900 dark:text-white">{stats.totalCount}</p>
+            </div>
+
+            <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-blue-200 dark:border-blue-800/60 bg-blue-50/20 shadow-sm">
+              <div className="flex items-center justify-between text-xs text-blue-600 dark:text-blue-400 mb-1">
+                <span>مجموع مبالغ الفواتير</span>
+                <span className="text-xl">💰</span>
+              </div>
+              <p className="text-xl font-extrabold text-blue-600 dark:text-blue-400 truncate">
+                {stats.totalRevenue.toLocaleString()} د.ع
+              </p>
+            </div>
+
+            <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/20 shadow-sm">
+              <div className="flex items-center justify-between text-xs text-emerald-600 dark:text-emerald-400 mb-1">
+                <span>فواتير مكتملة / مفرغة</span>
+                <span className="text-xl">✅</span>
+              </div>
+              <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{stats.completedCount}</p>
+            </div>
+
+            <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-amber-200 dark:border-amber-800/60 bg-amber-50/20 shadow-sm">
+              <div className="flex items-center justify-between text-xs text-amber-600 dark:text-amber-400 mb-1">
+                <span>فواتير قيد الانتظار</span>
+                <span className="text-xl">⏳</span>
+              </div>
+              <p className="text-2xl font-extrabold text-amber-600 dark:text-amber-400">{stats.pendingCount}</p>
+            </div>
+          </div>
+        )}
 
         {/* Advanced Search Engine & Filter Bar */}
         <div className="bg-white dark:bg-gray-900 rounded-2xl p-5 border border-gray-200 dark:border-gray-800 shadow-sm space-y-4">
@@ -1159,6 +1221,12 @@ export default function InvoicesPage() {
             </div>
           </div>
         )}
+
+        <PhoneQuickLoginModal
+          isOpen={quickLoginOpen}
+          onClose={() => setQuickLoginOpen(false)}
+          onSuccess={() => loadInvoices()}
+        />
       </div>
     </PermissionGate>
   );

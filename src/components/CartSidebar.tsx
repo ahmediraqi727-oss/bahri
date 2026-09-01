@@ -48,6 +48,20 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
     }
   }, [settings.defaultDeliveryFee, settings.defaultDeliveryDuration]);
 
+  // Auto-Fill Profile on Load
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const savedProfile = localStorage.getItem("customer_profile");
+    if (savedProfile) {
+      try {
+        const { name: sName, phone: sPhone, address: sAddress } = JSON.parse(savedProfile);
+        if (sName && !name) setName(sName);
+        if (sPhone && !phone) setPhone(sPhone);
+        if (sAddress && !address) setAddress(sAddress);
+      } catch {}
+    }
+  }, []);
+
   const grandTotal = total + (Number(cartDeliveryFee) || 0);
 
   const [lastCreatedOrder, setLastCreatedOrder] = useState<Order | null>(null);
@@ -70,6 +84,16 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
       });
 
       setLastCreatedOrder(createdOrder);
+
+      if (typeof window !== "undefined" && createdOrder?.id) {
+        localStorage.setItem("customer_profile", JSON.stringify({ name: name.trim(), phone: phone.trim(), address: address.trim() }));
+        localStorage.setItem("customer_profile_phone", phone.trim());
+        const localOrders: string[] = JSON.parse(localStorage.getItem("my_local_orders") || "[]");
+        if (!localOrders.includes(createdOrder.id)) {
+          localOrders.push(createdOrder.id);
+          localStorage.setItem("my_local_orders", JSON.stringify(localOrders));
+        }
+      }
 
       const saleItems = items.map((item) => {
         const product = products.find((p) => p.id === item.productId);
