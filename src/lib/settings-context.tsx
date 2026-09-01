@@ -21,8 +21,28 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
   const rt = (row.role_themes as Record<string, Record<string, string>>) || {};
   const wm = (row.watermark_config as Record<string, any>) || {};
 
+  const storeNameVal = (row.store_name as string) || (row.site_name as string) || DEFAULT_SETTINGS.siteName;
+  const storeAddressVal = (row.store_address as string) || (row.address as string) || DEFAULT_SETTINGS.storeAddress;
+  const mapUrlVal = (row.google_maps_url as string) || (row.store_map_link as string) || (row.map_url as string) || DEFAULT_SETTINGS.storeMapLink;
+  const phonePrimaryVal = (row.phone_primary as string) || (row.phone_link as string) || (row.direct_phone as string) || "07800000000";
+  const phoneSecondaryVal = (row.phone_secondary as string) || (row.phone_link2 as string) || "";
+  const whatsappVal = (row.whatsapp as string) || (row.whatsapp_link as string) || (row.whatsapp_number as string) || "";
+  const facebookVal = (row.facebook as string) || (row.facebook_link as string) || "";
+  const instagramVal = (row.instagram as string) || (row.instagram_link as string) || "";
+  const tiktokVal = (row.tiktok as string) || (row.tiktok_link as string) || "";
+  const androidAppUrlVal = (row.android_app_url as string) || "";
+  const iosAppUrlVal = (row.ios_app_url as string) || "";
+  const scannerPermissionsVal = (row.scanner_permissions as any) || (row.scannerPermissions as any) || {
+    camera: true,
+    imageUpload: true,
+    manualEntry: true,
+    hardwareScanner: true,
+    adminGenerate: true,
+  };
+
   return {
-    siteName: (row.site_name as string) || DEFAULT_SETTINGS.siteName,
+    siteName: storeNameVal,
+    storeName: storeNameVal,
     logo: (row.logo as string) || "",
     heroImage: (row.hero_image as string) || (row.hero_image_url as string) || "",
     footerImage: (row.footer_image as string) || (row.footer_image_url as string) || "",
@@ -33,27 +53,37 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
     accentColor: (row.accent_color as string) || "#f59e0b",
     darkMode: Boolean(row.dark_mode) || false,
     eyeProtection: Boolean(row.eye_protection) || false,
-    whatsappLink: (row.whatsapp as string) || (row.whatsapp_link as string) || (row.whatsapp_number as string) || "",
+
+    // WhatsApp, Phone, Contact
+    whatsapp: whatsappVal,
+    whatsappLink: whatsappVal,
     telegramLink: (row.telegram_link as string) || (row.telegram_url as string) || "",
     messengerLink: (row.messenger_link as string) || (row.messenger_url as string) || "",
-    phoneLink: (row.phone_primary as string) || (row.phone_link as string) || (row.direct_phone as string) || "07800000000",
-    phoneLink2: (row.phone_secondary as string) || (row.phone_link2 as string) || "",
+    phonePrimary: phonePrimaryVal,
+    phoneLink: phonePrimaryVal,
+    phoneSecondary: phoneSecondaryVal,
+    phoneLink2: phoneSecondaryVal,
 
     // Social Media Links
-    facebookLink: (row.facebook as string) || (row.facebook_link as string) || "",
-    instagramLink: (row.instagram as string) || (row.instagram_link as string) || "",
-    tiktokLink: (row.tiktok as string) || (row.tiktok_link as string) || "",
+    facebook: facebookVal,
+    facebookLink: facebookVal,
+    instagram: instagramVal,
+    instagramLink: instagramVal,
+    tiktok: tiktokVal,
+    tiktokLink: tiktokVal,
     youtubeLink: (row.youtube_link as string) || "",
 
     // Store Location & Map
-    storeAddress: (row.address as string) || (row.store_address as string) || DEFAULT_SETTINGS.storeAddress,
-    storeMapLink: (row.map_url as string) || (row.store_map_link as string) || DEFAULT_SETTINGS.storeMapLink,
+    storeAddress: storeAddressVal,
+    googleMapsUrl: mapUrlVal,
+    storeMapLink: mapUrlVal,
     storeMapEmbedUrl: (row.store_map_embed_url as string) || "",
 
-    // App Download Links
+    // App Download Links & Scanner Permissions
     appDownloadUrl: (row.app_download_url as string) || "",
-    androidAppUrl: (row.android_app_url as string) || "",
-    iosAppUrl: (row.ios_app_url as string) || "",
+    androidAppUrl: androidAppUrlVal,
+    iosAppUrl: iosAppUrlVal,
+    scannerPermissions: scannerPermissionsVal,
 
     // Custom Themes & Active Theme Preset
     customThemes: (row.custom_themes as any) || [],
@@ -148,47 +178,72 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
 }
 
 function settingsToRow(settings: SiteSettings): Record<string, unknown> {
+  const storeNameVal = settings.storeName || settings.siteName || DEFAULT_SETTINGS.siteName;
+  const storeAddressVal = settings.storeAddress || "";
+  const mapUrlVal = settings.googleMapsUrl || settings.storeMapLink || "";
+  const phonePrimaryVal = settings.phonePrimary || settings.phoneLink || "";
+  const phoneSecondaryVal = settings.phoneSecondary || settings.phoneLink2 || "";
+  const whatsappVal = settings.whatsapp || settings.whatsappLink || "";
+  const facebookVal = settings.facebook || settings.facebookLink || "";
+  const instagramVal = settings.instagram || settings.instagramLink || "";
+  const tiktokVal = settings.tiktok || settings.tiktokLink || "";
+
   return {
-    site_name: settings.siteName,
-    logo: settings.logo,
-    hero_image: settings.heroImage,
-    hero_image_url: settings.heroImage,
-    footer_image: settings.footerImage,
-    footer_image_url: settings.footerImage,
-    font_family: settings.fontFamily,
-    font_size: settings.fontSize,
-    primary_color: settings.primaryColor,
-    secondary_color: settings.secondaryColor,
-    accent_color: settings.accentColor,
-    dark_mode: settings.darkMode,
-    eye_protection: settings.eyeProtection,
-    whatsapp: settings.whatsappLink || "",
-    whatsapp_link: settings.whatsappLink || "",
-    whatsapp_number: settings.whatsappLink || "",
+    site_name: storeNameVal,
+    store_name: storeNameVal,
+    logo: settings.logo || "",
+    hero_image: settings.heroImage || "",
+    hero_image_url: settings.heroImage || "",
+    footer_image: settings.footerImage || "",
+    footer_image_url: settings.footerImage || "",
+    font_family: settings.fontFamily || "Cairo",
+    font_size: settings.fontSize || 16,
+    primary_color: settings.primaryColor || "#2563eb",
+    secondary_color: settings.secondaryColor || "#7c3aed",
+    accent_color: settings.accentColor || "#f59e0b",
+    dark_mode: Boolean(settings.darkMode),
+    eye_protection: Boolean(settings.eyeProtection),
+
+    whatsapp: whatsappVal,
+    whatsapp_link: whatsappVal,
+    whatsapp_number: whatsappVal,
     telegram_link: settings.telegramLink || "",
     telegram_url: settings.telegramLink || "",
     messenger_link: settings.messengerLink || "",
     messenger_url: settings.messengerLink || "",
-    phone_primary: settings.phoneLink || "",
-    phone_link: settings.phoneLink || "",
-    direct_phone: settings.phoneLink || "",
-    phone_secondary: settings.phoneLink2 || "",
-    phone_link2: settings.phoneLink2 || "",
-    facebook: settings.facebookLink || "",
-    facebook_link: settings.facebookLink || "",
-    instagram: settings.instagramLink || "",
-    instagram_link: settings.instagramLink || "",
-    tiktok: settings.tiktokLink || "",
-    tiktok_link: settings.tiktokLink || "",
+
+    phone_primary: phonePrimaryVal,
+    phone_link: phonePrimaryVal,
+    direct_phone: phonePrimaryVal,
+    phone_secondary: phoneSecondaryVal,
+    phone_link2: phoneSecondaryVal,
+
+    facebook: facebookVal,
+    facebook_link: facebookVal,
+    instagram: instagramVal,
+    instagram_link: instagramVal,
+    tiktok: tiktokVal,
+    tiktok_link: tiktokVal,
     youtube_link: settings.youtubeLink || "",
-    address: settings.storeAddress || "",
-    store_address: settings.storeAddress || "",
-    map_url: settings.storeMapLink || "",
-    store_map_link: settings.storeMapLink || "",
+
+    address: storeAddressVal,
+    store_address: storeAddressVal,
+    map_url: mapUrlVal,
+    store_map_link: mapUrlVal,
+    google_maps_url: mapUrlVal,
     store_map_embed_url: settings.storeMapEmbedUrl || "",
+
     app_download_url: settings.appDownloadUrl || "",
     android_app_url: settings.androidAppUrl || "",
     ios_app_url: settings.iosAppUrl || "",
+    scanner_permissions: settings.scannerPermissions || {
+      camera: true,
+      imageUpload: true,
+      manualEntry: true,
+      hardwareScanner: true,
+      adminGenerate: true,
+    },
+
     custom_themes: settings.customThemes || [],
     active_theme_preset: settings.activeThemePreset || "classic-blue",
     home_icon: settings.homeIcon || "",
@@ -206,6 +261,7 @@ function settingsToRow(settings: SiteSettings): Record<string, unknown> {
     default_delivery_duration: settings.defaultDeliveryDuration || "2 - 3 أيام عمل",
     watermark_config: settings.watermarkConfig,
     role_themes: settings.roleThemes,
+
     // Pricing Tiers Engine
     pricing_tiers: settings.pricingTiers || DEFAULT_PRICING_CONFIG,
     import_markup_pct: settings.importMarkupPct ?? 10,
@@ -322,89 +378,60 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       const currentRowPayload: Record<string, unknown> = {
         ...settingsToRow(updatedSettings),
       };
-      let attempts = 0;
-      const maxAttempts = 15;
       let targetId = settingsId;
 
-      while (attempts < maxAttempts) {
-        attempts++;
-        try {
-          // 1. التحديث في حال وجود معرف السجل
-          if (targetId) {
+      try {
+        let resData: Record<string, unknown> | null = null;
+
+        if (targetId) {
+          const res = await supabase
+            .from("settings")
+            .update(currentRowPayload)
+            .eq("id", targetId)
+            .select()
+            .maybeSingle();
+
+          if (res.error) throw new Error(res.error.message);
+          resData = res.data;
+        } else {
+          const existing = await supabase.from("settings").select("id").limit(1).maybeSingle();
+          if (existing.data?.id) {
+            targetId = existing.data.id;
+            setSettingsId(existing.data.id);
             const res = await supabase
               .from("settings")
               .update(currentRowPayload)
-              .eq("id", targetId)
+              .eq("id", existing.data.id)
               .select()
               .maybeSingle();
 
-            if (!res.error) {
-              if (res.data?.id) setSettingsId(res.data.id);
-              return res.data;
-            }
-
-            // فحص وتحليل الخطأ لاستخراج اسم العمود المفقود
-            const errMsg = res.error.message || "";
-            const missingColMatch =
-              errMsg.match(/Could not find the '([^']+)' column/i) ||
-              errMsg.match(/column ["']?([^"'\s]+)["']? of relation/i) ||
-              errMsg.match(/column ["']?([^"'\s]+)["']? does not exist/i);
-
-            if (missingColMatch && missingColMatch[1]) {
-              const colToStrip = missingColMatch[1];
-              console.warn(
-                `[Settings Schema Cache Sync]: Column '${colToStrip}' not found in DB schema cache. Stripping key and retrying (${attempts}/${maxAttempts})...`
-              );
-              delete currentRowPayload[colToStrip];
-              continue; // إعادة المحاولة بعد إزالة الحقل المسبب للخطأ
-            }
-
-            throw new Error(res.error.message);
+            if (res.error) throw new Error(res.error.message);
+            resData = res.data;
           } else {
-            // 2. حالة الإدراج كأول سجل (Fallback Insert / Upsert)
-            const existing = await supabase.from("settings").select("id").limit(1).maybeSingle();
-            if (existing.data?.id) {
-              targetId = existing.data.id;
-              setSettingsId(existing.data.id);
-              continue;
-            }
-
             const res = await supabase
               .from("settings")
               .insert(currentRowPayload)
               .select()
               .maybeSingle();
 
-            if (!res.error) {
-              if (res.data?.id) setSettingsId(res.data.id);
-              return res.data;
-            }
-
-            const errMsg = res.error.message || "";
-            const missingColMatch =
-              errMsg.match(/Could not find the '([^']+)' column/i) ||
-              errMsg.match(/column ["']?([^"'\s]+)["']? of relation/i) ||
-              errMsg.match(/column ["']?([^"'\s]+)["']? does not exist/i);
-
-            if (missingColMatch && missingColMatch[1]) {
-              const colToStrip = missingColMatch[1];
-              console.warn(
-                `[Settings Schema Cache Sync]: Column '${colToStrip}' not found in DB schema cache. Stripping key and retrying (${attempts}/${maxAttempts})...`
-              );
-              delete currentRowPayload[colToStrip];
-              continue;
-            }
-
-            throw new Error(res.error.message);
+            if (res.error) throw new Error(res.error.message);
+            resData = res.data;
           }
-        } catch (err) {
-          console.error("Database query exception in updateSettings:", err);
-          throw err;
         }
-      }
 
-      // رمي خطأ صريح عند استنفاد كافة المحاولات دون نجاح
-      throw new Error("Failed to save settings: Exceeded maximum retry attempts due to multiple missing schema columns.");
+        // State Refresh with response data (res.data) from database
+        if (resData) {
+          if (resData.id) setSettingsId(String(resData.id));
+          const freshlyParsed = rowToSettings(resData);
+          setSettings(freshlyParsed);
+          if (typeof window !== "undefined") {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(freshlyParsed));
+          }
+        }
+      } catch (err) {
+        console.error("Database query exception in updateSettings:", err);
+        throw err;
+      }
     },
     [settingsId]
   );

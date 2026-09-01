@@ -626,8 +626,8 @@ export default function SettingsPage() {
           </label>
           <input
             type="text"
-            value={formData.siteName}
-            onChange={(e) => handleChange({ siteName: e.target.value })}
+            value={formData.storeName || formData.siteName || ""}
+            onChange={(e) => handleChange({ siteName: e.target.value, storeName: e.target.value })}
             className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium"
           />
         </div>
@@ -686,8 +686,8 @@ export default function SettingsPage() {
             <input
               type="text"
               placeholder="https://maps.google.com/..."
-              value={formData.storeMapLink || ""}
-              onChange={(e) => handleChange({ storeMapLink: e.target.value })}
+              value={formData.googleMapsUrl || formData.storeMapLink || ""}
+              onChange={(e) => handleChange({ googleMapsUrl: e.target.value, storeMapLink: e.target.value })}
               className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-xs outline-none"
             />
           </div>
@@ -711,8 +711,8 @@ export default function SettingsPage() {
               <input
                 type="text"
                 placeholder="07800000000"
-                value={formData.whatsappLink || ""}
-                onChange={(e) => handleChange({ whatsappLink: e.target.value })}
+                value={formData.whatsapp || formData.whatsappLink || ""}
+                onChange={(e) => handleChange({ whatsapp: e.target.value, whatsappLink: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
               />
             </div>
@@ -722,8 +722,8 @@ export default function SettingsPage() {
               <input
                 type="text"
                 placeholder="07800000000"
-                value={formData.phoneLink || ""}
-                onChange={(e) => handleChange({ phoneLink: e.target.value })}
+                value={formData.phonePrimary || formData.phoneLink || ""}
+                onChange={(e) => handleChange({ phonePrimary: e.target.value, phoneLink: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
               />
             </div>
@@ -733,8 +733,8 @@ export default function SettingsPage() {
               <input
                 type="text"
                 placeholder="07700000000"
-                value={formData.phoneLink2 || ""}
-                onChange={(e) => handleChange({ phoneLink2: e.target.value })}
+                value={formData.phoneSecondary || formData.phoneLink2 || ""}
+                onChange={(e) => handleChange({ phoneSecondary: e.target.value, phoneLink2: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
               />
             </div>
@@ -744,8 +744,8 @@ export default function SettingsPage() {
               <input
                 type="text"
                 placeholder="https://facebook.com/..."
-                value={formData.facebookLink || ""}
-                onChange={(e) => handleChange({ facebookLink: e.target.value })}
+                value={formData.facebook || formData.facebookLink || ""}
+                onChange={(e) => handleChange({ facebook: e.target.value, facebookLink: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
               />
             </div>
@@ -755,8 +755,8 @@ export default function SettingsPage() {
               <input
                 type="text"
                 placeholder="https://instagram.com/..."
-                value={formData.instagramLink || ""}
-                onChange={(e) => handleChange({ instagramLink: e.target.value })}
+                value={formData.instagram || formData.instagramLink || ""}
+                onChange={(e) => handleChange({ instagram: e.target.value, instagramLink: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
               />
             </div>
@@ -766,8 +766,8 @@ export default function SettingsPage() {
               <input
                 type="text"
                 placeholder="https://tiktok.com/@..."
-                value={formData.tiktokLink || ""}
-                onChange={(e) => handleChange({ tiktokLink: e.target.value })}
+                value={formData.tiktok || formData.tiktokLink || ""}
+                onChange={(e) => handleChange({ tiktok: e.target.value, tiktokLink: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
               />
             </div>
@@ -818,6 +818,47 @@ export default function SettingsPage() {
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
             />
           </div>
+        </div>
+      </section>
+
+      {/* === Section 5.8: Scanner Permissions === */}
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-4 shadow-sm">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xl">📷</span>
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">أذونات الماسح الضوئي (Scanner Permissions)</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">التحكم في صلاحيات تفعيل وتجهيز الماسح الضوئي للكاميرا، الملفات، والإدخال اليدوي</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { key: "camera", label: "ماسح الكاميرا المباشر", icon: "📷" },
+            { key: "imageUpload", label: "رفع صورة باركود", icon: "🖼️" },
+            { key: "manualEntry", label: "إدخال يدوي للرمز", icon: "⌨️" },
+            { key: "hardwareScanner", label: "ماسح الأجهزة (USB/Bluetooth)", icon: "🔌" },
+          ].map((item) => {
+            const currentPerms = formData.scannerPermissions || { camera: true, imageUpload: true, manualEntry: true, hardwareScanner: true, adminGenerate: true };
+            const isActive = Boolean((currentPerms as any)[item.key]);
+            return (
+              <div key={item.key} className="flex items-center justify-between p-3.5 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                <span className="text-xs font-bold text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
+                  <span>{item.icon}</span>
+                  <span>{item.label}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const updated = { ...currentPerms, [item.key]: !isActive };
+                    handleChange({ scannerPermissions: updated });
+                  }}
+                  className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer ${isActive ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-600"}`}
+                >
+                  <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${isActive ? "right-0.5" : "right-5.5"}`} />
+                </button>
+              </div>
+            );
+          })}
         </div>
       </section>
 

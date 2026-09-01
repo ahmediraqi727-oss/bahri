@@ -98,6 +98,7 @@ export const PRESET_THEMES: ThemePreset[] = [
 
 export interface SiteSettings {
   siteName: string;
+  storeName?: string;
   logo: string;
   heroImage: string;
   footerImage: string;
@@ -109,23 +110,38 @@ export interface SiteSettings {
   darkMode: boolean;
   currentRole: UserRole;
   whatsappLink?: string;
+  whatsapp?: string;
   telegramLink?: string;
   messengerLink?: string;
   phoneLink?: string;
+  phonePrimary?: string;
   phoneLink2?: string;
+  phoneSecondary?: string;
   // Social Media Channels
   facebookLink?: string;
+  facebook?: string;
   instagramLink?: string;
+  instagram?: string;
   tiktokLink?: string;
+  tiktok?: string;
   youtubeLink?: string;
   // Location & Map Info
   storeAddress?: string;
   storeMapLink?: string;
+  googleMapsUrl?: string;
   storeMapEmbedUrl?: string;
   // App Download Links
   appDownloadUrl?: string;
   androidAppUrl?: string;
   iosAppUrl?: string;
+  // Scanner Permissions
+  scannerPermissions?: {
+    camera: boolean;
+    imageUpload: boolean;
+    manualEntry: boolean;
+    hardwareScanner: boolean;
+    adminGenerate?: boolean;
+  };
   // Custom Themes & Active Theme Preset
   customThemes?: ThemePreset[];
   activeThemePreset?: string;
@@ -186,6 +202,7 @@ export interface HomeMenuVisibilitySettings {
 
 export const DEFAULT_SETTINGS: SiteSettings = {
   siteName: "موقع أحمد بحري",
+  storeName: "متجر أحمد بحري",
   logo: "",
   heroImage: "",
   footerImage: "",
@@ -206,20 +223,34 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   },
   currentRole: "manager",
   whatsappLink: "",
+  whatsapp: "",
   telegramLink: "",
   messengerLink: "",
   phoneLink: "07800000000",
+  phonePrimary: "07800000000",
   phoneLink2: "",
+  phoneSecondary: "",
   facebookLink: "",
+  facebook: "",
   instagramLink: "",
+  instagram: "",
   tiktokLink: "",
+  tiktok: "",
   youtubeLink: "",
   storeAddress: "العراق - كركوك - الشارع التجاري الرئيسي",
   storeMapLink: "https://maps.google.com",
+  googleMapsUrl: "https://maps.google.com",
   storeMapEmbedUrl: "",
   appDownloadUrl: "",
   androidAppUrl: "",
   iosAppUrl: "",
+  scannerPermissions: {
+    camera: true,
+    imageUpload: true,
+    manualEntry: true,
+    hardwareScanner: true,
+    adminGenerate: true,
+  },
   barcodeEngineActive: true,
   customThemes: [],
   activeThemePreset: "classic-blue",
