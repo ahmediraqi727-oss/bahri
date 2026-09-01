@@ -16,6 +16,7 @@ export interface CartItem {
 export interface Order {
   id: string;
   serialNumber?: number;
+  invoiceSerial?: string;
   customerName: string;
   customerPhone: string;
   customerAddress: string;
@@ -29,7 +30,10 @@ export interface Order {
   createdAt: string;
 }
 
-export function formatInvoiceSerial(order: { id: string; serialNumber?: number; createdAt?: string }): string {
+export function formatInvoiceSerial(order: { id: string; serialNumber?: number; invoiceSerial?: string; createdAt?: string }): string {
+  if (order.invoiceSerial && order.invoiceSerial.trim()) {
+    return order.invoiceSerial.trim();
+  }
   const year = order.createdAt ? new Date(order.createdAt).getFullYear() : 2026;
   if (order.serialNumber) {
     const padded = String(order.serialNumber).padStart(4, "0");

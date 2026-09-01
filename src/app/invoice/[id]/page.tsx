@@ -62,6 +62,7 @@ export default function PublicInvoicePage() {
       setOrder({
         id: r.id,
         serialNumber: r.serial_number ? Number(r.serial_number) : undefined,
+        invoiceSerial: r.invoice_serial || undefined,
         customerName: r.customer_name || "زبون",
         customerPhone: r.customer_phone || "",
         customerAddress: r.customer_address || "",
