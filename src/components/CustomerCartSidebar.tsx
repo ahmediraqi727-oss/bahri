@@ -130,38 +130,63 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
 
   // Deep Link Launchers (STRICTLY TOWARDS STORE MANAGER / ADMIN RECIPIENTS)
   const handleWhatsApp = async () => {
-    const res = await recordOrderAndNotify("واتساب");
-    const serial = res?.invoiceSerial || `INV-2026-${Date.now().toString().slice(-4)}`;
-    const origin = typeof window !== "undefined" ? window.location.origin : "https://ahmed-bahri.com";
-    const invoiceUrl = res?.invoiceUrl || `${origin}/invoice/${serial}`;
-
-    const msg = generateOrderMessage(serial, invoiceUrl);
-    let target = settings.whatsappLink?.trim() || "";
-
-    // Parse Store Admin WhatsApp Target
-    if (target.startsWith("http")) {
-      const url = `${target}${target.includes("?") ? "&" : "?"}text=${encodeURIComponent(msg)}`;
-      window.open(url, "_blank");
-      setStep("completed");
-      clearCart();
+    if (!name.trim() || !phone.trim() || !address.trim()) {
+      alert("يرجى ملء جميع البيانات الأساسية (الاسم، الهاتف، والعنوان)");
       return;
     }
 
-    let adminPhone = "";
-    if (target) {
-      adminPhone = formatAdminPhone(target);
-    }
-    if (!adminPhone && settings.phoneLink) {
-      adminPhone = formatAdminPhone(settings.phoneLink);
-    }
-    if (!adminPhone) {
-      adminPhone = "9647800000000"; // Fallback store contact
+    setSubmitting(true);
+
+    const invSerial = `INV-2026-${Date.now().toString().slice(-4)}`;
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://ahmed-bahri.com";
+    const invoiceUrl = `${origin}/invoice/${invSerial}`;
+
+    const { data: insertedOrder, error } = await supabase.from("orders").insert({
+      invoice_serial: invSerial,
+      customer_name: name.trim(),
+      customer_phone: phone.trim(),
+      customer_address: address.trim(),
+      governorate: address.trim(),
+      items: items.map((it) => ({
+        productId: it.productId,
+        name: it.name,
+        image: it.image || "",
+        quantity: it.quantity,
+        retailPrice: it.appliedTierPrice ?? it.retailPrice,
+      })),
+      total: grandTotal,
+      delivery_fee: deliveryFee,
+      delivery_duration: deliveryDuration,
+      status: "pending",
+      notes: notes.trim(),
+      platform: "واتساب",
+    }).select().maybeSingle();
+
+    if (error) {
+      setSubmitting(false);
+      alert("تعذر حفظ الطلب في قاعدة البيانات: " + error.message);
+      return;
     }
 
-    const url = `https://api.whatsapp.com/send?phone=${adminPhone}&text=${encodeURIComponent(msg)}`;
-    window.open(url, "_blank");
-    setStep("completed");
+    const finalSerial = insertedOrder && insertedOrder.serial_number
+      ? `INV-2026-${String(insertedOrder.serial_number).padStart(4, "0")}`
+      : invSerial;
+    const finalInvoiceUrl = insertedOrder && insertedOrder.serial_number
+      ? `${origin}/invoice/${insertedOrder.serial_number}`
+      : invoiceUrl;
+
+    // Success: Generate clean message with invoice link and open WhatsApp
+    const msg = generateOrderMessage(finalSerial, finalInvoiceUrl);
+    let adminPhone = "9647800000000";
+    if (settings.whatsappLink) adminPhone = settings.whatsappLink.replace(/\D/g, "");
+    else if (settings.phoneLink) adminPhone = settings.phoneLink.replace(/\D/g, "");
+    if (adminPhone.startsWith("0")) adminPhone = "964" + adminPhone.slice(1);
+
+    window.open(`https://api.whatsapp.com/send?phone=${adminPhone}&text=${encodeURIComponent(msg)}`, "_blank");
+
     clearCart();
+    setStep("completed");
+    setSubmitting(false);
   };
 
   const handleTelegram = async () => {
