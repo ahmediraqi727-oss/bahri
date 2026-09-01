@@ -21,10 +21,10 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
   const rt = (row.role_themes as Record<string, Record<string, string>>) || {};
   const wm = (row.watermark_config as Record<string, any>) || {};
 
-  const storeNameVal = (row.store_name as string) || (row.site_name as string) || DEFAULT_SETTINGS.siteName;
-  const storeAddressVal = (row.store_address as string) || (row.address as string) || DEFAULT_SETTINGS.storeAddress;
+  const storeNameVal = (row.store_name as string) || (row.site_name as string) || "متجر أحمد بحري";
+  const storeAddressVal = (row.store_address as string) || (row.address as string) || "العراق - كركوك - احمد اغا - قرب الدفاع المدنى رابع متجر";
   const mapUrlVal = (row.google_maps_url as string) || (row.store_map_link as string) || (row.map_url as string) || DEFAULT_SETTINGS.storeMapLink;
-  const phonePrimaryVal = (row.phone_primary as string) || (row.phone_link as string) || (row.direct_phone as string) || "07800000000";
+  const phonePrimaryVal = (row.phone_primary as string) || (row.phone_link as string) || (row.direct_phone as string) || "07706166725";
   const phoneSecondaryVal = (row.phone_secondary as string) || (row.phone_link2 as string) || "";
   const whatsappVal = (row.whatsapp as string) || (row.whatsapp_link as string) || (row.whatsapp_number as string) || "";
   const facebookVal = (row.facebook as string) || (row.facebook_link as string) || "";
@@ -178,10 +178,10 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
 }
 
 function settingsToRow(settings: SiteSettings): Record<string, unknown> {
-  const storeNameVal = settings.storeName || settings.siteName || DEFAULT_SETTINGS.siteName;
-  const storeAddressVal = settings.storeAddress || "";
+  const storeNameVal = settings.storeName || settings.siteName || "متجر أحمد بحري";
+  const storeAddressVal = settings.storeAddress || "العراق - كركوك - احمد اغا - قرب الدفاع المدنى رابع متجر";
   const mapUrlVal = settings.googleMapsUrl || settings.storeMapLink || "";
-  const phonePrimaryVal = settings.phonePrimary || settings.phoneLink || "";
+  const phonePrimaryVal = settings.phonePrimary || settings.phoneLink || "07706166725";
   const phoneSecondaryVal = settings.phoneSecondary || settings.phoneLink2 || "";
   const whatsappVal = settings.whatsapp || settings.whatsappLink || "";
   const facebookVal = settings.facebook || settings.facebookLink || "";
@@ -259,13 +259,21 @@ function settingsToRow(settings: SiteSettings): Record<string, unknown> {
     show_categories_carousel: settings.showCategoriesCarousel !== undefined ? settings.showCategoriesCarousel : true,
     default_delivery_fee: settings.defaultDeliveryFee !== undefined ? settings.defaultDeliveryFee : 5000,
     default_delivery_duration: settings.defaultDeliveryDuration || "2 - 3 أيام عمل",
-    watermark_config: settings.watermarkConfig,
-    role_themes: settings.roleThemes,
+    watermark_config: settings.watermarkConfig || {},
+    role_themes: settings.roleThemes || {},
 
-    // Pricing Tiers Engine
     pricing_tiers: settings.pricingTiers || DEFAULT_PRICING_CONFIG,
     import_markup_pct: settings.importMarkupPct ?? 10,
     import_wholesale_reduction_pct: settings.importWholesaleReductionPct ?? 10,
+
+    notification_sound_url: settings.notificationSoundUrl || "/sounds/chime.mp3",
+    notification_volume: settings.notificationVolume ?? 0.8,
+    default_mute_duration: settings.defaultMuteDuration ?? 1,
+    customer_notification_categories: settings.customerNotificationCategories || {
+      allowReplies: true,
+      allowOffers: true,
+      allowPosts: true,
+    },
   };
 }
 
