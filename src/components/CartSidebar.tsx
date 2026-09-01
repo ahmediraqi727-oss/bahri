@@ -27,7 +27,12 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
   const { addSale } = useSales();
   const theme = settings.roleThemes.customer;
 
-  const isManagerOrAdmin = user?.role === "manager" || user?.role === "admin" || settings.currentRole === "manager" || settings.currentRole === "admin";
+  const isStaff = Boolean(
+    user &&
+    !user.isGuest &&
+    !user.id?.startsWith("guest-") &&
+    (user.role === "manager" || user.role === "admin")
+  );
 
   const [step, setStep] = useState<"cart" | "checkout" | "done">("cart");
   const [name, setName] = useState("");
@@ -801,8 +806,8 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
                 </div>
               </div>
 
-              {/* Action Buttons: Manager/Admin vs Customer */}
-              {isManagerOrAdmin ? (
+              {/* Action Buttons: Staff vs Customer */}
+              {isStaff ? (
                 <div className="space-y-2.5 pt-1">
                   <div className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 py-1.5 px-3 rounded-lg text-xs font-bold text-center border border-blue-200 dark:border-blue-800">
                     👑 خيارات الإدارة والمدير:

@@ -26,7 +26,12 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
   const { logActivity } = useActivityLog();
   const theme = settings.roleThemes.customer;
 
-  const isManager = settings.currentRole === "manager" || settings.currentRole === "admin" || user?.role === "manager" || user?.role === "admin";
+  const isStaff = Boolean(
+    user &&
+    !user.isGuest &&
+    !user.id?.startsWith("guest-") &&
+    (user.role === "manager" || user.role === "admin")
+  );
 
   const [step, setStep] = useState<"cart" | "checkout" | "confirm" | "completed" | "store_order_completed">("cart");
   const [name, setName] = useState("");
@@ -530,7 +535,7 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
                 </div>
 
                 {/* Exclusively Render POS In-Store Order Button for Managers / Admins */}
-                {isManager && (
+                {isStaff && (
                   <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/50 rounded-2xl space-y-2">
                     <p className="text-xs font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
                       <span>👑</span>
