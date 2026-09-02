@@ -9,7 +9,6 @@ import { useNotifications } from "@/lib/notifications";
 import { useActivityLog } from "@/lib/activity-log";
 import { updateGuestIdentity } from "@/lib/visitor-tracker";
 import { Order, formatInvoiceSerial } from "@/lib/order-types";
-import { createOrderAndNotify, resolveMessengerUrl } from "@/lib/order-helpers";
 import { supabase } from "@/lib/supabase-client";
 
 interface CustomerCartSidebarProps {
@@ -205,8 +204,26 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
     return msg;
   };
 
-  // Helper to record order in Supabase and trigger Admin Real-Time Notification
-  const recordOrderAndNotify = async (contactMethod: string): Promise<{ createdOrder: Order; invoiceSerial: string; invoiceUrl: string } | null> => {
+  const resolveMessengerTarget = (rawLink?: string): string => {
+    if (!rawLink) return "https://m.me/";
+    const trimmed = rawLink.trim();
+    if (!trimmed) return "https://m.me/";
+    if (/^https?:\/\/(www\.)?m\.me\//i.test(trimmed)) return trimmed;
+    if (/^https?:\/\/(www\.)?facebook\.com\//i.test(trimmed)) {
+      const path = trimmed.replace(/^https?:\/\/(www\.)?facebook\.com\//i, "").split("?")[0].split("/")[0];
+      return path ? `https://m.me/${path}` : "https://m.me/";
+    }
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return trimmed;
+    const cleanUsername = trimmed.replace(/^@/, "").replace(/^\/+/, "");
+    return cleanUsername ? `https://m.me/${cleanUsername}` : "https://m.me/";
+  };
+
+  const createAndSaveOrder = async (platformName: string): Promise<{ finalSerial: string; finalInvoiceUrl: string } | null> => {
+    if (!name.trim() || !phone.trim() || !address.trim()) {
+      alert("يرجى ملء جميع البيانات الأساسية (الاسم، الهاتف، والعنوان)");
+      return null;
+    }
+
     setSubmitting(true);
     try {
       await updateGuestIdentity({
@@ -216,38 +233,58 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
         address: address.trim(),
       });
 
-      const createdOrder = await createOrderAndNotify({
-        customerName: name,
-        customerPhone: phone,
-        customerAddress: address,
-        items: [...items],
-        total: grandTotal,
-        deliveryFee,
-        deliveryDuration,
-        notes,
-        platform: contactMethod,
-      });
-
-      const serialStr = createdOrder.invoiceSerial || (createdOrder.serialNumber
-        ? `INV-2026-${String(createdOrder.serialNumber).padStart(4, "0")}`
-        : formatInvoiceSerial(createdOrder));
-
+      const invSerial = `INV-2026-${Date.now().toString().slice(-4)}`;
       const origin = typeof window !== "undefined" ? window.location.origin : "https://ahmed-bahri.com";
-      const invoiceUrl = `${origin}/invoice/${serialStr}`;
 
-      persistCustomerOrder(createdOrder.id, name.trim(), phone.trim(), address.trim());
+      const { data: insertedOrder, error } = await supabase.from("orders").insert({
+        invoice_serial: invSerial,
+        customer_name: name.trim(),
+        customer_phone: phone.trim(),
+        customer_address: address.trim(),
+        governorate: address.trim(),
+        items: items.map((it) => ({
+          productId: it.productId,
+          name: it.name,
+          image: it.image || "",
+          quantity: it.quantity,
+          retailPrice: it.appliedTierPrice ?? it.retailPrice,
+        })),
+        total: grandTotal,
+        delivery_fee: deliveryFee,
+        delivery_duration: deliveryDuration,
+        status: "pending",
+        notes: notes.trim(),
+        platform: platformName,
+      }).select().maybeSingle();
+
+      if (error) {
+        setSubmitting(false);
+        alert("تعذر حفظ الطلب في قاعدة البيانات: " + error.message);
+        return null;
+      }
+
+      if (insertedOrder) {
+        persistCustomerOrder(insertedOrder.id, name.trim(), phone.trim(), address.trim());
+      }
+
+      const serialNumberPadded = insertedOrder && insertedOrder.serial_number
+        ? String(insertedOrder.serial_number).padStart(4, "0")
+        : "";
+      const finalSerial = insertedOrder?.invoice_serial || (serialNumberPadded ? `INV-2026-${serialNumberPadded}` : invSerial);
+      const finalInvoiceUrl = `${origin}/invoice/${finalSerial}`;
 
       await logActivity({
         user: "customer",
         action: "create",
         entity: "طلب زبون",
-        entityId: createdOrder.id,
-        details: `طلب من ${name} عبر ${contactMethod} - الرقم الفردي: ${serialStr} - الهاتف: ${phone} - الإجمالي: ${grandTotal.toLocaleString()} د.ع`,
+        entityId: insertedOrder?.id || invSerial,
+        details: `طلب من ${name} عبر ${platformName} - الرقم الفردي: ${finalSerial} - الهاتف: ${phone} - الإجمالي: ${grandTotal.toLocaleString()} د.ع`,
       });
 
-      return { createdOrder, invoiceSerial: serialStr, invoiceUrl };
+      return { finalSerial, finalInvoiceUrl };
     } catch (err) {
-      console.warn("Order recording background error:", err);
+      console.error("createAndSaveOrder error:", err);
+      alert("حدث خطأ أثناء حفظ الطلب.");
       return null;
     } finally {
       setSubmitting(false);
@@ -265,153 +302,98 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
 
   // Deep Link Launchers
   const handleWhatsApp = async () => {
-    if (!name.trim() || !phone.trim() || !address.trim()) {
-      alert("يرجى ملء جميع البيانات الأساسية (الاسم، الهاتف، والعنوان)");
-      return;
-    }
+    const res = await createAndSaveOrder("واتساب");
+    if (!res) return;
 
-    setSubmitting(true);
+    const msg = generateOrderMessage(res.finalSerial, res.finalInvoiceUrl);
+    let adminPhone = settings.phonePrimary || settings.whatsappLink || settings.phoneLink || "07706166725";
+    const digits = adminPhone.replace(/\D/g, "");
+    const formattedPhone = digits.startsWith("0") ? "964" + digits.slice(1) : digits.startsWith("964") ? digits : "964" + digits;
 
-    const invSerial = `INV-2026-${Date.now().toString().slice(-4)}`;
-    const origin = typeof window !== "undefined" ? window.location.origin : "https://ahmed-bahri.com";
-    const invoiceUrl = `${origin}/invoice/${invSerial}`;
-
-    const { data: insertedOrder, error } = await supabase.from("orders").insert({
-      invoice_serial: invSerial,
-      customer_name: name.trim(),
-      customer_phone: phone.trim(),
-      customer_address: address.trim(),
-      governorate: address.trim(),
-      items: items.map((it) => ({
-        productId: it.productId,
-        name: it.name,
-        image: it.image || "",
-        quantity: it.quantity,
-        retailPrice: it.appliedTierPrice ?? it.retailPrice,
-      })),
-      total: grandTotal,
-      delivery_fee: deliveryFee,
-      delivery_duration: deliveryDuration,
-      status: "pending",
-      notes: notes.trim(),
-      platform: "واتساب",
-    }).select().maybeSingle();
-
-    if (error) {
-      setSubmitting(false);
-      alert("تعذر حفظ الطلب في قاعدة البيانات: " + error.message);
-      return;
-    }
-
-    if (insertedOrder) {
-      persistCustomerOrder(insertedOrder.id, name.trim(), phone.trim(), address.trim());
-    }
-
-    const serialNumberPadded = insertedOrder && insertedOrder.serial_number
-      ? String(insertedOrder.serial_number).padStart(4, "0")
-      : "";
-    const finalSerial = insertedOrder?.invoice_serial || (serialNumberPadded ? `INV-2026-${serialNumberPadded}` : invSerial);
-    const finalInvoiceUrl = `${origin}/invoice/${finalSerial}`;
-
-    // Success: Generate clean message with invoice link and open WhatsApp
-    const msg = generateOrderMessage(finalSerial, finalInvoiceUrl);
-    let adminPhone = "9647800000000";
-    if (settings.whatsappLink) adminPhone = settings.whatsappLink.replace(/\D/g, "");
-    else if (settings.phoneLink) adminPhone = settings.phoneLink.replace(/\D/g, "");
-    if (adminPhone.startsWith("0")) adminPhone = "964" + adminPhone.slice(1);
-
-    window.open(`https://api.whatsapp.com/send?phone=${adminPhone}&text=${encodeURIComponent(msg)}`, "_blank");
-
+    window.open(`https://api.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(msg)}`, "_blank");
     clearCart();
     setStep("completed");
-    setSubmitting(false);
   };
 
   const handleTelegram = async () => {
     const isMobile = typeof window !== "undefined" && /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     const newWindow = !isMobile && typeof window !== "undefined" ? window.open("about:blank", "_blank") : null;
 
-    try {
-      const res = await recordOrderAndNotify("تليجرام");
-      const serial = res?.invoiceSerial || `INV-2026-${Date.now().toString().slice(-4)}`;
-      const origin = typeof window !== "undefined" ? window.location.origin : "https://ahmed-bahri.com";
-      const invoiceUrl = res?.invoiceUrl || `${origin}/invoice/${serial}`;
-
-      const msg = generateOrderMessage(serial, invoiceUrl);
-      let target = settings.telegramLink?.trim() || "";
-      let url = "";
-
-      if (target.startsWith("http")) {
-        url = `${target}${target.includes("?") ? "&" : "?"}text=${encodeURIComponent(msg)}`;
-      } else if (target.startsWith("@")) {
-        url = `https://t.me/${target.slice(1)}?text=${encodeURIComponent(msg)}`;
-      } else if (target) {
-        const clean = target.replace(/\D/g, "");
-        if (clean && clean.length >= 8) {
-          const phoneFormatted = formatAdminPhone(target);
-          url = `https://t.me/+${phoneFormatted}?text=${encodeURIComponent(msg)}`;
-        } else {
-          url = `https://t.me/${target}?text=${encodeURIComponent(msg)}`;
-        }
-      } else {
-        url = `https://t.me/share/url?url=${encodeURIComponent(origin)}&text=${encodeURIComponent(msg)}`;
-      }
-
-      if (newWindow) {
-        newWindow.location.href = url;
-      } else {
-        window.location.href = url;
-      }
-      setStep("completed");
-      clearCart();
-    } catch (err) {
-      console.error("handleTelegram error:", err);
+    const res = await createAndSaveOrder("تليجرام");
+    if (!res) {
       if (newWindow) newWindow.close();
-      alert("حدث خطأ أثناء إرسال الطلب عبر تليجرام.");
+      return;
     }
+
+    const msg = generateOrderMessage(res.finalSerial, res.finalInvoiceUrl);
+    let target = settings.telegramLink?.trim() || "";
+    let url = "";
+
+    if (target.startsWith("http")) {
+      url = `${target}${target.includes("?") ? "&" : "?"}text=${encodeURIComponent(msg)}`;
+    } else if (target.startsWith("@")) {
+      url = `https://t.me/${target.slice(1)}?text=${encodeURIComponent(msg)}`;
+    } else if (target) {
+      const clean = target.replace(/\D/g, "");
+      if (clean && clean.length >= 8) {
+        const phoneFormatted = formatAdminPhone(target);
+        url = `https://t.me/+${phoneFormatted}?text=${encodeURIComponent(msg)}`;
+      } else {
+        url = `https://t.me/${target}?text=${encodeURIComponent(msg)}`;
+      }
+    } else {
+      const rawPhone = settings.phonePrimary || settings.phoneLink || settings.whatsappLink || "07706166725";
+      const phoneFormatted = formatAdminPhone(rawPhone);
+      url = `https://t.me/+${phoneFormatted}?text=${encodeURIComponent(msg)}`;
+    }
+
+    if (newWindow) {
+      newWindow.location.href = url;
+    } else {
+      window.location.href = url;
+    }
+    clearCart();
+    setStep("completed");
   };
 
   const handleMessenger = async () => {
     const isMobile = typeof window !== "undefined" && /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     const newWindow = !isMobile && typeof window !== "undefined" ? window.open("about:blank", "_blank") : null;
 
-    try {
-      const res = await recordOrderAndNotify("ماسنجر");
-      const serial = res?.invoiceSerial || `INV-2026-${Date.now().toString().slice(-4)}`;
-      const origin = typeof window !== "undefined" ? window.location.origin : "https://ahmed-bahri.com";
-      const invoiceUrl = res?.invoiceUrl || `${origin}/invoice/${serial}`;
-
-      const msg = generateOrderMessage(serial, invoiceUrl);
-      if (typeof navigator !== "undefined" && navigator.clipboard) {
-        try {
-          await navigator.clipboard.writeText(msg);
-          setCopiedNotice(true);
-          setTimeout(() => setCopiedNotice(false), 5000);
-        } catch { /* ignore */ }
-      }
-
-      const messengerUrl = resolveMessengerUrl(settings.messengerLink);
-      if (newWindow) {
-        newWindow.location.href = messengerUrl;
-      } else {
-        window.location.href = messengerUrl;
-      }
-
-      setStep("completed");
-      clearCart();
-    } catch (err) {
-      console.error("handleMessenger error:", err);
+    const res = await createAndSaveOrder("ماسنجر");
+    if (!res) {
       if (newWindow) newWindow.close();
-      alert("حدث خطأ أثناء إنشاء الطلب. يرجى المحاولة مرة أخرى.");
+      return;
     }
+
+    const msg = generateOrderMessage(res.finalSerial, res.finalInvoiceUrl);
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(msg);
+        setCopiedNotice(true);
+        setTimeout(() => setCopiedNotice(false), 5000);
+      } catch { /* ignore non-blocking clipboard error */ }
+    }
+
+    const messengerUrl = resolveMessengerTarget(settings.messengerLink);
+    if (newWindow) {
+      newWindow.location.href = messengerUrl;
+    } else {
+      window.location.href = messengerUrl;
+    }
+    clearCart();
+    setStep("completed");
   };
 
   const handlePhoneCall = async () => {
-    let adminPhone = settings.phoneLink?.trim() || settings.whatsappLink?.trim() || "07800000000";
-    await recordOrderAndNotify("اتصال مباشر");
-    window.location.href = `tel:${adminPhone}`;
-    setStep("completed");
+    const res = await createAndSaveOrder("اتصال مباشر");
+    if (!res) return;
+
+    let adminPhone = settings.phonePrimary || settings.phoneLink || settings.whatsappLink || "07706166725";
+    const cleanPhone = adminPhone.replace(/\D/g, "");
+    window.location.href = `tel:${cleanPhone || "07706166725"}`;
     clearCart();
+    setStep("completed");
   };
 
   return (

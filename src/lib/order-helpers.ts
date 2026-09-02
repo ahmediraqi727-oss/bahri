@@ -77,28 +77,6 @@ export async function createOrderAndNotify(data: {
     }
   }
 
-  // 2. Insert notification into Supabase notifications table
-  const platformIcon = data.platform.includes("واتساب")
-    ? "💬"
-    : data.platform.includes("تليجرام")
-    ? "✈️"
-    : data.platform.includes("ماسنجر")
-    ? "⚡"
-    : "📞";
-
-  const notifSerial = orderData.invoiceSerial || (orderData.serialNumber ? `INV-2026-${String(orderData.serialNumber).padStart(4, "0")}` : invoiceSerial);
-
-  await supabase.from("notifications").insert({
-    id: crypto.randomUUID(),
-    type: "order",
-    title: `${platformIcon} فاتورة طلب شراء جديدة #${notifSerial}`,
-    message: `فاتورة جديدة للزبون (${orderData.customerName} - ${orderData.customerPhone}) بقيمة: ${orderData.total.toLocaleString()} د.ع`,
-    product_id: orderData.id,
-    is_broadcast: true,
-    read: false,
-    created_at: createdAt,
-  });
-
   return orderData;
 }
 

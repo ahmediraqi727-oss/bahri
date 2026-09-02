@@ -538,7 +538,10 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
           url = `https://t.me/${tg}?text=${encodeURIComponent(msg)}`;
         }
       } else {
-        url = `https://t.me/share/url?url=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "")}&text=${encodeURIComponent(msg)}`;
+        let adminPhone = settings.phonePrimary || settings.phoneLink || settings.whatsappLink || "07706166725";
+        const digits = adminPhone.replace(/\D/g, "");
+        const phoneFormatted = digits.startsWith("0") ? "964" + digits.slice(1) : digits.startsWith("964") ? digits : "964" + digits;
+        url = `https://t.me/+${phoneFormatted}?text=${encodeURIComponent(msg)}`;
       }
 
       if (newWindow) {
@@ -561,7 +564,7 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       try {
         await navigator.clipboard.writeText(msg);
-      } catch { /* ignore */ }
+      } catch { /* ignore non-blocking clipboard error */ }
     }
 
     try {
