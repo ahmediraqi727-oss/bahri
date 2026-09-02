@@ -474,7 +474,7 @@ export default function CustomersPage() {
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
           
           {/* Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar touch-pan-x snap-x snap-mandatory scroll-smooth scroll-px-2">
             {(
               [
                 { id: "all", label: `الكل (${totalCount})` },
@@ -488,7 +488,7 @@ export default function CustomersPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all whitespace-nowrap ${
+                className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all whitespace-nowrap flex-shrink-0 snap-start active:scale-95 cursor-pointer ${
                   activeTab === tab.id
                     ? "bg-blue-600 text-white shadow-md"
                     : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200"

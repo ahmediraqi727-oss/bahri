@@ -12,6 +12,13 @@ interface CustomerNotificationsModalProps {
 
 type FilterTab = "all" | "orders" | "support" | "stock" | "system";
 
+interface FilterTabItem {
+  id: FilterTab;
+  label: string;
+  shortLabel?: string;
+  count?: number;
+}
+
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
@@ -302,28 +309,29 @@ export default function CustomerNotificationsModal({ isOpen, onClose }: Customer
 
           {/* Smart Category Filter Tabs Bar */}
           <div className="px-4 py-3 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 max-w-full">
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 max-w-full touch-pan-x snap-x snap-mandatory scroll-smooth scroll-px-2">
               {(
                 [
-                  { id: "all", label: "الكل", count: notifications.length },
-                  { id: "orders", label: "🛒 الطلبات والفواتير" },
-                  { id: "support", label: "💬 رسائل الدعم" },
-                  { id: "stock", label: "⚠️ المخزون والمنتجات" },
-                  { id: "system", label: "📢 العروض والنظام" },
-                ] as { id: FilterTab; label: string; count?: number }[]
+                  { id: "all", label: "الكل", shortLabel: "الكل", count: notifications.length },
+                  { id: "orders", label: "🛒 الطلبات والفواتير", shortLabel: "🛒 الطلبات" },
+                  { id: "support", label: "💬 رسائل الدعم", shortLabel: "💬 الدعم" },
+                  { id: "stock", label: "⚠️ المخزون والمنتجات", shortLabel: "⚠️ المخزون" },
+                  { id: "system", label: "📢 العروض والنظام", shortLabel: "📢 العروض" },
+                ] as FilterTabItem[]
               ).map((tab) => {
                 const active = activeTab === tab.id;
                 return (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all whitespace-nowrap flex-shrink-0 snap-start flex items-center gap-1.5 cursor-pointer active:scale-95 ${
                       active
                         ? "bg-violet-600 text-white shadow-sm scale-102"
                         : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
                     }`}
                   >
-                    <span>{tab.label}</span>
+                    <span className="hidden sm:inline">{tab.label}</span>
+                    <span className="sm:hidden">{tab.shortLabel || tab.label}</span>
                     {tab.count !== undefined && (
                       <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${active ? "bg-white/20 text-white" : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300"}`}>
                         {tab.count}

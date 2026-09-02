@@ -199,4 +199,18 @@ aside {
   isolation: isolate;
 }
 
+/* 10. Hide scrollbar cross-browser utility */
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+    width: 0px;
+    height: 0px;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+
 
