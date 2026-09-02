@@ -9,7 +9,7 @@ import { useNotifications } from "@/lib/notifications";
 import { useActivityLog } from "@/lib/activity-log";
 import { updateGuestIdentity } from "@/lib/visitor-tracker";
 import { Order, formatInvoiceSerial } from "@/lib/order-types";
-import { createOrderAndNotify } from "@/lib/order-helpers";
+import { createOrderAndNotify, resolveMessengerUrl } from "@/lib/order-helpers";
 import { supabase } from "@/lib/supabase-client";
 
 interface CustomerCartSidebarProps {
@@ -328,65 +328,82 @@ export default function CustomerCartSidebar({ isOpen, onClose }: CustomerCartSid
   };
 
   const handleTelegram = async () => {
-    const res = await recordOrderAndNotify("تليجرام");
-    const serial = res?.invoiceSerial || `INV-2026-${Date.now().toString().slice(-4)}`;
-    const origin = typeof window !== "undefined" ? window.location.origin : "https://ahmed-bahri.com";
-    const invoiceUrl = res?.invoiceUrl || `${origin}/invoice/${serial}`;
+    const isMobile = typeof window !== "undefined" && /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const newWindow = !isMobile && typeof window !== "undefined" ? window.open("about:blank", "_blank") : null;
 
-    const msg = generateOrderMessage(serial, invoiceUrl);
-    let target = settings.telegramLink?.trim() || "";
-    let url = "";
+    try {
+      const res = await recordOrderAndNotify("تليجرام");
+      const serial = res?.invoiceSerial || `INV-2026-${Date.now().toString().slice(-4)}`;
+      const origin = typeof window !== "undefined" ? window.location.origin : "https://ahmed-bahri.com";
+      const invoiceUrl = res?.invoiceUrl || `${origin}/invoice/${serial}`;
 
-    if (target.startsWith("http")) {
-      url = `${target}${target.includes("?") ? "&" : "?"}text=${encodeURIComponent(msg)}`;
-    } else if (target.startsWith("@")) {
-      url = `https://t.me/${target.slice(1)}?text=${encodeURIComponent(msg)}`;
-    } else if (target) {
-      const clean = target.replace(/\D/g, "");
-      if (clean && clean.length >= 8) {
-        const phoneFormatted = formatAdminPhone(target);
-        url = `https://t.me/+${phoneFormatted}?text=${encodeURIComponent(msg)}`;
+      const msg = generateOrderMessage(serial, invoiceUrl);
+      let target = settings.telegramLink?.trim() || "";
+      let url = "";
+
+      if (target.startsWith("http")) {
+        url = `${target}${target.includes("?") ? "&" : "?"}text=${encodeURIComponent(msg)}`;
+      } else if (target.startsWith("@")) {
+        url = `https://t.me/${target.slice(1)}?text=${encodeURIComponent(msg)}`;
+      } else if (target) {
+        const clean = target.replace(/\D/g, "");
+        if (clean && clean.length >= 8) {
+          const phoneFormatted = formatAdminPhone(target);
+          url = `https://t.me/+${phoneFormatted}?text=${encodeURIComponent(msg)}`;
+        } else {
+          url = `https://t.me/${target}?text=${encodeURIComponent(msg)}`;
+        }
       } else {
-        url = `https://t.me/${target}?text=${encodeURIComponent(msg)}`;
+        url = `https://t.me/share/url?url=${encodeURIComponent(origin)}&text=${encodeURIComponent(msg)}`;
       }
-    } else {
-      url = `https://t.me/share/url?url=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "")}&text=${encodeURIComponent(msg)}`;
-    }
 
-    window.open(url, "_blank");
-    setStep("completed");
-    clearCart();
+      if (newWindow) {
+        newWindow.location.href = url;
+      } else {
+        window.location.href = url;
+      }
+      setStep("completed");
+      clearCart();
+    } catch (err) {
+      console.error("handleTelegram error:", err);
+      if (newWindow) newWindow.close();
+      alert("حدث خطأ أثناء إرسال الطلب عبر تليجرام.");
+    }
   };
 
   const handleMessenger = async () => {
-    const res = await recordOrderAndNotify("ماسنجر");
-    const serial = res?.invoiceSerial || `INV-2026-${Date.now().toString().slice(-4)}`;
-    const origin = typeof window !== "undefined" ? window.location.origin : "https://ahmed-bahri.com";
-    const invoiceUrl = res?.invoiceUrl || `${origin}/invoice/${serial}`;
+    const isMobile = typeof window !== "undefined" && /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const newWindow = !isMobile && typeof window !== "undefined" ? window.open("about:blank", "_blank") : null;
 
-    const msg = generateOrderMessage(serial, invoiceUrl);
-    let target = settings.messengerLink?.trim() || "";
-    let url = "";
+    try {
+      const res = await recordOrderAndNotify("ماسنجر");
+      const serial = res?.invoiceSerial || `INV-2026-${Date.now().toString().slice(-4)}`;
+      const origin = typeof window !== "undefined" ? window.location.origin : "https://ahmed-bahri.com";
+      const invoiceUrl = res?.invoiceUrl || `${origin}/invoice/${serial}`;
 
-    if (target.startsWith("http")) {
-      url = target;
-    } else if (target) {
-      url = `https://m.me/${target.replace("@", "")}`;
-    } else {
-      url = `https://m.me`;
+      const msg = generateOrderMessage(serial, invoiceUrl);
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        try {
+          await navigator.clipboard.writeText(msg);
+          setCopiedNotice(true);
+          setTimeout(() => setCopiedNotice(false), 5000);
+        } catch { /* ignore */ }
+      }
+
+      const messengerUrl = resolveMessengerUrl(settings.messengerLink);
+      if (newWindow) {
+        newWindow.location.href = messengerUrl;
+      } else {
+        window.location.href = messengerUrl;
+      }
+
+      setStep("completed");
+      clearCart();
+    } catch (err) {
+      console.error("handleMessenger error:", err);
+      if (newWindow) newWindow.close();
+      alert("حدث خطأ أثناء إنشاء الطلب. يرجى المحاولة مرة أخرى.");
     }
-
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      try {
-        await navigator.clipboard.writeText(msg);
-        setCopiedNotice(true);
-        setTimeout(() => setCopiedNotice(false), 4000);
-      } catch { /* ignore */ }
-    }
-
-    window.open(url, "_blank");
-    setStep("completed");
-    clearCart();
   };
 
   const handlePhoneCall = async () => {

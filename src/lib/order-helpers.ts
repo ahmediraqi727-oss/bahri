@@ -101,3 +101,29 @@ export async function createOrderAndNotify(data: {
 
   return orderData;
 }
+
+export function resolveMessengerUrl(rawLink?: string): string {
+  if (!rawLink) return "https://m.me/";
+  const trimmed = rawLink.trim();
+  if (!trimmed) return "https://m.me/";
+
+  // 1. Direct m.me link
+  if (/^https?:\/\/(www\.)?m\.me\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  // 2. Facebook page or profile link
+  if (/^https?:\/\/(www\.)?facebook\.com\//i.test(trimmed)) {
+    const path = trimmed.replace(/^https?:\/\/(www\.)?facebook\.com\//i, "").split("?")[0].split("/")[0];
+    return path ? `https://m.me/${path}` : "https://m.me/";
+  }
+
+  // 3. Generic HTTP/HTTPS URL
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+
+  // 4. Handles @username or raw username handle
+  const cleanUsername = trimmed.replace(/^@/, "").replace(/^\/+/, "");
+  return cleanUsername ? `https://m.me/${cleanUsername}` : "https://m.me/";
+}

@@ -9,7 +9,7 @@ import { useData } from "@/lib/data-context";
 import { useSales } from "@/lib/sales-context";
 import { useAuth } from "@/lib/auth-context";
 import { Order } from "@/lib/order-types";
-import { createOrderAndNotify } from "@/lib/order-helpers";
+import { createOrderAndNotify, resolveMessengerUrl } from "@/lib/order-helpers";
 import jsPDF from "jspdf";
 
 interface CartSidebarProps {
@@ -510,6 +510,9 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
   };
 
   const sendViaTelegram = async () => {
+    const isMobile = typeof window !== "undefined" && /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const newWindow = !isMobile && typeof window !== "undefined" ? window.open("about:blank", "_blank") : null;
+
     try {
       await createOrderAndNotify({
         customerName: name,
@@ -520,26 +523,47 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
         notes,
         platform: "تليجرام",
       });
+
+      const msg = generateWhatsAppMessage();
+      const tg = settings.telegramLink?.trim();
+      let url = "";
+
+      if (tg) {
+        if (tg.startsWith("http")) {
+          const sep = tg.includes("?") ? "&" : "?";
+          url = `${tg}${sep}text=${encodeURIComponent(msg)}`;
+        } else if (tg.startsWith("@")) {
+          url = `https://t.me/${tg.slice(1)}?text=${encodeURIComponent(msg)}`;
+        } else {
+          url = `https://t.me/${tg}?text=${encodeURIComponent(msg)}`;
+        }
+      } else {
+        url = `https://t.me/share/url?url=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "")}&text=${encodeURIComponent(msg)}`;
+      }
+
+      if (newWindow) {
+        newWindow.location.href = url;
+      } else {
+        window.location.href = url;
+      }
     } catch (e) {
       console.warn("createOrderAndNotify error:", e);
-    }
-    const msg = generateWhatsAppMessage();
-    const tg = settings.telegramLink?.trim();
-    if (tg) {
-      if (tg.startsWith("http")) {
-        const sep = tg.includes("?") ? "&" : "?";
-        window.open(`${tg}${sep}text=${encodeURIComponent(msg)}`, "_blank");
-      } else if (tg.startsWith("@")) {
-        window.open(`https://t.me/${tg.replace("@", "")}`, "_blank");
-      } else {
-        window.open(`https://t.me/${tg}`, "_blank");
-      }
-    } else {
-      window.open(`https://t.me/share/url?url=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin : '')}&text=${encodeURIComponent(msg)}`, "_blank");
+      if (newWindow) newWindow.close();
+      alert("حدث خطأ أثناء إرسال الطلب عبر تليجرام.");
     }
   };
 
   const sendViaMessenger = async () => {
+    const isMobile = typeof window !== "undefined" && /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const newWindow = !isMobile && typeof window !== "undefined" ? window.open("about:blank", "_blank") : null;
+
+    const msg = generateWhatsAppMessage();
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(msg);
+      } catch { /* ignore */ }
+    }
+
     try {
       await createOrderAndNotify({
         customerName: name,
@@ -550,18 +574,17 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
         notes,
         platform: "ماسنجر",
       });
+
+      const messengerUrl = resolveMessengerUrl(settings.messengerLink);
+      if (newWindow) {
+        newWindow.location.href = messengerUrl;
+      } else {
+        window.location.href = messengerUrl;
+      }
     } catch (e) {
       console.warn("createOrderAndNotify error:", e);
-    }
-    const ms = settings.messengerLink?.trim();
-    if (ms) {
-      if (ms.startsWith("http")) {
-        window.open(ms, "_blank");
-      } else {
-        window.open(`https://m.me/${ms}`, "_blank");
-      }
-    } else {
-      window.open("https://m.me/", "_blank");
+      if (newWindow) newWindow.close();
+      alert("حدث خطأ أثناء إرسال الطلب عبر الماسنجر.");
     }
   };
 
