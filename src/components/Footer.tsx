@@ -96,6 +96,26 @@ export default function Footer() {
       className: "bg-red-50 dark:bg-red-950/60 hover:bg-red-600 hover:text-white text-red-600 dark:text-red-400 border-red-200 dark:border-red-800/60",
     },
     {
+      cond: Boolean(settings.telegramLink && settings.telegramLink.trim() !== ""),
+      label: "تليجرام",
+      url: settings.telegramLink?.startsWith("http")
+        ? settings.telegramLink
+        : settings.telegramLink?.startsWith("@")
+        ? `https://t.me/${settings.telegramLink.slice(1)}`
+        : `https://t.me/${settings.telegramLink}`,
+      icon: "✈️",
+      className: "bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-500 hover:text-white text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-800/60",
+    },
+    {
+      cond: Boolean(settings.messengerLink && settings.messengerLink.trim() !== ""),
+      label: "ماسنجر",
+      url: settings.messengerLink?.startsWith("http")
+        ? settings.messengerLink
+        : `https://m.me/${settings.messengerLink?.replace("@", "")}`,
+      icon: "⚡",
+      className: "bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-500 hover:text-white text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800/60",
+    },
+    {
       cond: Boolean(settings.whatsappLink && settings.whatsappLink.trim() !== ""),
       label: "واتساب",
       url: settings.whatsappLink?.startsWith("http")

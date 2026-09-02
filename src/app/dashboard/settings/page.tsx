@@ -701,11 +701,11 @@ export default function SettingsPage() {
             <span className="text-xl">🌐</span>
             <div>
               <h2 className="text-lg font-bold text-gray-900 dark:text-white">روابط الاتصال وصفحات السوشيال ميديا الرسمية</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">ربط قنوات الاتصال برقم ثانوي وصفحات الفيسبوك والانستغرام والتيك توك</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">ربط قنوات الاتصال والتواصل الاجتماعي (واتساب، تليجرام، ماسنجر، فيسبوك، انستغرام، تيك توك، يوتيوب)</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">💬 الواتساب الرئيسية:</label>
               <input
@@ -740,6 +740,30 @@ export default function SettingsPage() {
             </div>
 
             <div>
+              <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">✈️ رابط أو معرف التليجرام (Telegram):</label>
+              <input
+                type="text"
+                dir="ltr"
+                placeholder="https://t.me/username أو @username"
+                value={formData.telegramLink || ""}
+                onChange={(e) => handleChange({ telegramLink: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">⚡ رابط محادثة الماسنجر (Messenger):</label>
+              <input
+                type="text"
+                dir="ltr"
+                placeholder="https://m.me/page_username"
+                value={formData.messengerLink || ""}
+                onChange={(e) => handleChange({ messengerLink: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
+              />
+            </div>
+
+            <div>
               <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">📘 صفحة Facebook:</label>
               <input
                 type="text"
@@ -768,6 +792,18 @@ export default function SettingsPage() {
                 placeholder="https://tiktok.com/@..."
                 value={formData.tiktok || formData.tiktokLink || ""}
                 onChange={(e) => handleChange({ tiktok: e.target.value, tiktokLink: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">▶️ رابط قناة اليوتيوب (YouTube):</label>
+              <input
+                type="text"
+                dir="ltr"
+                placeholder="https://www.youtube.com/@channel"
+                value={formData.youtubeLink || ""}
+                onChange={(e) => handleChange({ youtubeLink: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-xs"
               />
             </div>
