@@ -24,6 +24,7 @@ import ContactSupportModal from "@/components/ContactSupportModal";
 import Footer from "@/components/Footer";
 import ProductCard from "@/components/ProductCard";
 import ProductModal from "@/components/ProductModal";
+import ProductLinkModal from "@/components/ProductLinkModal";
 import { useNotifications } from "@/lib/notifications";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import { useAdaptiveProducts } from "@/lib/useAdaptiveProducts";
@@ -114,9 +115,12 @@ export default function HomeClient() {
   const { favoriteIds, toggleFavorite } = useFavorites();
   const [favToast, setFavToast] = useState<string | null>(null);
 
-  // ─── Barcode / QR Scanner State ──────────────────────────────────────────
+  // ─── Barcode / QR Scanner & Linking State ────────────────────────────────
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannedCode, setScannedCode] = useState<string | null>(null);
+  const [linkingCode, setLinkingCode] = useState<string | null>(null);
+  const [createNewBarcode, setCreateNewBarcode] = useState<string | null>(null);
+  const [createProductOpen, setCreateProductOpen] = useState(false);
 
   // Compute scanner RBAC permissions from current role
   const adminPermConfig = getAdminPermissionsConfig();
@@ -1249,8 +1253,28 @@ export default function HomeClient() {
       <ScannerProductModal
         scannedCode={scannedCode}
         onClose={() => setScannedCode(null)}
+        onRequestLink={(code) => {
+          setScannedCode(null);
+          setLinkingCode(code);
+        }}
         onAddedToCart={() => {
           // Optionally open cart after adding from scanner
+        }}
+      />
+
+      {/* ─── Advanced Product Link Modal for Unrecognized Barcodes ──────── */}
+      <ProductLinkModal
+        isOpen={Boolean(linkingCode)}
+        scannedCode={linkingCode}
+        onClose={() => setLinkingCode(null)}
+        onLinked={(product) => {
+          setLinkingCode(null);
+        }}
+        onCreateNew={(code) => {
+          setLinkingCode(null);
+          setCreateNewBarcode(code);
+          setEditingProduct(null);
+          setCreateProductOpen(true);
         }}
       />
 
@@ -1288,11 +1312,16 @@ export default function HomeClient() {
       {/* Direct Contact & Technical Support Modal */}
       <ContactSupportModal isOpen={contactOpen} onClose={() => setContactOpen(false)} />
 
-      {/* Staff Product Edit Modal */}
+      {/* Staff Product Edit / Add Modal */}
       <ProductModal
-        isOpen={Boolean(editingProduct)}
-        onClose={() => setEditingProduct(null)}
+        isOpen={Boolean(editingProduct) || createProductOpen}
+        onClose={() => {
+          setEditingProduct(null);
+          setCreateProductOpen(false);
+          setCreateNewBarcode(null);
+        }}
         product={editingProduct}
+        initialBarcode={createNewBarcode}
       />
 
       {/* Store & App Share Modal */}

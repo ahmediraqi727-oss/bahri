@@ -4,11 +4,15 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { Product, Supplier, calculateRetailPrice, CategoryItem } from "@/lib/types";
 import { useData } from "@/lib/data-context";
 import BarcodeDisplay from "@/components/BarcodeDisplay";
+import BarcodeScanner from "@/components/BarcodeScanner";
+import { generateEAN13 } from "@/lib/barcode-service";
 
 interface ProductModalProps {
   isOpen: boolean;
   onClose: () => void;
   product?: Product | null;
+  initialBarcode?: string | null;
+  initialQrCode?: string | null;
 }
 
 function extractCategoryFromNotes(notes: string | undefined): string {
@@ -32,7 +36,13 @@ function updateNotesWithCategory(notes: string | undefined, categoryName: string
   return `${current} | ${tag}`;
 }
 
-export default function ProductModal({ isOpen, onClose, product }: ProductModalProps) {
+export default function ProductModal({
+  isOpen,
+  onClose,
+  product,
+  initialBarcode,
+  initialQrCode,
+}: ProductModalProps) {
   const { suppliers, categories, products, addProduct, updateProduct, addSupplier, addCategory } = useData();
   const galleryRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -50,6 +60,9 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
   // Barcode & QR Code fields
   const [barcode, setBarcode] = useState<string>("");
   const [qrCode, setQrCode] = useState<string>("");
+
+  // Camera & Scanner State for Barcode & QR input fields
+  const [activeScannerField, setActiveScannerField] = useState<"barcode" | "qrCode" | null>(null);
 
   // Creatable Autocomplete Category Combobox State
   const [selectedCategoryName, setSelectedCategoryName] = useState("");
@@ -74,8 +87,8 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
       setStock(product.stock.toString());
       setSupplierId(product.supplierId);
       setNotes(product.notes);
-      setBarcode(product.barcode || "");
-      setQrCode(product.qrCode || "");
+      setBarcode(product.barcode || initialBarcode || "");
+      setQrCode(product.qrCode || initialQrCode || "");
       const cat = extractCategoryFromNotes(product.notes);
       setSelectedCategoryName(cat);
       setCategoryQuery(cat);
@@ -85,9 +98,10 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
       setName(""); setImage(""); setCostPrice(""); setWholesalePrice("");
       setProfitMargin(""); setRetailPrice(""); setStock(""); setSupplierId("");
       setNotes(""); setSelectedCategoryName(""); setCategoryQuery(""); setShowNewSupplier(false); setNewSupplierName("");
-      setBarcode(""); setQrCode("");
+      setBarcode(initialBarcode || "");
+      setQrCode(initialQrCode || "");
     }
-  }, [product, isOpen]);
+  }, [product, isOpen, initialBarcode, initialQrCode]);
 
   // Handle outside click for Category Combobox dropdown
   useEffect(() => {
@@ -543,38 +557,121 @@ export default function ProductModal({ isOpen, onClose, product }: ProductModalP
             )}
           </div>
 
-          {/* Barcode & QR Code Fields */}
+          {/* Barcode & QR Code Fields with Interactive Camera Triggers */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
+            {/* Barcode Input */}
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">
-                الباركود (EAN-13) 📷
-              </label>
-              <input
-                type="text"
-                value={barcode}
-                onChange={(e) => setBarcode(e.target.value)}
-                placeholder="أدخل الباركود أو اتركه للتوليد"
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none font-mono text-sm"
-              />
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-extrabold text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                  <span>الباركود (EAN-13)</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const randomSeq = Math.floor(100000 + Math.random() * 900000);
+                    setBarcode(generateEAN13(randomSeq));
+                  }}
+                  className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                >
+                  <span>⚡ توليد تلقائي</span>
+                </button>
+              </div>
+
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  value={barcode}
+                  onChange={(e) => setBarcode(e.target.value)}
+                  placeholder="أدخل الباركود أو امسحه..."
+                  className="w-full pl-20 pr-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm font-bold"
+                />
+
+                <div className="absolute left-1.5 flex items-center gap-1">
+                  {barcode && (
+                    <button
+                      type="button"
+                      onClick={() => setBarcode("")}
+                      className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs"
+                      title="مسح"
+                    >
+                      ✕
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setActiveScannerField("barcode")}
+                    className="p-1.5 bg-blue-50 dark:bg-blue-900/50 hover:bg-blue-100 dark:hover:bg-blue-800 text-blue-600 dark:text-blue-300 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 border border-blue-200 dark:border-blue-700"
+                    title="فتح كاميرا المسح الضوئي"
+                  >
+                    <span>📷</span>
+                  </button>
+                </div>
+              </div>
             </div>
+
+            {/* QR Code Input */}
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">
-                رمز الـ QR 📱
-              </label>
-              <input
-                type="text"
-                value={qrCode}
-                onChange={(e) => setQrCode(e.target.value)}
-                placeholder="أدخل رمز الـ QR"
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none font-mono text-sm"
-              />
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-extrabold text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                  <span>رمز الـ QR</span>
+                </label>
+              </div>
+
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  value={qrCode}
+                  onChange={(e) => setQrCode(e.target.value)}
+                  placeholder="أدخل رمز הـ QR..."
+                  className="w-full pl-20 pr-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm font-bold"
+                />
+
+                <div className="absolute left-1.5 flex items-center gap-1">
+                  {qrCode && (
+                    <button
+                      type="button"
+                      onClick={() => setQrCode("")}
+                      className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs"
+                      title="مسح"
+                    >
+                      ✕
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setActiveScannerField("qrCode")}
+                    className="p-1.5 bg-indigo-50 dark:bg-indigo-900/50 hover:bg-indigo-100 dark:hover:bg-indigo-800 text-indigo-600 dark:text-indigo-300 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 border border-indigo-200 dark:border-indigo-700"
+                    title="فتح كاميرا مسح QR"
+                  >
+                    <span>📱</span>
+                  </button>
+                </div>
+              </div>
             </div>
+
             {(barcode || qrCode) && (
               <div className="sm:col-span-2 flex justify-center pt-2">
                 <BarcodeDisplay barcode={barcode} qrCode={qrCode} productName={name} compact />
               </div>
             )}
           </div>
+
+          {/* Dedicated Barcode Scanner Modal for Field Scanning */}
+          <BarcodeScanner
+            isOpen={activeScannerField !== null}
+            onClose={() => setActiveScannerField(null)}
+            onScan={(scanned) => {
+              if (activeScannerField === "barcode") {
+                setBarcode(scanned);
+              } else if (activeScannerField === "qrCode") {
+                setQrCode(scanned);
+              }
+              setActiveScannerField(null);
+            }}
+            canUseCamera={true}
+            canUseImageUpload={true}
+            canUseManualEntry={true}
+          />
 
           {/* Notes */}
           <div>

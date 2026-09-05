@@ -18,6 +18,7 @@ interface ScannerProductModalProps {
   scannedCode: string | null;
   onClose: () => void;
   onAddedToCart?: (product: Product, qty: number) => void;
+  onRequestLink?: (scannedCode: string) => void;
 }
 
 /**
@@ -32,6 +33,7 @@ export default function ScannerProductModal({
   scannedCode,
   onClose,
   onAddedToCart,
+  onRequestLink,
 }: ScannerProductModalProps) {
   const { products, lookupProductByBarcode, getEffectiveTiers } = useData();
   const { addItem } = useCart();
@@ -184,23 +186,39 @@ export default function ScannerProductModal({
 
         {/* Not Found State */}
         {!loading && notFound && (
-          <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
-            <span className="text-5xl mb-3">🔍</span>
+          <div className="flex flex-col items-center justify-center py-10 px-6 text-center">
+            <span className="text-5xl mb-3 animate-bounce">🔍</span>
             <h3 className="font-extrabold text-gray-900 dark:text-white text-lg mb-1">
               لم يُعثر على المنتج
             </h3>
             <p className="text-gray-500 dark:text-gray-400 text-sm mb-2">
-              الكود الممسوح غير مرتبط بأي منتج
+              الكود الممسوح غير مرتبط بأي منتج حالياً
             </p>
-            <p className="font-mono text-xs text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-lg mb-4">
-              {scannedCode}
+            <p className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 px-3 py-1.5 rounded-xl mb-6 tracking-wide select-all">
+              📷 {scannedCode}
             </p>
-            <button
-              onClick={onClose}
-              className="px-6 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold transition-all"
-            >
-              إغلاق
-            </button>
+
+            <div className="flex items-center gap-3 w-full">
+              <button
+                onClick={onClose}
+                className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold text-sm transition-all"
+              >
+                إغلاق
+              </button>
+              {onRequestLink && (
+                <button
+                  onClick={() => {
+                    const code = scannedCode;
+                    onClose();
+                    if (code) onRequestLink(code);
+                  }}
+                  className="flex-[1.5] py-2.5 bg-gradient-to-l from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-extrabold text-sm shadow-lg transition-all flex items-center justify-center gap-1.5 active:scale-95"
+                >
+                  <span>🔗</span>
+                  <span>إدخال / ربط بمنتج</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
 
