@@ -130,25 +130,6 @@ export default function ProductCard({
           </div>
         )}
 
-        {/* Administrative Control Gear Button (⚙️) — Strictly Isolated to Staff */}
-        {isStaff && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              onEditProduct?.(product);
-            }}
-            className="absolute top-2 left-2 z-20 p-2 text-gray-700 dark:text-gray-200 bg-white/80 dark:bg-gray-800/80 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 dark:hover:text-white backdrop-blur-md rounded-xl shadow-md border border-gray-200/50 dark:border-gray-700/50 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer flex items-center justify-center"
-            title="تعديل المنتج (للإدارة فقط)"
-            aria-label={`تعديل المنتج ${product.name}`}
-          >
-            <span className="text-base leading-none" aria-hidden="true">
-              ⚙️
-            </span>
-          </button>
-        )}
-
         {/* Detail View Hint Overlay */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
           <span className="px-3 py-1.5 rounded-xl bg-white/90 dark:bg-gray-900/90 text-xs font-bold text-gray-700 dark:text-gray-200 shadow-lg backdrop-blur-sm">
@@ -271,31 +252,8 @@ export default function ProductCard({
             </div>
           </div>
 
-          {/* Action Row: Add to Cart + Wishlist Favorite Heart */}
+          {/* Action Row: Wishlist Heart -> Staff Gear Button -> Add to Cart */}
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onAddToCart?.(product, qty);
-              }}
-              disabled={isAdded}
-              className="flex-1 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold text-white transition-all hover:scale-[1.02] active:scale-[0.98] disabled:scale-100 shadow-md min-h-[40px] flex items-center justify-center gap-1 cursor-pointer"
-              style={{ backgroundColor: isAdded ? "#10b981" : theme.primary }}
-              aria-label={`إضافة ${product.name} إلى السلة`}
-            >
-              {isAdded ? (
-                <span>✓ تم الإضافة</span>
-              ) : (
-                <span>
-                  أضف {qty > 1 ? `${qty} قطع` : ""} للسلة 🛒
-                  {hasDiscount && (
-                    <span className="mr-1 opacity-80">(-{activeTier.discountPct}%)</span>
-                  )}
-                </span>
-              )}
-            </button>
-
             {onToggleFavorite && (
               <button
                 type="button"
@@ -304,7 +262,7 @@ export default function ProductCard({
                   e.preventDefault();
                   onToggleFavorite(product);
                 }}
-                className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg transition-all transform active:scale-125 border shrink-0 cursor-pointer ${
+                className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-lg transition-all transform active:scale-125 border shrink-0 cursor-pointer ${
                   isFavorite
                     ? "bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800/80 text-rose-600 dark:text-rose-400 scale-105 shadow-sm shadow-rose-100 dark:shadow-none"
                     : "bg-gray-50 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-rose-500 hover:bg-rose-50/50 hover:border-rose-200"
@@ -320,6 +278,48 @@ export default function ProductCard({
                 {isFavorite ? "❤️" : "🤍"}
               </button>
             )}
+
+            {/* Administrative Control Gear Button (⚙️) — Strictly Isolated to Staff */}
+            {isStaff && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onEditProduct?.(product);
+                }}
+                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-base transition-all transform active:scale-95 border shrink-0 cursor-pointer bg-gray-50 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 dark:hover:text-white hover:border-blue-600 dark:hover:border-blue-600 shadow-xs hover:scale-105"
+                title="تعديل المنتج (للإدارة فقط)"
+                aria-label={`تعديل المنتج ${product.name}`}
+              >
+                <span className="leading-none" aria-hidden="true">
+                  ⚙️
+                </span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddToCart?.(product, qty);
+              }}
+              disabled={isAdded}
+              className="flex-1 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold text-white transition-all hover:scale-[1.02] active:scale-[0.98] disabled:scale-100 shadow-md min-h-[36px] sm:min-h-[40px] flex items-center justify-center gap-1 cursor-pointer"
+              style={{ backgroundColor: isAdded ? "#10b981" : theme.primary }}
+              aria-label={`إضافة ${product.name} إلى السلة`}
+            >
+              {isAdded ? (
+                <span>✓ تم الإضافة</span>
+              ) : (
+                <span>
+                  أضف {qty > 1 ? `${qty} قطع` : ""} للسلة 🛒
+                  {hasDiscount && (
+                    <span className="mr-1 opacity-80">(-{activeTier.discountPct}%)</span>
+                  )}
+                </span>
+              )}
+            </button>
           </div>
         </div>
       </div>
