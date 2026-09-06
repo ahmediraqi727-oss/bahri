@@ -746,6 +746,9 @@ export async function renderLabelToImageBlob(
 
   if (!ctx) throw new Error("Could not initialize 2D Context");
 
+  // Enable native RTL text rendering — browser handles Arabic shaping & BiDi automatically
+  ctx.direction = "rtl";
+
   // Background Customization
   ctx.fillStyle = config.labelBgColor || "#ffffff";
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
@@ -803,7 +806,7 @@ export async function renderLabelToImageBlob(
         ctx.font = `bold ${fontSizePx}px sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
-
+        // ctx.direction = "rtl" is set globally — raw Arabic renders correctly
         const lines = wrapCanvasText(ctx, product.name, maxContentWidth);
         for (const line of lines) {
           ctx.fillText(line, canvasWidth / 2, yCursor, maxContentWidth);
@@ -866,7 +869,8 @@ export async function renderLabelToImageBlob(
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
         const footerY = Math.min(yCursor, canvasHeight - footerFontPx - Math.round(canvasHeight * (isCircle ? 0.12 : 0.05)));
-        ctx.fillText(prepareRTLText(config.footerText), canvasWidth / 2, footerY, maxContentWidth);
+        // Draw raw text — ctx.direction="rtl" handles Arabic rendering natively
+        ctx.fillText(config.footerText, canvasWidth / 2, footerY, maxContentWidth);
       }
     }
   }

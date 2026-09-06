@@ -2,20 +2,27 @@
  * arabic-text-shaper.ts
  *
  * Enterprise Arabic Text Shaping & BiDi Normalizer Engine for Ahmed Bahri Store.
- * Converts raw Arabic character sequences into contextual connected glyphs
- * (Unicode Presentation Forms-B \uFE70 - \uFEFF) with Lam-Alef ligature support,
- * right-to-left word ordering, and smart multi-line Canvas text wrapping.
  *
- * Mixed BiDi guarantee:
- *   - Arabic word runs → shaped with contextual glyphs + character-reversed for LTR canvas/PDF
- *   - Non-Arabic runs (Latin letters, digits, currency symbols like "IQD", "5,400") → preserved LTR
- *   - Overall RTL sentence order is maintained by reversing the word-token sequence
+ * Two-mode rendering strategy:
+ *
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │  HTML5 Canvas (PNG export, renderLabelToImageBlob)                      │
+ * │  → Set ctx.direction = "rtl" + draw raw Arabic text                    │
+ * │  → Browser's native BiDi engine handles shaping, ligatures, directionality│
+ * │  → wrapCanvasText() returns raw lines (no shaping)                     │
+ * ├─────────────────────────────────────────────────────────────────────────┤
+ * │  jsPDF Vector PDF (exportLabelsAsPDF)                                   │
+ * │  → jsPDF has NO BiDi support, draws chars left-to-right on page        │
+ * │  → shapeArabicText() assigns correct initial/medial/final Pres-Form-B  │
+ * │    glyphs then REVERSES the glyph array to produce visual LTR order    │
+ * │  → prepareRTLText() reverses word sequence for RTL sentence order      │
+ * │  → Latin/numeric tokens (FASHION E-PIKE, 5,400 IQD) stay LTR          │
+ * └─────────────────────────────────────────────────────────────────────────┘
  */
 
 // Contextual Form Types
 type FormType = "isolated" | "initial" | "medial" | "final";
 
-// Glyph Variant Mapping: [isolated, initial, medial, final]
 interface CharacterGlyph {
   isolated: string;
   initial: string;
@@ -24,7 +31,6 @@ interface CharacterGlyph {
 }
 
 const ARABIC_GLYPH_MAP: Record<string, CharacterGlyph> = {
-  // Alef variants
   "\u0621": { isolated: "\uFE80", initial: "\uFE80", medial: "\uFE80", final: "\uFE80" }, // ء
   "\u0622": { isolated: "\uFE81", initial: "\uFE81", medial: "\uFE82", final: "\uFE82" }, // آ
   "\u0623": { isolated: "\uFE83", initial: "\uFE83", medial: "\uFE84", final: "\uFE84" }, // أ
@@ -32,8 +38,6 @@ const ARABIC_GLYPH_MAP: Record<string, CharacterGlyph> = {
   "\u0625": { isolated: "\uFE87", initial: "\uFE87", medial: "\uFE88", final: "\uFE88" }, // إ
   "\u0626": { isolated: "\uFE89", initial: "\uFE8B", medial: "\uFE8C", final: "\uFE8A" }, // ئ
   "\u0627": { isolated: "\uFE8D", initial: "\uFE8D", medial: "\uFE8E", final: "\uFE8E" }, // ا
-
-  // Alphabetic Letters
   "\u0628": { isolated: "\uFE8F", initial: "\uFE91", medial: "\uFE92", final: "\uFE90" }, // ب
   "\u0629": { isolated: "\uFE93", initial: "\uFE93", medial: "\uFE94", final: "\uFE94" }, // ة
   "\u062A": { isolated: "\uFE95", initial: "\uFE97", medial: "\uFE98", final: "\uFE96" }, // ت
@@ -65,43 +69,48 @@ const ARABIC_GLYPH_MAP: Record<string, CharacterGlyph> = {
   "\u064A": { isolated: "\uFEF1", initial: "\uFEF3", medial: "\uFEF4", final: "\uFEF2" }, // ي
 };
 
-// Non-connecting letters (Only connect to preceding letter, do not connect to following letter)
+// Letters that only connect to the preceding (right-side) letter, never the following
 const NON_CONNECTING_CHARS = new Set([
   "\u0621", "\u0622", "\u0623", "\u0624", "\u0625", "\u0627",
   "\u062F", "\u0630", "\u0631", "\u0632", "\u0648", "\u0649"
 ]);
 
-/**
- * Determines whether a character is an Arabic letter supported by shaping map.
- */
 export function isArabicChar(ch: string): boolean {
   return ch in ARABIC_GLYPH_MAP;
 }
 
-/**
- * Returns true if the string contains at least one Arabic character.
- */
-function containsArabic(s: string): boolean {
+export function containsArabic(s: string): boolean {
   return /[\u0600-\u06FF]/.test(s);
 }
 
 /**
- * Shapes raw Arabic text into connected Unicode Presentation Forms-B characters.
- * Handles Lam-Alef ligatures and contextual character positioning.
+ * Shapes an Arabic word into visual glyph sequence for jsPDF (LTR rendering).
+ *
+ * Why we reverse the glyph array at the end:
+ *   Arabic is logically RTL. In jsPDF (LTR draw), the leftmost char on page
+ *   must be the last letter of the Arabic word visually (e.g., for "اشاره",
+ *   ه is drawn first/leftmost, ا is drawn last/rightmost).
+ *   So we:
+ *     1. Assign initial/medial/final forms based on original RTL neighbors (correct connections)
+ *     2. Build the glyph array in logical RTL order
+ *     3. Reverse → visual LTR order for jsPDF page drawing
+ *
+ *   This is the ONLY approach that gives both correct glyph forms AND correct visual order.
  */
 export function shapeArabicText(text: string): string {
   if (!text) return "";
 
-  let result = "";
   const chars = Array.from(text);
   const len = chars.length;
+  const glyphs: string[] = [];
 
-  for (let i = 0; i < len; i++) {
+  let i = 0;
+  while (i < len) {
     const cur = chars[i];
 
-    // Non-Arabic characters (spaces, numbers, Latin, punctuation) pass through as-is
     if (!isArabicChar(cur)) {
-      result += cur;
+      glyphs.push(cur);
+      i++;
       continue;
     }
 
@@ -111,25 +120,12 @@ export function shapeArabicText(text: string): string {
     const prevConnects = prev !== "" && isArabicChar(prev) && !NON_CONNECTING_CHARS.has(prev);
     const nextConnects = next !== "" && isArabicChar(next);
 
-    // Check Lam-Alef ligatures
+    // Lam-Alef ligatures
     if (cur === "\u0644" && nextConnects) {
-      if (next === "\u0627") {
-        result += prevConnects ? "\uFEFC" : "\uFEFB"; // لا
-        i++;
-        continue;
-      } else if (next === "\u0622") {
-        result += prevConnects ? "\uFEF6" : "\uFEF5"; // لآ
-        i++;
-        continue;
-      } else if (next === "\u0623") {
-        result += prevConnects ? "\uFEF8" : "\uFEF7"; // لأ
-        i++;
-        continue;
-      } else if (next === "\u0625") {
-        result += prevConnects ? "\uFEFA" : "\uFEF9"; // لإ
-        i++;
-        continue;
-      }
+      if (next === "\u0627") { glyphs.push(prevConnects ? "\uFEFC" : "\uFEFB"); i += 2; continue; }
+      if (next === "\u0622") { glyphs.push(prevConnects ? "\uFEF6" : "\uFEF5"); i += 2; continue; }
+      if (next === "\u0623") { glyphs.push(prevConnects ? "\uFEF8" : "\uFEF7"); i += 2; continue; }
+      if (next === "\u0625") { glyphs.push(prevConnects ? "\uFEFA" : "\uFEF9"); i += 2; continue; }
     }
 
     const glyph = ARABIC_GLYPH_MAP[cur];
@@ -141,68 +137,52 @@ export function shapeArabicText(text: string): string {
       form = "final";
     } else if (nextConnects && !NON_CONNECTING_CHARS.has(cur)) {
       form = "initial";
-    } else {
-      form = "isolated";
     }
 
-    result += glyph[form];
+    glyphs.push(glyph[form]);
+    i++;
   }
 
-  return result;
+  // Reverse: logical RTL order → visual LTR order for jsPDF rendering
+  glyphs.reverse();
+  return glyphs.join("");
 }
 
 /**
- * Prepares Arabic & mixed BiDi text for Canvas or vector PDF engines that do not natively handle RTL rendering.
+ * Prepares mixed BiDi text for jsPDF vector PDF rendering.
  *
- * Algorithm:
- *   1. Split on whitespace boundaries to get word tokens.
- *   2. Classify each token: Arabic (contains ≥1 Arabic char) or Latin/numeric.
- *   3. Reverse the word-token sequence to reflect RTL sentence order on the LTR canvas.
- *   4. Shape & char-reverse Arabic tokens → visual glyphs drawn correctly in LTR raster space.
- *   5. Latin tokens (e.g. "FASHION E-PIKE"), numbers ("5,400"), currency ("IQD") remain intact.
+ * FOR PDF ONLY — do NOT use this for Canvas (use ctx.direction="rtl" instead).
  *
- * Example:
- *   Input:  "قميص FASHION رجالي 5,400 IQD"
- *   Output: "IQD 5,400 <shaped قميص reversed> FASHION <shaped يلاجر reversed>"
- *   Visual: reads correctly right-to-left on any thermal/canvas/PDF renderer.
+ * Pipeline:
+ *   "اشاره خلفية دراجه شحن FASHION E-PIKE 5,400 IQD"
+ *     ↓ split into words
+ *   ["اشاره","خلفية","دراجه","شحن","FASHION","E-PIKE","5,400","IQD"]
+ *     ↓ shape Arabic words (correct forms + reversed for visual LTR)
+ *   [shaped("اشاره"), shaped("خلفية"), shaped("دراجه"), shaped("شحن"), "FASHION", "E-PIKE", "5,400", "IQD"]
+ *     ↓ reverse word sequence for RTL sentence order
+ *   ["IQD","5,400","E-PIKE","FASHION",shaped("شحن"),shaped("دراجه"),shaped("خلفية"),shaped("اشاره")]
+ *     ↓ join with spaces → fed to pdf.text() with align:"center"
  */
 export function prepareRTLText(text: string): string {
   if (!text) return "";
-
-  // Pass-through for pure Latin/numeric strings
   if (!containsArabic(text)) return text;
 
-  // Tokenize: split on whitespace, filter out blank slots
-  const rawTokens = text.split(/(\s+)/);
-  const wordTokens: string[] = [];
+  const wordTokens = text.split(/\s+/).filter(Boolean);
 
-  for (const tok of rawTokens) {
-    if (/^\s+$/.test(tok)) continue; // skip pure-whitespace separators
-    if (tok !== "") wordTokens.push(tok);
-  }
-
-  // Shape & char-reverse Arabic tokens; leave Latin/digit tokens intact
   const shapedTokens = wordTokens.map((tok) => {
-    if (containsArabic(tok)) {
-      const shaped = shapeArabicText(tok);
-      return Array.from(shaped).reverse().join("");
-    }
-    // Latin words, numbers (5,400), currency symbols (IQD) → natural LTR order preserved
-    return tok;
+    if (containsArabic(tok)) return shapeArabicText(tok);
+    return tok; // Latin, digits, IQD, etc.
   });
 
-  // Reverse overall word sequence to get RTL visual sentence order
   shapedTokens.reverse();
-
   return shapedTokens.join(" ");
 }
 
 /**
- * Smart multi-line text wrapping helper for HTML5 Canvas.
+ * Wraps raw text into lines that fit maxWidth on an HTML5 Canvas.
  *
- * Wraps on raw (unshaped) text for correct word-boundary measurement,
- * then applies prepareRTLText() per completed line for shaped/reversed output.
- * This prevents width-measurement drift caused by Presentation-Form glyph substitution.
+ * Returns RAW (unshaped) lines — caller must set ctx.direction = "rtl"
+ * before drawing so the browser handles Arabic shaping & BiDi natively.
  */
 export function wrapCanvasText(
   ctx: CanvasRenderingContext2D,
@@ -211,28 +191,21 @@ export function wrapCanvasText(
 ): string[] {
   if (!text) return [];
 
-  const isRTL = containsArabic(text);
   const words = text.split(" ");
   const lines: string[] = [];
   let currentLine = "";
 
   for (const word of words) {
     const testLine = currentLine ? `${currentLine} ${word}` : word;
-    // Measure raw text (before shaping) for consistent width calculation
-    const metrics = ctx.measureText(testLine);
-
-    if (metrics.width > maxWidth && currentLine) {
-      // Shape only when flushing the completed line
-      lines.push(isRTL ? prepareRTLText(currentLine) : currentLine);
+    if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+      lines.push(currentLine);
       currentLine = word;
     } else {
       currentLine = testLine;
     }
   }
 
-  if (currentLine) {
-    lines.push(isRTL ? prepareRTLText(currentLine) : currentLine);
-  }
+  if (currentLine) lines.push(currentLine);
 
   return lines;
 }
