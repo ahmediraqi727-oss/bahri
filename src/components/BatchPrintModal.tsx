@@ -198,37 +198,67 @@ export default function BatchPrintModal({
 
   // Connect Web Bluetooth Printer (Marklife X4)
   const handleConnectBluetooth = async () => {
+    if (typeof navigator === "undefined" || !("bluetooth" in navigator)) {
+      toastError("المتصفح الحالي لا يدعم Web Bluetooth (مثل Safari على iOS). يُرجى استخدام التصدير كصورة PNG أو تطبيق Marklife.");
+      return;
+    }
+
     const toastId = toastLoading("جاري البحث عن طابعات البلوتوث المجاورة (Marklife X4)...");
     try {
       const conn = await connectWebBluetoothPrinter();
+      dismiss(toastId);
+
+      if (!conn) {
+        success("ℹ️ لم يتم اختيار أي جهاز. يمكنك استخدام التصدير السريع أو الطباعة عبر النظام.");
+        return;
+      }
+
       setConnectedDevice({
         type: "bluetooth",
         name: conn.name,
         bluetoothChar: conn.characteristic,
       });
-      dismiss(toastId);
       success(`✅ تم الاتصال بطابعة البلوتوث: ${conn.name}`);
-    } catch (err) {
+    } catch (err: any) {
       dismiss(toastId);
-      toastError("فشل اتصال البلوتوث: " + String(err));
+      if (err?.message === "NOT_SUPPORTED") {
+        toastError("المتصفح الحالي لا يدعم Web Bluetooth. يمكنك التصدير أو استخدام تطبيق Marklife.");
+      } else {
+        toastError("فشل اتصال البلوتوث: " + (err?.message || String(err)));
+      }
     }
   };
 
   // Connect Web USB Printer
   const handleConnectUSB = async () => {
+    if (typeof navigator === "undefined" || !("usb" in navigator)) {
+      toastError("المتصفح الحالي لا يدعم الاتصال المباشر عبر الكابل Web USB.");
+      return;
+    }
+
     const toastId = toastLoading("جاري البحث عن طابعة كابل USB...");
     try {
       const usbDev = await connectWebUSBPrinter();
+      dismiss(toastId);
+
+      if (!usbDev) {
+        success("ℹ️ لم يتم اختيار أي جهاز. يمكنك استخدام التصدير السريع أو الطباعة عبر النظام.");
+        return;
+      }
+
       setConnectedDevice({
         type: "usb",
         name: usbDev.productName || "Marklife USB Printer",
         usbDevice: usbDev,
       });
-      dismiss(toastId);
       success(`✅ تم الاتصال بطابعة USB: ${usbDev.productName || "Direct USB"}`);
-    } catch (err) {
+    } catch (err: any) {
       dismiss(toastId);
-      toastError("فشل اتصال USB: " + String(err));
+      if (err?.message === "NOT_SUPPORTED") {
+        toastError("المتصفح الحالي لا يدعم Web USB. يمكنك التصدير كصورة أو طباعة نظامية.");
+      } else {
+        toastError("فشل اتصال USB: " + (err?.message || String(err)));
+      }
     }
   };
 
@@ -571,6 +601,165 @@ export default function BatchPrintModal({
               )}
             </div>
 
+            {/* ── 4. Symbology & Element Visibility Section Restoration ── */}
+            <div className="bg-[#15102a]/90 p-4 rounded-2xl border border-purple-500/40 flex flex-col gap-3">
+              <div className="flex items-center justify-between border-b border-purple-900/60 pb-2">
+                <label className="block text-xs font-extrabold text-purple-300">
+                  📊 خيارات الباركود وإظهار العناصر (Symbology & Element Visibility):
+                </label>
+              </div>
+
+              {/* Barcode Format Symbology Selector */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span className="block text-purple-200 font-bold mb-1">نوع الباركود 1D (Symbology):</span>
+                  <select
+                    value={customization.barcodeType || "CODE128"}
+                    onChange={(e) =>
+                      setCustomization((prev) => ({
+                        ...prev,
+                        barcodeType: e.target.value as BarcodeSymbology,
+                      }))
+                    }
+                    className="w-full px-3 py-1.5 bg-purple-950 border border-purple-500/40 rounded-xl text-xs font-bold text-white focus:outline-none"
+                  >
+                    <option value="CODE128">Code 128 (قياسي - يدعم النصوص والأرقام)</option>
+                    <option value="EAN13">EAN-13 (سلاسل التجزئة 13 رقم)</option>
+                    <option value="EAN8">EAN-8 (8 أرقام للمنتجات الصغيرة)</option>
+                    <option value="UPC">UPC-A (النظام الأمريكي 12 رقم)</option>
+                    <option value="CODE39">Code 39 (القطاع الصناعي واللوجستي)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <span className="block text-purple-200 font-bold mb-1">تصحيح أخطاء 2D QR (Error Correction):</span>
+                  <select
+                    value={customization.qrErrorCorrection || "M"}
+                    onChange={(e) =>
+                      setCustomization((prev) => ({
+                        ...prev,
+                        qrErrorCorrection: e.target.value as QRErrorCorrection,
+                      }))
+                    }
+                    className="w-full px-3 py-1.5 bg-purple-950 border border-purple-500/40 rounded-xl text-xs font-bold text-white focus:outline-none"
+                  >
+                    <option value="L">Low - L (7% حماية من التلف)</option>
+                    <option value="M">Medium - M (15% حماية متوازنة)</option>
+                    <option value="Q">Quartile - Q (25% حماية عالية)</option>
+                    <option value="H">High - H (30% حماية قصوى)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Element Visibility Toggles Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1 text-xs">
+                <label className="flex items-center gap-2 bg-purple-950/60 p-2 rounded-xl border border-purple-500/30 cursor-pointer hover:bg-purple-900/40">
+                  <input
+                    type="checkbox"
+                    checked={customization.showProductName}
+                    onChange={(e) => setCustomization((prev) => ({ ...prev, showProductName: e.target.checked }))}
+                    className="w-4 h-4 rounded accent-purple-600 cursor-pointer"
+                  />
+                  <span className="font-bold text-purple-200">🏷 اسم المنتج</span>
+                </label>
+
+                <label className="flex items-center gap-2 bg-purple-950/60 p-2 rounded-xl border border-purple-500/30 cursor-pointer hover:bg-purple-900/40">
+                  <input
+                    type="checkbox"
+                    checked={customization.showProductPrice}
+                    onChange={(e) => setCustomization((prev) => ({ ...prev, showProductPrice: e.target.checked }))}
+                    className="w-4 h-4 rounded accent-purple-600 cursor-pointer"
+                  />
+                  <span className="font-bold text-purple-200">💰 سعر المنتج</span>
+                </label>
+
+                <label className="flex items-center gap-2 bg-purple-950/60 p-2 rounded-xl border border-purple-500/30 cursor-pointer hover:bg-purple-900/40">
+                  <input
+                    type="checkbox"
+                    checked={customization.showBarcode}
+                    onChange={(e) => setCustomization((prev) => ({ ...prev, showBarcode: e.target.checked }))}
+                    className="w-4 h-4 rounded accent-purple-600 cursor-pointer"
+                  />
+                  <span className="font-bold text-purple-200">📊 باركود خطي 1D</span>
+                </label>
+
+                <label className="flex items-center gap-2 bg-purple-950/60 p-2 rounded-xl border border-purple-500/30 cursor-pointer hover:bg-purple-900/40">
+                  <input
+                    type="checkbox"
+                    checked={customization.showQRCode}
+                    onChange={(e) => setCustomization((prev) => ({ ...prev, showQRCode: e.target.checked }))}
+                    className="w-4 h-4 rounded accent-purple-600 cursor-pointer"
+                  />
+                  <span className="font-bold text-purple-200">📱 كود 2D QR</span>
+                </label>
+
+                <label className="flex items-center gap-2 bg-purple-950/60 p-2 rounded-xl border border-purple-500/30 cursor-pointer hover:bg-purple-900/40">
+                  <input
+                    type="checkbox"
+                    checked={customization.showStoreURLQR}
+                    onChange={(e) => setCustomization((prev) => ({ ...prev, showStoreURLQR: e.target.checked }))}
+                    className="w-4 h-4 rounded accent-purple-600 cursor-pointer"
+                  />
+                  <span className="font-bold text-purple-200">🔗 QR متجر أحمد بحري</span>
+                </label>
+
+                <label className="flex items-center gap-2 bg-purple-950/60 p-2 rounded-xl border border-purple-500/30 cursor-pointer hover:bg-purple-900/40">
+                  <input
+                    type="checkbox"
+                    checked={customization.showFooterText}
+                    onChange={(e) => setCustomization((prev) => ({ ...prev, showFooterText: e.target.checked }))}
+                    className="w-4 h-4 rounded accent-purple-600 cursor-pointer"
+                  />
+                  <span className="font-bold text-purple-200">✍️ نص التذييل</span>
+                </label>
+              </div>
+
+              {/* Store QR Mode & Custom Base URL */}
+              {customization.showStoreURLQR && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-purple-950 text-xs">
+                  <div>
+                    <span className="block text-purple-200 font-bold mb-1">وجهة كود QR المتجر:</span>
+                    <select
+                      value={customization.qrTargetMode || "store_url"}
+                      onChange={(e) =>
+                        setCustomization((prev) => ({
+                          ...prev,
+                          qrTargetMode: e.target.value as QRTargetMode,
+                        }))
+                      }
+                      className="w-full px-3 py-1.5 bg-purple-950 border border-purple-500/40 rounded-xl text-xs font-bold text-white focus:outline-none"
+                    >
+                      <option value="store_url">الرئيسية (https://ahmed-bahri.vercel.app)</option>
+                      <option value="product_url">صفحة المنتج (https://ahmed-bahri.vercel.app/products/:id)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <span className="block text-purple-200 font-bold mb-1">رابط المتجر الأساسي:</span>
+                    <input
+                      type="text"
+                      value={customization.storeUrl || "https://ahmed-bahri.vercel.app"}
+                      onChange={(e) => setCustomization((prev) => ({ ...prev, storeUrl: e.target.value }))}
+                      className="w-full px-3 py-1.5 bg-purple-950 border border-purple-500/40 rounded-xl text-xs font-mono text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Footer Text Customization */}
+              {customization.showFooterText && (
+                <div className="pt-2 border-t border-purple-950 text-xs">
+                  <span className="block text-purple-200 font-bold mb-1">نص التذييل والملاحظات:</span>
+                  <input
+                    type="text"
+                    value={customization.footerText}
+                    onChange={(e) => setCustomization((prev) => ({ ...prev, footerText: e.target.value }))}
+                    placeholder="مثال: معرض أحمد بحري - ضمان الجودة"
+                    className="w-full px-3 py-1.5 bg-purple-950 border border-purple-500/40 rounded-xl text-xs text-white placeholder-purple-400 focus:outline-none"
+                  />
+                </div>
+              )}
+            </div>
+
             {/* Shape Switcher */}
             <div className="bg-[#15102a]/90 p-4 rounded-2xl border border-purple-500/40 flex flex-col gap-2">
               <label className="block text-xs font-extrabold text-purple-300">
@@ -876,7 +1065,11 @@ export default function BatchPrintModal({
               {sampleProduct ? (
                 <div
                   className={`w-full shadow-2xl flex flex-col items-center justify-between transition-all overflow-hidden relative border-2 ${
-                    customization.labelShape === "circle" ? "rounded-full p-6 max-w-[80%]" : "rounded-2xl p-4"
+                    customization.labelShape === "circle"
+                      ? "rounded-full p-[14%] aspect-square max-w-[260px] mx-auto"
+                      : customization.labelShape === "square"
+                      ? "rounded-2xl aspect-square p-4 max-w-[260px] mx-auto"
+                      : "rounded-2xl p-4 max-w-[280px] mx-auto"
                   }`}
                   style={{
                     backgroundColor: customization.labelBgColor || "#ffffff",

@@ -405,49 +405,64 @@ export async function connectWebBluetoothPrinter(): Promise<{
   device: any;
   characteristic: any;
   name: string;
-}> {
-  if (typeof window === "undefined" || !("bluetooth" in navigator)) {
-    throw new Error("متصفحك لا يدعم خاصية الاتصال اللاسلكي المباشر Web Bluetooth.");
+} | null> {
+  if (typeof window === "undefined" || typeof navigator === "undefined" || !("bluetooth" in navigator)) {
+    throw new Error("NOT_SUPPORTED");
   }
 
-  const device = await (navigator as any).bluetooth.requestDevice({
-    filters: [
-      { namePrefix: "Marklife" },
-      { namePrefix: "X4" },
-      { namePrefix: "XP-" },
-      { namePrefix: "POS" },
-      { namePrefix: "BT" },
-      { namePrefix: "Printer" },
-      { services: ["00001101-0000-1000-8000-00805f9b34fb"] },
-    ],
-    optionalServices: [
-      "00001101-0000-1000-8000-00805f9b34fb",
-      "000018f0-0000-1000-8000-00805f9b34fb",
-      "49535343-fe7d-4ae5-8fa9-9fafd205e455",
-    ],
-  });
+  try {
+    const device = await (navigator as any).bluetooth.requestDevice({
+      filters: [
+        { namePrefix: "Marklife" },
+        { namePrefix: "X4" },
+        { namePrefix: "XP-" },
+        { namePrefix: "POS" },
+        { namePrefix: "BT" },
+        { namePrefix: "Printer" },
+        { services: ["00001101-0000-1000-8000-00805f9b34fb"] },
+      ],
+      optionalServices: [
+        "00001101-0000-1000-8000-00805f9b34fb",
+        "000018f0-0000-1000-8000-00805f9b34fb",
+        "49535343-fe7d-4ae5-8fa9-9fafd205e455",
+      ],
+    });
 
-  const server = await device.gatt.connect();
-  const primaryServices = await server.getPrimaryServices();
+    const server = await device.gatt.connect();
+    const primaryServices = await server.getPrimaryServices();
 
-  if (!primaryServices || primaryServices.length === 0) {
-    throw new Error("لم يتم العثور على خدمات طباعة مناسبة في جهاز البلوتوث المكتشف.");
+    if (!primaryServices || primaryServices.length === 0) {
+      throw new Error("لم يتم العثور على خدمات طباعة مناسبة في جهاز البلوتوث المكتشف.");
+    }
+
+    const service = primaryServices[0];
+    const characteristics = await service.getCharacteristics();
+
+    if (!characteristics || characteristics.length === 0) {
+      throw new Error("تعذّر العثور على قناة الإرسال للجهاز.");
+    }
+
+    const characteristic =
+      characteristics.find(
+        (c: any) => c.properties.write || c.properties.writeWithoutResponse
+      ) || characteristics[0];
+
+    return {
+      device,
+      characteristic,
+      name: device.name || "Marklife X4 Thermal Printer",
+    };
+  } catch (err: any) {
+    if (
+      err?.name === "NotFoundError" ||
+      err?.name === "SecurityError" ||
+      err?.message?.includes("User cancelled") ||
+      err?.message?.includes("cancelled")
+    ) {
+      return null;
+    }
+    throw err;
   }
-
-  const service = primaryServices[0];
-  const characteristics = await service.getCharacteristics();
-  
-  if (!characteristics || characteristics.length === 0) {
-    throw new Error("تعذّر العثور على قناة الإرسال للجهاز.");
-  }
-
-  const characteristic = characteristics.find((c: any) => c.properties.write || c.properties.writeWithoutResponse) || characteristics[0];
-
-  return {
-    device,
-    characteristic,
-    name: device.name || "Marklife X4 Thermal Printer",
-  };
 }
 
 export async function sendTSPLToBluetooth(
@@ -469,22 +484,34 @@ export async function sendTSPLToBluetooth(
   }
 }
 
-export async function connectWebUSBPrinter(): Promise<any> {
-  if (typeof window === "undefined" || !("usb" in navigator)) {
-    throw new Error("متصفحك لا يدعم الاتصال المباشر عبر الكابل Web USB.");
+export async function connectWebUSBPrinter(): Promise<any | null> {
+  if (typeof window === "undefined" || typeof navigator === "undefined" || !("usb" in navigator)) {
+    throw new Error("NOT_SUPPORTED");
   }
 
-  const device = await (navigator as any).usb.requestDevice({
-    filters: [{ classCode: 7 }],
-  });
+  try {
+    const device = await (navigator as any).usb.requestDevice({
+      filters: [{ classCode: 7 }],
+    });
 
-  await device.open();
-  if (device.configuration === null) {
-    await device.selectConfiguration(1);
+    await device.open();
+    if (device.configuration === null) {
+      await device.selectConfiguration(1);
+    }
+    await device.claimInterface(0);
+
+    return device;
+  } catch (err: any) {
+    if (
+      err?.name === "NotFoundError" ||
+      err?.name === "SecurityError" ||
+      err?.message?.includes("User cancelled") ||
+      err?.message?.includes("cancelled")
+    ) {
+      return null;
+    }
+    throw err;
   }
-  await device.claimInterface(0);
-
-  return device;
 }
 
 export async function sendTSPLToUSB(device: any, tsplData: string): Promise<void> {
