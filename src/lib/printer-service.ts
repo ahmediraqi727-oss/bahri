@@ -1,48 +1,43 @@
 /**
  * printer-service.ts
  *
- * Enterprise-Grade Decoupled Printer Service & Data URL Generator.
- * Converts 1D Linear Barcodes (via JsBarcode canvas) and 2D QR Codes (via QRCode)
- * into static 100% offline Base64 Data URLs (data:image/png;base64,...).
- *
- * Guarantees zero CORS / zero network latency / 100% reliable rendering
- * inside window.print(), popup windows, thermal printer drivers, and PDF exports.
+ * Enterprise Decoupled Printer Service & Hardware Bridge.
+ * Combines 1D/2D base64 barcode generators with the Marklife X4 & TSPL/ZPL Thermal Engine.
  */
 
 import QRCode from "qrcode";
 import JsBarcode from "jsbarcode";
 import type { Product } from "./types";
+import {
+  ExtendedLabelCustomization,
+  DEFAULT_EXTENDED_CUSTOMIZATION,
+  MARKLIFE_X4_PRESETS,
+  generateTSPLCommands,
+  generateZPLCommands,
+  connectWebBluetoothPrinter,
+  sendTSPLToBluetooth,
+  connectWebUSBPrinter,
+  sendTSPLToUSB,
+  handshakeWithMarklifeApp,
+  exportLabelsAsPDF,
+  renderLabelToImageBlob,
+  ThermalPrintJobItem,
+  BarcodeSymbology,
+} from "./thermal-printer-engine";
 
 export type CodePrintType = "barcode" | "qr" | "both";
 export type PrintQuantityMode = "unified" | "custom";
 
-export interface LabelCustomizationOptions {
-  showProductName: boolean;
-  showProductPrice: boolean;
-  showBarcode: boolean;
-  showQRCode: boolean;
-  showFooterText: boolean;
-  footerText: string;
-  barcodeHeight: number; // 30 - 80px
-  nameFontSize: number;  // 10 - 20px
-  priceFontSize: number; // 12 - 24px
-}
+export interface LabelCustomizationOptions extends ExtendedLabelCustomization {}
 
 export const DEFAULT_LABEL_CUSTOMIZATION: LabelCustomizationOptions = {
-  showProductName: true,
-  showProductPrice: true,
-  showBarcode: true,
-  showQRCode: true,
-  showFooterText: true,
-  footerText: "معرض أحمد بحري",
-  barcodeHeight: 45,
-  nameFontSize: 13,
-  priceFontSize: 14,
+  ...DEFAULT_EXTENDED_CUSTOMIZATION,
 };
 
 export interface PrintItemConfig {
   product: Product;
   quantity: number;
+  serialNumber?: string;
 }
 
 export interface PrintJobOptions {
@@ -50,17 +45,35 @@ export interface PrintJobOptions {
   customization: LabelCustomizationOptions;
 }
 
+// Re-export thermal engine capabilities
+export {
+  MARKLIFE_X4_PRESETS,
+  generateTSPLCommands,
+  generateZPLCommands,
+  connectWebBluetoothPrinter,
+  sendTSPLToBluetooth,
+  connectWebUSBPrinter,
+  sendTSPLToUSB,
+  handshakeWithMarklifeApp,
+  exportLabelsAsPDF,
+  renderLabelToImageBlob,
+};
+export type { BarcodeSymbology };
+
 /**
  * Converts a 1D Barcode string into a pure Base64 PNG Data URL using off-screen HTMLCanvasElement.
- * Zero external network dependency.
  */
-export function generateBarcodeDataURL(text: string, height = 45): string {
+export function generateBarcodeDataURL(
+  text: string,
+  height = 45,
+  format: BarcodeSymbology = "CODE128"
+): string {
   if (!text || !text.trim()) return "";
   try {
     if (typeof document === "undefined") return "";
     const canvas = document.createElement("canvas");
     JsBarcode(canvas, text.trim(), {
-      format: "CODE128",
+      format: format || "CODE128",
       width: 1.5,
       height: height,
       displayValue: true,
@@ -78,7 +91,6 @@ export function generateBarcodeDataURL(text: string, height = 45): string {
 
 /**
  * Converts a 2D QR Code string into a pure Base64 PNG Data URL using QRCode library.
- * Zero external network dependency.
  */
 export async function generateQRDataURL(text: string): Promise<string> {
   if (!text || !text.trim()) return "";
@@ -103,20 +115,22 @@ export async function generateQRDataURL(text: string): Promise<string> {
 }
 
 /**
- * Generates an optimized, self-contained printable HTML document string
- * formatted for thermal label printers or standard label sheets with exact @media print CSS.
+ * Generates an optimized, self-contained printable HTML document string formatted for thermal label printers.
  */
 export async function buildPrintableDocument(options: PrintJobOptions): Promise<string> {
   const { items, customization } = options;
 
-  // Pre-generate Base64 Data URLs for all 1D Barcodes and 2D QRs
   const barcodeMap = new Map<string, string>();
   const qrMap = new Map<string, string>();
 
   for (const item of items) {
     const p = item.product;
     if (customization.showBarcode && p.barcode && !barcodeMap.has(p.id)) {
-      const dataUrl = generateBarcodeDataURL(p.barcode, customization.barcodeHeight);
+      const dataUrl = generateBarcodeDataURL(
+        p.barcode,
+        customization.barcodeHeight,
+        customization.barcodeType || "CODE128"
+      );
       barcodeMap.set(p.id, dataUrl);
     }
     if (customization.showQRCode && p.qrCode && !qrMap.has(p.id)) {
@@ -125,7 +139,6 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
     }
   }
 
-  // Build labels HTML repeating per item quantity
   const labelsHTML: string[] = [];
 
   for (const { product, quantity } of items) {
@@ -135,7 +148,7 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
 
     for (let i = 0; i < qty; i++) {
       labelsHTML.push(`
-        <div class="label-card">
+        <div class="label-card" style="width: ${customization.rollWidthMM || 40}mm; min-height: ${customization.rollHeightMM || 30}mm;">
           ${
             customization.showProductName
               ? `<div class="product-name" style="font-size: ${customization.nameFontSize}px;">${product.name}</div>`
@@ -144,7 +157,7 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
           
           ${
             customization.showProductPrice
-              ? `<div class="product-price" style="font-size: ${customization.priceFontSize}px;">${product.retailPrice.toLocaleString()} د.ع</div>`
+              ? `<div class="product-price" style="font-size: ${customization.priceFontSize}px;">${product.retailPrice.toLocaleString()} IQD</div>`
               : ""
           }
 
@@ -152,7 +165,7 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
             ${
               customization.showBarcode && barcodeDataUrl
                 ? `<div class="barcode-wrapper">
-                    <img src="${barcodeDataUrl}" alt="Barcode" className="barcode-img" style="height: ${customization.barcodeHeight}px;" />
+                    <img src="${barcodeDataUrl}" alt="Barcode" class="barcode-img" style="height: ${customization.barcodeHeight}px;" />
                    </div>`
                 : ""
             }
@@ -181,7 +194,7 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
     <html dir="rtl" lang="ar">
     <head>
       <meta charset="utf-8" />
-      <title>طباعة الملصقات (${labelsHTML.length} ملصق)</title>
+      <title>طباعة الملصقات الحرارية (${labelsHTML.length} ملصق)</title>
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -192,24 +205,19 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
         }
         @media print {
           @page {
-            margin: 5mm;
+            size: ${customization.rollWidthMM || 40}mm ${customization.rollHeightMM || 30}mm;
+            margin: 0;
           }
           body {
             background: #fff !important;
             padding: 0 !important;
           }
-          .no-print {
-            display: none !important;
-          }
-          .labels-grid {
-            gap: 6mm !important;
-            display: flex !important;
-            flex-wrap: wrap !important;
-          }
+          .no-print { display: none !important; }
+          .labels-grid { gap: 0 !important; display: block !important; }
           .label-card {
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-            border: 1px solid #000 !important;
+            break-after: page !important;
+            page-break-after: always !important;
+            border: none !important;
             box-shadow: none !important;
           }
         }
@@ -232,49 +240,41 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
           font-weight: bold;
           font-size: 14px;
           cursor: pointer;
-          transition: background 0.2s;
         }
-        .btn-print:hover { background: #1d4ed8; }
         .labels-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+          grid-template-columns: repeat(auto-fill, minmax(${customization.rollWidthMM || 40}mm, 1fr));
           gap: 16px;
           justify-content: center;
         }
         .label-card {
           background: #fff;
-          border: 2px dashed #cbd5e1;
-          border-radius: 12px;
-          padding: 12px;
+          border: 1px dashed #cbd5e1;
+          border-radius: 8px;
+          padding: 8px;
           text-align: center;
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: space-between;
-          min-height: 170px;
-          max-width: 260px;
           margin: 0 auto;
-          width: 100%;
         }
         .product-name {
           font-weight: 800;
           color: #0f172a;
-          line-height: 1.3;
-          margin-bottom: 4px;
+          line-height: 1.2;
           word-break: break-word;
         }
         .product-price {
           font-weight: 900;
           color: #2563eb;
-          margin-bottom: 6px;
         }
         .codes-container {
           display: flex;
-          gap: 8px;
+          gap: 4px;
           align-items: center;
           justify-content: center;
           width: 100%;
-          margin: 6px 0;
         }
         .barcode-wrapper, .qr-wrapper {
           display: flex;
@@ -283,25 +283,13 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
           justify-content: center;
           flex: 1;
         }
-        .barcode-img {
-          max-width: 100%;
-          object-fit: contain;
-          display: block;
-        }
-        .qr-img {
-          width: 68px;
-          height: 68px;
-          object-fit: contain;
-          display: block;
-        }
+        .barcode-img { max-width: 100%; object-fit: contain; }
+        .qr-img { width: 48px; height: 48px; object-fit: contain; }
         .footer-text {
-          font-size: 10px;
+          font-size: 9px;
           color: #64748b;
           font-weight: bold;
-          margin-top: 6px;
-          letter-spacing: 0.5px;
           border-top: 1px solid #f1f5f9;
-          padding-top: 4px;
           width: 100%;
         }
       </style>
@@ -309,8 +297,8 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
     <body>
       <div class="header-bar no-print">
         <div>
-          <h2 style="font-size:18px;">معاينة طباعة الملصقات</h2>
-          <p style="font-size:12px; color:#64748b;">إجمالي عدد الملصقات: <strong>${labelsHTML.length}</strong> ملصق</p>
+          <h2 style="font-size:18px;">معاينة استوديو الملصقات الحرارية</h2>
+          <p style="font-size:12px; color:#64748b;">إجمالي عدد الملصقات: <strong>${labelsHTML.length}</strong> ملصق (${customization.rollWidthMM}×${customization.rollHeightMM} mm)</p>
         </div>
         <div style="display:flex; gap:10px;">
           <button class="btn-print" onclick="window.print()">🖨 أمر الطباعة الفوري</button>
@@ -352,7 +340,7 @@ export async function executePrintJob(options: PrintJobOptions): Promise<void> {
  */
 export async function exportPrintableFile(
   options: PrintJobOptions,
-  filename = "barcode_labels.html"
+  filename = "thermal_barcode_labels.html"
 ): Promise<void> {
   const html = await buildPrintableDocument(options);
   const blob = new Blob([html], { type: "text/html;charset=utf-8;" });
