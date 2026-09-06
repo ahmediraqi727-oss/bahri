@@ -16,13 +16,22 @@ export default function SmartFloatingBar({
   useEffect(() => {
     const handleScroll = () => {
       if (typeof window === "undefined" || !document.documentElement) return;
-      const scrollPosition = window.scrollY + window.innerHeight;
-      const threshold = document.documentElement.scrollHeight - 120;
-      setIsAtBottom(scrollPosition >= threshold);
+      
+      const scrollTop = window.scrollY;
+      const scrollHeight = document.documentElement.scrollHeight;
+      const clientHeight = window.innerHeight;
+
+      // حساب المسافة المتبقية للوصول إلى نهاية الصفحة (أقل من 150 بكسل)
+      const distanceToBottom = scrollHeight - (scrollTop + clientHeight);
+
+      if (distanceToBottom <= 150) {
+        setIsAtBottom(true); // الوصول للنهاية -> الانتقال للأسفل
+      } else {
+        setIsAtBottom(false); // أثناء التصفح العلوي والوسط -> الثبات في الأعلى
+      }
     };
 
-    // Initial check on mount
-    handleScroll();
+    handleScroll(); // التحقق الأولي عند التحميل
 
     window.addEventListener("scroll", handleScroll, { passive: true });
     window.addEventListener("resize", handleScroll, { passive: true });
@@ -36,10 +45,10 @@ export default function SmartFloatingBar({
   return (
     <div
       className={`
-        ${isAtBottom ? "sticky bottom-4" : "sticky top-4"}
+        sticky ${isAtBottom ? "bottom-4" : "top-4"}
         z-40 mx-4 my-3
         bg-[#1e1936]/95 border border-purple-500/40 backdrop-blur-md rounded-2xl
-        transition-all duration-300 ease-in-out
+        transition-all duration-300 ease-in-out shadow-2xl
         ${className}
       `.trim().replace(/\s+/g, " ")}
     >
