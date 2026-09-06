@@ -192,10 +192,10 @@ export default function BatchPrintModal({
                     key={key}
                     type="button"
                     onClick={() => applyPreset(key as any)}
-                    className="px-3 py-2 bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-gray-200 dark:border-gray-700 rounded-xl text-xs font-bold text-gray-800 dark:text-gray-200 transition-all flex items-center justify-center gap-1.5 shadow-2xs"
+                    className="px-2 py-2 bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-gray-200 dark:border-gray-700 rounded-xl text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-200 transition-all flex items-center justify-center gap-1 shadow-2xs text-center break-words whitespace-normal leading-tight min-w-0"
                   >
-                    <span>{icon}</span>
-                    <span>{label}</span>
+                    <span className="shrink-0">{icon}</span>
+                    <span className="text-xs sm:text-sm font-bold text-center break-words whitespace-normal leading-tight">{label}</span>
                   </button>
                 ))}
               </div>
@@ -318,7 +318,7 @@ export default function BatchPrintModal({
                   <button
                     type="button"
                     onClick={() => setQtyMode("unified")}
-                    className={`px-3 py-1 font-bold rounded-lg transition-all ${
+                    className={`px-3 py-1 font-bold rounded-lg transition-all text-xs sm:text-sm text-center break-words whitespace-normal leading-tight ${
                       qtyMode === "unified"
                         ? "bg-white dark:bg-gray-900 text-blue-600 shadow-xs"
                         : "text-gray-500"
@@ -329,7 +329,7 @@ export default function BatchPrintModal({
                   <button
                     type="button"
                     onClick={() => setQtyMode("custom")}
-                    className={`px-3 py-1 font-bold rounded-lg transition-all ${
+                    className={`px-3 py-1 font-bold rounded-lg transition-all text-xs sm:text-sm text-center break-words whitespace-normal leading-tight ${
                       qtyMode === "custom"
                         ? "bg-white dark:bg-gray-900 text-blue-600 shadow-xs"
                         : "text-gray-500"

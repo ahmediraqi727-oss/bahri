@@ -501,7 +501,7 @@ export default function BarcodeManagementHub() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           
           {/* Status Filter Tabs */}
-          <div className="flex bg-gray-100 dark:bg-gray-800 rounded-xl p-1 gap-1 shrink-0">
+          <div className="flex bg-gray-100 dark:bg-gray-800 rounded-xl p-1 gap-1 shrink-0 max-w-full overflow-x-auto">
             {([
               { key: "all", label: "الكل" },
               { key: "missing", label: "بدون كود" },
@@ -510,7 +510,7 @@ export default function BarcodeManagementHub() {
               <button
                 key={key}
                 onClick={() => setFilterMode(key)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold text-center break-words whitespace-normal leading-tight transition-all ${
                   filterMode === key
                     ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-xs"
                     : "text-gray-500 dark:text-gray-400"
@@ -599,14 +599,14 @@ export default function BarcodeManagementHub() {
             <span className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center font-extrabold text-xs">
               {selectedIds.size}
             </span>
-            <span className="font-extrabold text-sm">منتجات محددة</span>
+            <span className="font-extrabold text-xs sm:text-sm break-words whitespace-normal leading-tight">منتجات محددة</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             {/* Batch Print Button */}
             <button
               onClick={() => setBatchPrintOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold text-center break-words whitespace-normal leading-tight transition-all shadow-xs"
             >
               <span>🖨</span>
               <span>طباعة الملصقات</span>
@@ -615,7 +615,7 @@ export default function BarcodeManagementHub() {
             {/* Batch Generate Button */}
             <button
               onClick={handleBatchGenerate}
-              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+              className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-bold text-center break-words whitespace-normal leading-tight transition-all shadow-xs"
             >
               <span>⚡</span>
               <span>توليد باركود</span>
@@ -624,7 +624,7 @@ export default function BarcodeManagementHub() {
             {/* Batch Enable/Disable Toggle */}
             <button
               onClick={() => handleBatchToggleActive(true)}
-              className="px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-all"
+              className="px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs sm:text-sm font-bold text-center break-words whitespace-normal leading-tight transition-all"
             >
               تفعيل الأكواد
             </button>
@@ -632,7 +632,7 @@ export default function BarcodeManagementHub() {
             {/* Batch Reset Button */}
             <button
               onClick={handleBatchReset}
-              className="flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+              className="flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs sm:text-sm font-bold text-center break-words whitespace-normal leading-tight transition-all shadow-xs"
             >
               <span>🗑</span>
               <span>تصفير الأكواد</span>
@@ -641,7 +641,7 @@ export default function BarcodeManagementHub() {
             {/* Clear Selection */}
             <button
               onClick={() => setSelectedIds(new Set())}
-              className="px-3 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-bold transition-all"
+              className="px-3 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs sm:text-sm font-bold text-center break-words whitespace-normal leading-tight transition-all"
             >
               إلغاء التحديد
             </button>
