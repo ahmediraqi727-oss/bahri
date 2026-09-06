@@ -5,6 +5,11 @@
  * Converts raw Arabic character sequences into contextual connected glyphs
  * (Unicode Presentation Forms-B \uFE70 - \uFEFF) with Lam-Alef ligature support,
  * right-to-left word ordering, and smart multi-line Canvas text wrapping.
+ *
+ * Mixed BiDi guarantee:
+ *   - Arabic word runs → shaped with contextual glyphs + character-reversed for LTR canvas/PDF
+ *   - Non-Arabic runs (Latin letters, digits, currency symbols like "IQD", "5,400") → preserved LTR
+ *   - Overall RTL sentence order is maintained by reversing the word-token sequence
  */
 
 // Contextual Form Types
@@ -71,6 +76,13 @@ const NON_CONNECTING_CHARS = new Set([
  */
 export function isArabicChar(ch: string): boolean {
   return ch in ARABIC_GLYPH_MAP;
+}
+
+/**
+ * Returns true if the string contains at least one Arabic character.
+ */
+function containsArabic(s: string): boolean {
+  return /[\u0600-\u06FF]/.test(s);
 }
 
 /**
@@ -141,34 +153,56 @@ export function shapeArabicText(text: string): string {
 
 /**
  * Prepares Arabic & mixed BiDi text for Canvas or vector PDF engines that do not natively handle RTL rendering.
- * Shapes Arabic letters and reverses word/character order for Arabic tokens while preserving English & numbers.
+ *
+ * Algorithm:
+ *   1. Split on whitespace boundaries to get word tokens.
+ *   2. Classify each token: Arabic (contains ≥1 Arabic char) or Latin/numeric.
+ *   3. Reverse the word-token sequence to reflect RTL sentence order on the LTR canvas.
+ *   4. Shape & char-reverse Arabic tokens → visual glyphs drawn correctly in LTR raster space.
+ *   5. Latin tokens (e.g. "FASHION E-PIKE"), numbers ("5,400"), currency ("IQD") remain intact.
+ *
+ * Example:
+ *   Input:  "قميص FASHION رجالي 5,400 IQD"
+ *   Output: "IQD 5,400 <shaped قميص reversed> FASHION <shaped يلاجر reversed>"
+ *   Visual: reads correctly right-to-left on any thermal/canvas/PDF renderer.
  */
 export function prepareRTLText(text: string): string {
   if (!text) return "";
 
-  // Check if string contains Arabic characters
-  const hasArabic = /[\u0600-\u06FF]/.test(text);
-  if (!hasArabic) return text;
+  // Pass-through for pure Latin/numeric strings
+  if (!containsArabic(text)) return text;
 
-  // Tokenize by space boundaries while preserving spaces
-  const tokens = text.split(/(\s+)/);
-  const processedTokens = tokens.map((token) => {
-    if (/[\u0600-\u06FF]/.test(token)) {
-      // Shape Arabic characters into contextual joined glyphs and reverse character order for LTR canvas/pdf
-      const shaped = shapeArabicText(token);
+  // Tokenize: split on whitespace, filter out blank slots
+  const rawTokens = text.split(/(\s+)/);
+  const wordTokens: string[] = [];
+
+  for (const tok of rawTokens) {
+    if (/^\s+$/.test(tok)) continue; // skip pure-whitespace separators
+    if (tok !== "") wordTokens.push(tok);
+  }
+
+  // Shape & char-reverse Arabic tokens; leave Latin/digit tokens intact
+  const shapedTokens = wordTokens.map((tok) => {
+    if (containsArabic(tok)) {
+      const shaped = shapeArabicText(tok);
       return Array.from(shaped).reverse().join("");
     }
-    // English words, numbers (5,400), and currency symbols (IQD) remain in natural LTR order
-    return token;
+    // Latin words, numbers (5,400), currency symbols (IQD) → natural LTR order preserved
+    return tok;
   });
 
-  // Reverse overall token sequence so RTL sentence order is preserved
-  return processedTokens.reverse().join("");
+  // Reverse overall word sequence to get RTL visual sentence order
+  shapedTokens.reverse();
+
+  return shapedTokens.join(" ");
 }
 
 /**
  * Smart multi-line text wrapping helper for HTML5 Canvas.
- * Measures text using `ctx.measureText` and splits text into line arrays that fit `maxWidth`.
+ *
+ * Wraps on raw (unshaped) text for correct word-boundary measurement,
+ * then applies prepareRTLText() per completed line for shaped/reversed output.
+ * This prevents width-measurement drift caused by Presentation-Form glyph substitution.
  */
 export function wrapCanvasText(
   ctx: CanvasRenderingContext2D,
@@ -177,17 +211,19 @@ export function wrapCanvasText(
 ): string[] {
   if (!text) return [];
 
+  const isRTL = containsArabic(text);
   const words = text.split(" ");
   const lines: string[] = [];
   let currentLine = "";
 
   for (const word of words) {
     const testLine = currentLine ? `${currentLine} ${word}` : word;
-    const shapedTestLine = prepareRTLText(testLine);
-    const metrics = ctx.measureText(shapedTestLine);
+    // Measure raw text (before shaping) for consistent width calculation
+    const metrics = ctx.measureText(testLine);
 
     if (metrics.width > maxWidth && currentLine) {
-      lines.push(prepareRTLText(currentLine));
+      // Shape only when flushing the completed line
+      lines.push(isRTL ? prepareRTLText(currentLine) : currentLine);
       currentLine = word;
     } else {
       currentLine = testLine;
@@ -195,7 +231,7 @@ export function wrapCanvasText(
   }
 
   if (currentLine) {
-    lines.push(prepareRTLText(currentLine));
+    lines.push(isRTL ? prepareRTLText(currentLine) : currentLine);
   }
 
   return lines;

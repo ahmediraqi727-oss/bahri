@@ -1113,6 +1113,8 @@ export default function BatchPrintModal({
                       return (
                         <div
                           key="name"
+                          dir="rtl"
+                          lang="ar"
                           className="font-extrabold text-center mb-1 leading-snug break-words whitespace-normal max-w-full"
                           style={{ fontSize: `${customization.nameFontSize}px`, color: customization.textColor || "#0f172a" }}
                         >
@@ -1170,6 +1172,8 @@ export default function BatchPrintModal({
                       return (
                         <div
                           key="footer"
+                          dir="rtl"
+                          lang="ar"
                           className="text-[10px] font-bold border-t border-gray-200/60 pt-1.5 w-full text-center mt-1 break-words whitespace-normal"
                           style={{ color: customization.textColor || "#64748b" }}
                         >
