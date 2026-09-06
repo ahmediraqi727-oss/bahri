@@ -2,7 +2,8 @@
  * thermal-printer-engine.ts
  *
  * Enterprise Thermal Label Printing & Hardware Subsystem for Ahmed Bahri Store.
- * Supports Multi-Shape Label Rolls (Rectangle, Square, Circle), Global Thermal Dimensions,
+ * Supports Multi-Shape Label Rolls (Rectangle, Square, Circle with Circular Safe-Area),
+ * Strict Conditional Visibility, Dynamic Element Reordering Engine,
  * Dual 1D/2D QR Barcode Engine, and Dynamic Store URL QR Encoding.
  */
 
@@ -16,6 +17,7 @@ export type ThermalProtocol = "TSPL" | "ZPL" | "ESCPOS";
 export type LabelShape = "rectangle" | "square" | "circle";
 export type QRErrorCorrection = "L" | "M" | "Q" | "H";
 export type QRTargetMode = "product_qr" | "store_url" | "product_url";
+export type LabelElementId = "name" | "price" | "codes" | "footer";
 
 export interface LabelRollDimensions {
   widthMM: number;
@@ -55,7 +57,10 @@ export interface ExtendedLabelCustomization {
   serialStartNumber: number;
   presetName: string;
   storeUrl: string;
+  elementOrder: LabelElementId[];
 }
+
+export const DEFAULT_LABEL_ELEMENT_ORDER: LabelElementId[] = ["name", "price", "codes", "footer"];
 
 export const DEFAULT_EXTENDED_CUSTOMIZATION: ExtendedLabelCustomization = {
   rollWidthMM: 40,
@@ -82,6 +87,7 @@ export const DEFAULT_EXTENDED_CUSTOMIZATION: ExtendedLabelCustomization = {
   serialStartNumber: 1001,
   presetName: "marklife_40x30",
   storeUrl: "https://ahmed-bahri.vercel.app",
+  elementOrder: [...DEFAULT_LABEL_ELEMENT_ORDER],
 };
 
 export const GLOBAL_THERMAL_PRESETS: Record<string, Partial<ExtendedLabelCustomization>> = {
@@ -152,6 +158,27 @@ export interface ThermalPrintJobItem {
 }
 
 /**
+ * Reorders elements by moving target id up or down.
+ */
+export function moveElementOrder(
+  order: LabelElementId[] | undefined,
+  id: LabelElementId,
+  direction: "up" | "down"
+): LabelElementId[] {
+  const currentOrder = order && order.length > 0 ? order : [...DEFAULT_LABEL_ELEMENT_ORDER];
+  const index = currentOrder.indexOf(id);
+  if (index === -1) return currentOrder;
+  const newIndex = direction === "up" ? index - 1 : index + 1;
+  if (newIndex < 0 || newIndex >= currentOrder.length) return currentOrder;
+
+  const result = [...currentOrder];
+  const temp = result[index];
+  result[index] = result[newIndex];
+  result[newIndex] = temp;
+  return result;
+}
+
+/**
  * Resolves the string payload to encode into QR code based on user settings.
  */
 export function resolveQRPayload(
@@ -171,16 +198,12 @@ export function resolveQRPayload(
 
 // ─── 1. TSPL COMMAND SYNTHESIZER (MARK LIFE X4 & TSC) ─────────────────────────
 
-/**
- * Generates exact TSPL commands for Marklife X4 / TSC thermal label printers.
- */
 export function generateTSPLCommands(
   items: ThermalPrintJobItem[],
   config: ExtendedLabelCustomization
 ): string {
   const commands: string[] = [];
 
-  // Enforce square or circle width/height symmetry if applicable
   const widthMM = config.labelShape === "square" || config.labelShape === "circle"
     ? config.rollWidthMM
     : config.rollWidthMM;
@@ -193,9 +216,12 @@ export function generateTSPLCommands(
   commands.push(`DENSITY ${Math.min(15, Math.max(1, config.density))}`);
   commands.push(`SPEED ${Math.min(5, Math.max(1, config.speed))}`);
   commands.push(`DIRECTION 1`);
-  commands.push(`CODEPAGE 1256`); // Arabic Windows codepage support
+  commands.push(`CODEPAGE 1256`);
 
   let currentSerial = config.serialStartNumber;
+  const elementOrder = config.elementOrder && config.elementOrder.length > 0
+    ? config.elementOrder
+    : DEFAULT_LABEL_ELEMENT_ORDER;
 
   for (const item of items) {
     const qty = Math.max(1, item.quantity);
@@ -207,49 +233,52 @@ export function generateTSPLCommands(
 
       const dotPerMM = 8;
       const labelWidthDots = widthMM * dotPerMM;
-      let yCursor = 15;
+      let yCursor = config.labelShape === "circle" ? 25 : 15;
 
-      // Title / Product Name
-      if (config.showProductName && p.name) {
-        const cleanName = p.name.replace(/"/g, '\\"');
-        commands.push(`TEXT ${labelWidthDots / 2},${yCursor},"3.TTS",0,1,1,2,"${cleanName}"`);
-        yCursor += 28;
-      }
+      for (const elemId of elementOrder) {
+        if (elemId === "name") {
+          // STRICT CONDITIONAL VISIBILITY
+          if (config.showProductName && p.name) {
+            const cleanName = p.name.replace(/"/g, '\\"');
+            commands.push(`TEXT ${labelWidthDots / 2},${yCursor},"3.TTS",0,1,1,2,"${cleanName}"`);
+            yCursor += 28;
+          }
+        } else if (elemId === "price") {
+          // STRICT CONDITIONAL VISIBILITY
+          if (config.showProductPrice && p.retailPrice) {
+            const priceStr = `${p.retailPrice.toLocaleString()} IQD`;
+            commands.push(`TEXT ${labelWidthDots / 2},${yCursor},"4.TTS",0,1,1,2,"${priceStr}"`);
+            yCursor += 32;
+          }
+        } else if (elemId === "codes") {
+          // STRICT CONDITIONAL VISIBILITY FOR BARCODE & QR
+          if (config.showBarcode && p.barcode) {
+            const barcodeCode = p.barcode.trim();
+            const bHeightDots = Math.round(config.barcodeHeight * 1.5);
+            commands.push(
+              `BARCODE ${Math.round(labelWidthDots * 0.1)},${yCursor},"128",${bHeightDots},1,0,2,2,"${barcodeCode}"`
+            );
+            yCursor += bHeightDots + 20;
+          }
 
-      // Price
-      if (config.showProductPrice && p.retailPrice) {
-        const priceStr = `${p.retailPrice.toLocaleString()} IQD`;
-        commands.push(`TEXT ${labelWidthDots / 2},${yCursor},"4.TTS",0,1,1,2,"${priceStr}"`);
-        yCursor += 32;
-      }
+          if ((config.showQRCode || config.showStoreURLQR) && qrPayload) {
+            const ecc = config.qrErrorCorrection || "M";
+            commands.push(`QRCODE ${Math.round(labelWidthDots * 0.35)},${yCursor},${ecc},4,A,0,"${qrPayload}"`);
+            yCursor += 60;
+          }
+        } else if (elemId === "footer") {
+          if (config.enableSerialNumbers) {
+            const serialStr = `S/N: ${currentSerial++}`;
+            commands.push(`TEXT ${labelWidthDots / 2},${yCursor},"2.TTS",0,1,1,2,"${serialStr}"`);
+            yCursor += 18;
+          }
 
-      // Simultaneous Dual Barcode & QR Code Rendering
-      if (config.showBarcode && p.barcode) {
-        const barcodeCode = p.barcode.trim();
-        const bHeightDots = Math.round(config.barcodeHeight * 1.5);
-        commands.push(
-          `BARCODE ${Math.round(labelWidthDots * 0.1)},${yCursor},"128",${bHeightDots},1,0,2,2,"${barcodeCode}"`
-        );
-        yCursor += bHeightDots + 20;
-      }
-
-      if ((config.showQRCode || config.showStoreURLQR) && qrPayload) {
-        const ecc = config.qrErrorCorrection || "M";
-        commands.push(`QRCODE ${Math.round(labelWidthDots * 0.35)},${yCursor},${ecc},4,A,0,"${qrPayload}"`);
-        yCursor += 60;
-      }
-
-      // Serial Number
-      if (config.enableSerialNumbers) {
-        const serialStr = `S/N: ${currentSerial++}`;
-        commands.push(`TEXT ${labelWidthDots / 2},${yCursor},"2.TTS",0,1,1,2,"${serialStr}"`);
-        yCursor += 18;
-      }
-
-      // Custom Footer Text
-      if (config.showFooterText && config.footerText) {
-        const footer = config.footerText.replace(/"/g, '\\"');
-        commands.push(`TEXT ${labelWidthDots / 2},${yCursor},"2.TTS",0,1,1,2,"${footer}"`);
+          // STRICT CONDITIONAL VISIBILITY
+          if (config.showFooterText && config.footerText) {
+            const footer = config.footerText.replace(/"/g, '\\"');
+            commands.push(`TEXT ${labelWidthDots / 2},${yCursor},"2.TTS",0,1,1,2,"${footer}"`);
+          }
+        }
       }
 
       commands.push(`PRINT 1,1`);
@@ -260,7 +289,7 @@ export function generateTSPLCommands(
 }
 
 /**
- * Generates ZPL commands (Zebra compatibility)
+ * Generates ZPL commands (Zebra compatibility) with reordering & strict conditional checks.
  */
 export function generateZPLCommands(
   items: ThermalPrintJobItem[],
@@ -272,6 +301,9 @@ export function generateZPLCommands(
 
   const widthDots = widthMM * 8;
   const heightDots = heightMM * 8;
+  const elementOrder = config.elementOrder && config.elementOrder.length > 0
+    ? config.elementOrder
+    : DEFAULT_LABEL_ELEMENT_ORDER;
 
   for (const item of items) {
     const qty = Math.max(1, item.quantity);
@@ -285,30 +317,34 @@ export function generateZPLCommands(
       zpl.push(`^PR${config.speed}`);
       zpl.push(`^MD${config.density}`);
 
-      let y = 20;
+      let y = config.labelShape === "circle" ? 28 : 20;
 
-      if (config.showProductName && p.name) {
-        zpl.push(`^FO20,${y}^A0N,25,25^FD${p.name}^FS`);
-        y += 30;
-      }
+      for (const elemId of elementOrder) {
+        if (elemId === "name") {
+          if (config.showProductName && p.name) {
+            zpl.push(`^FO20,${y}^A0N,25,25^FD${p.name}^FS`);
+            y += 30;
+          }
+        } else if (elemId === "price") {
+          if (config.showProductPrice && p.retailPrice) {
+            zpl.push(`^FO20,${y}^A0N,30,30^FD${p.retailPrice.toLocaleString()} IQD^FS`);
+            y += 35;
+          }
+        } else if (elemId === "codes") {
+          if (config.showBarcode && p.barcode) {
+            zpl.push(`^FO20,${y}^BCN,${config.barcodeHeight},Y,N,N^FD${p.barcode}^FS`);
+            y += config.barcodeHeight + 25;
+          }
 
-      if (config.showProductPrice && p.retailPrice) {
-        zpl.push(`^FO20,${y}^A0N,30,30^FD${p.retailPrice.toLocaleString()} IQD^FS`);
-        y += 35;
-      }
-
-      if (config.showBarcode && p.barcode) {
-        zpl.push(`^FO20,${y}^BCN,${config.barcodeHeight},Y,N,N^FD${p.barcode}^FS`);
-        y += config.barcodeHeight + 25;
-      }
-
-      if ((config.showQRCode || config.showStoreURLQR) && qrPayload) {
-        zpl.push(`^FO50,${y}^BQN,2,4^FDQA,${qrPayload}^FS`);
-        y += 65;
-      }
-
-      if (config.showFooterText && config.footerText) {
-        zpl.push(`^FO20,${y}^A0N,18,18^FD${config.footerText}^FS`);
+          if ((config.showQRCode || config.showStoreURLQR) && qrPayload) {
+            zpl.push(`^FO50,${y}^BQN,2,4^FDQA,${qrPayload}^FS`);
+            y += 65;
+          }
+        } else if (elemId === "footer") {
+          if (config.showFooterText && config.footerText) {
+            zpl.push(`^FO20,${y}^A0N,18,18^FD${config.footerText}^FS`);
+          }
+        }
       }
 
       zpl.push("^XZ");
@@ -467,7 +503,7 @@ export async function handshakeWithMarklifeApp(
 // ─── 4. MULTI-FORMAT EXPORT ENGINE (PNG, JPEG, VECTOR PDF, TSPL, ZPL) ──────────
 
 /**
- * Exports thermal labels as a High-DPI Vector PDF document (jsPDF) matching exact label mm dimensions and shape.
+ * Exports thermal labels as a High-DPI Vector PDF document (jsPDF) matching exact label mm dimensions, shape, reordering & strict conditional visibility.
  */
 export async function exportLabelsAsPDF(
   items: ThermalPrintJobItem[],
@@ -483,6 +519,10 @@ export async function exportLabelsAsPDF(
     format: [widthMM, heightMM],
   });
 
+  const elementOrder = config.elementOrder && config.elementOrder.length > 0
+    ? config.elementOrder
+    : DEFAULT_LABEL_ELEMENT_ORDER;
+
   let pageIndex = 0;
 
   for (const item of items) {
@@ -495,82 +535,89 @@ export async function exportLabelsAsPDF(
         pdf.addPage([widthMM, heightMM], widthMM > heightMM ? "landscape" : "portrait");
       }
 
-      // Shape Guide
+      // Shape Guide with Safe Area Inset for Circular labels
       pdf.setLineWidth(0.2);
       pdf.setDrawColor(200, 200, 200);
 
-      if (config.labelShape === "circle") {
+      const isCircle = config.labelShape === "circle";
+      const safeWidthMM = isCircle ? widthMM * 0.707 : widthMM - 2;
+
+      if (isCircle) {
         const radius = Math.min(widthMM, heightMM) / 2 - 0.5;
         pdf.circle(widthMM / 2, heightMM / 2, radius);
       } else {
         pdf.rect(0.5, 0.5, widthMM - 1, heightMM - 1);
       }
 
-      let yMM = config.labelShape === "circle" ? 6 : 4;
+      let yMM = isCircle ? heightMM * 0.16 : 4;
 
-      // Product Name
-      if (config.showProductName && p.name) {
-        pdf.setFontSize(Math.max(7, Math.round(config.nameFontSize * 0.75)));
-        pdf.setFont("helvetica", "bold");
-        pdf.setTextColor(15, 23, 42);
-        
-        const splitText = pdf.splitTextToSize(p.name, widthMM - 6);
-        pdf.text(splitText, widthMM / 2, yMM, { align: "center" });
-        yMM += splitText.length * 3.5 + 1;
-      }
+      for (const elemId of elementOrder) {
+        if (elemId === "name") {
+          // STRICT CONDITIONAL VISIBILITY
+          if (config.showProductName && p.name) {
+            pdf.setFontSize(Math.max(7, Math.round(config.nameFontSize * 0.75)));
+            pdf.setFont("helvetica", "bold");
+            pdf.setTextColor(15, 23, 42);
+            
+            const splitText = pdf.splitTextToSize(p.name, safeWidthMM);
+            pdf.text(splitText, widthMM / 2, yMM, { align: "center" });
+            yMM += splitText.length * 3.5 + 1;
+          }
+        } else if (elemId === "price") {
+          // STRICT CONDITIONAL VISIBILITY
+          if (config.showProductPrice && p.retailPrice) {
+            pdf.setFontSize(Math.max(8, Math.round(config.priceFontSize * 0.85)));
+            pdf.setFont("helvetica", "bold");
+            pdf.setTextColor(37, 99, 235);
+            pdf.text(`${p.retailPrice.toLocaleString()} IQD`, widthMM / 2, yMM, { align: "center" });
+            yMM += 4.5;
+          }
+        } else if (elemId === "codes") {
+          // STRICT CONDITIONAL VISIBILITY
+          if (config.showBarcode && p.barcode) {
+            try {
+              const canvas = document.createElement("canvas");
+              JsBarcode(canvas, p.barcode.trim(), {
+                format: config.barcodeType || "CODE128",
+                width: 1.5,
+                height: config.barcodeHeight,
+                displayValue: true,
+                fontSize: 9,
+                margin: 2,
+              });
+              const barcodeDataUrl = canvas.toDataURL("image/png");
+              const bWidthMM = safeWidthMM * 0.9;
+              const bHeightMM = Math.min(10, heightMM * 0.25);
+              pdf.addImage(barcodeDataUrl, "PNG", (widthMM - bWidthMM) / 2, yMM, bWidthMM, bHeightMM);
+              yMM += bHeightMM + 2;
+            } catch (e) {
+              console.warn("[ThermalEngine] Barcode PDF render error:", e);
+            }
+          }
 
-      // Retail Price
-      if (config.showProductPrice && p.retailPrice) {
-        pdf.setFontSize(Math.max(8, Math.round(config.priceFontSize * 0.85)));
-        pdf.setFont("helvetica", "bold");
-        pdf.setTextColor(37, 99, 235);
-        pdf.text(`${p.retailPrice.toLocaleString()} IQD`, widthMM / 2, yMM, { align: "center" });
-        yMM += 4.5;
-      }
-
-      // Simultaneous Dual 1D Barcode & 2D QR Code
-      if (config.showBarcode && p.barcode) {
-        try {
-          const canvas = document.createElement("canvas");
-          JsBarcode(canvas, p.barcode.trim(), {
-            format: config.barcodeType || "CODE128",
-            width: 1.5,
-            height: config.barcodeHeight,
-            displayValue: true,
-            fontSize: 9,
-            margin: 2,
-          });
-          const barcodeDataUrl = canvas.toDataURL("image/png");
-          const bWidthMM = widthMM * 0.75;
-          const bHeightMM = Math.min(10, heightMM * 0.25);
-          pdf.addImage(barcodeDataUrl, "PNG", (widthMM - bWidthMM) / 2, yMM, bWidthMM, bHeightMM);
-          yMM += bHeightMM + 2;
-        } catch (e) {
-          console.warn("[ThermalEngine] Barcode PDF render error:", e);
+          if ((config.showQRCode || config.showStoreURLQR) && qrPayload) {
+            try {
+              const qrDataUrl = await QRCode.toDataURL(qrPayload, {
+                margin: 1,
+                errorCorrectionLevel: config.qrErrorCorrection || "M",
+              });
+              const qrSizeMM = Math.min(13, heightMM * 0.3);
+              pdf.addImage(qrDataUrl, "PNG", (widthMM - qrSizeMM) / 2, yMM, qrSizeMM, qrSizeMM);
+              yMM += qrSizeMM + 2;
+            } catch (e) {
+              console.warn("[ThermalEngine] QR PDF render error:", e);
+            }
+          }
+        } else if (elemId === "footer") {
+          // STRICT CONDITIONAL VISIBILITY
+          if (config.showFooterText && config.footerText) {
+            pdf.setFontSize(5.5);
+            pdf.setFont("helvetica", "normal");
+            pdf.setTextColor(100, 116, 139);
+            const footerY = isCircle ? heightMM * 0.84 : heightMM - 2;
+            pdf.text(config.footerText, widthMM / 2, footerY, { align: "center" });
+          }
         }
-      }
-
-      if ((config.showQRCode || config.showStoreURLQR) && qrPayload) {
-        try {
-          const qrDataUrl = await QRCode.toDataURL(qrPayload, {
-            margin: 1,
-            errorCorrectionLevel: config.qrErrorCorrection || "M",
-          });
-          const qrSizeMM = Math.min(13, heightMM * 0.3);
-          pdf.addImage(qrDataUrl, "PNG", (widthMM - qrSizeMM) / 2, yMM, qrSizeMM, qrSizeMM);
-          yMM += qrSizeMM + 2;
-        } catch (e) {
-          console.warn("[ThermalEngine] QR PDF render error:", e);
-        }
-      }
-
-      // Footer Text
-      if (config.showFooterText && config.footerText) {
-        pdf.setFontSize(5.5);
-        pdf.setFont("helvetica", "normal");
-        pdf.setTextColor(100, 116, 139);
-        const footerY = config.labelShape === "circle" ? heightMM - 5 : heightMM - 2;
-        pdf.text(config.footerText, widthMM / 2, footerY, { align: "center" });
       }
 
       pageIndex++;
@@ -581,7 +628,7 @@ export async function exportLabelsAsPDF(
 }
 
 /**
- * Renders an offscreen canvas with shape clipping and exports label as High-DPI PNG or JPEG Blob.
+ * Renders an offscreen canvas with Circular Safe-Area padding, element reordering & strict conditional checks.
  */
 export async function renderLabelToImageBlob(
   product: Product,
@@ -600,6 +647,10 @@ export async function renderLabelToImageBlob(
 
   const canvasWidth = mmToPx(widthMM);
   const canvasHeight = mmToPx(heightMM);
+  const isCircle = config.labelShape === "circle";
+  const elementOrder = config.elementOrder && config.elementOrder.length > 0
+    ? config.elementOrder
+    : DEFAULT_LABEL_ELEMENT_ORDER;
 
   const canvas = document.createElement("canvas");
   canvas.width = canvasWidth;
@@ -612,7 +663,7 @@ export async function renderLabelToImageBlob(
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-  if (config.labelShape === "circle") {
+  if (isCircle) {
     ctx.beginPath();
     ctx.arc(canvasWidth / 2, canvasHeight / 2, canvasWidth / 2 - 4, 0, Math.PI * 2);
     ctx.strokeStyle = "#cbd5e1";
@@ -625,69 +676,74 @@ export async function renderLabelToImageBlob(
     ctx.strokeRect(4, 4, canvasWidth - 8, canvasHeight - 8);
   }
 
-  let yCursor = Math.round(canvasHeight * (config.labelShape === "circle" ? 0.15 : 0.1));
+  // Circular Safe Area width constraint (70.7% of diameter)
+  const maxContentWidth = isCircle ? canvasWidth * 0.707 : canvasWidth * 0.9;
+  let yCursor = Math.round(canvasHeight * (isCircle ? 0.16 : 0.08));
 
-  // Product Name
-  if (config.showProductName && product.name) {
-    ctx.fillStyle = "#0f172a";
-    ctx.font = `bold ${Math.round(canvasHeight * 0.11)}px sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
-    ctx.fillText(product.name, canvasWidth / 2, yCursor, canvasWidth * 0.85);
-    yCursor += Math.round(canvasHeight * 0.13);
-  }
+  for (const elemId of elementOrder) {
+    if (elemId === "name") {
+      // STRICT CONDITIONAL VISIBILITY
+      if (config.showProductName && product.name) {
+        ctx.fillStyle = "#0f172a";
+        ctx.font = `bold ${Math.round(canvasHeight * 0.11)}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillText(product.name, canvasWidth / 2, yCursor, maxContentWidth);
+        yCursor += Math.round(canvasHeight * 0.13);
+      }
+    } else if (elemId === "price") {
+      // STRICT CONDITIONAL VISIBILITY
+      if (config.showProductPrice && product.retailPrice) {
+        ctx.fillStyle = "#2563eb";
+        ctx.font = `black ${Math.round(canvasHeight * 0.13)}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.fillText(`${product.retailPrice.toLocaleString()} IQD`, canvasWidth / 2, yCursor);
+        yCursor += Math.round(canvasHeight * 0.15);
+      }
+    } else if (elemId === "codes") {
+      // STRICT CONDITIONAL VISIBILITY
+      if (config.showBarcode && product.barcode) {
+        const barcodeCanvas = document.createElement("canvas");
+        JsBarcode(barcodeCanvas, product.barcode.trim(), {
+          format: config.barcodeType || "CODE128",
+          width: 2,
+          height: 55,
+          displayValue: true,
+          fontSize: 13,
+        });
 
-  // Price
-  if (config.showProductPrice && product.retailPrice) {
-    ctx.fillStyle = "#2563eb";
-    ctx.font = `black ${Math.round(canvasHeight * 0.13)}px sans-serif`;
-    ctx.textAlign = "center";
-    ctx.fillText(`${product.retailPrice.toLocaleString()} IQD`, canvasWidth / 2, yCursor);
-    yCursor += Math.round(canvasHeight * 0.15);
-  }
+        const bWidth = Math.round(maxContentWidth * 0.9);
+        const bHeight = Math.round(canvasHeight * 0.28);
+        ctx.drawImage(barcodeCanvas, (canvasWidth - bWidth) / 2, yCursor, bWidth, bHeight);
+        yCursor += bHeight + 8;
+      }
 
-  // 1D Barcode
-  if (config.showBarcode && product.barcode) {
-    const barcodeCanvas = document.createElement("canvas");
-    JsBarcode(barcodeCanvas, product.barcode.trim(), {
-      format: config.barcodeType || "CODE128",
-      width: 2,
-      height: 55,
-      displayValue: true,
-      fontSize: 13,
-    });
-
-    const bWidth = Math.round(canvasWidth * 0.75);
-    const bHeight = Math.round(canvasHeight * 0.3);
-    ctx.drawImage(barcodeCanvas, (canvasWidth - bWidth) / 2, yCursor, bWidth, bHeight);
-    yCursor += bHeight + 8;
-  }
-
-  // 2D Store URL QR Code
-  const qrPayload = resolveQRPayload(product, config);
-  if ((config.showQRCode || config.showStoreURLQR) && qrPayload) {
-    try {
-      const qrDataUrl = await QRCode.toDataURL(qrPayload, {
-        margin: 1,
-        errorCorrectionLevel: config.qrErrorCorrection || "M",
-      });
-      const qrImg = new Image();
-      qrImg.src = qrDataUrl;
-      await new Promise((res) => { qrImg.onload = res; });
-      const qrSize = Math.round(canvasHeight * 0.28);
-      ctx.drawImage(qrImg, (canvasWidth - qrSize) / 2, yCursor, qrSize, qrSize);
-      yCursor += qrSize + 6;
-    } catch (e) {
-      console.warn("[ThermalEngine] Canvas QR draw error:", e);
+      const qrPayload = resolveQRPayload(product, config);
+      if ((config.showQRCode || config.showStoreURLQR) && qrPayload) {
+        try {
+          const qrDataUrl = await QRCode.toDataURL(qrPayload, {
+            margin: 1,
+            errorCorrectionLevel: config.qrErrorCorrection || "M",
+          });
+          const qrImg = new Image();
+          qrImg.src = qrDataUrl;
+          await new Promise((res) => { qrImg.onload = res; });
+          const qrSize = Math.round(canvasHeight * 0.26);
+          ctx.drawImage(qrImg, (canvasWidth - qrSize) / 2, yCursor, qrSize, qrSize);
+          yCursor += qrSize + 6;
+        } catch (e) {
+          console.warn("[ThermalEngine] Canvas QR draw error:", e);
+        }
+      }
+    } else if (elemId === "footer") {
+      // STRICT CONDITIONAL VISIBILITY
+      if (config.showFooterText && config.footerText) {
+        ctx.fillStyle = "#64748b";
+        ctx.font = `bold ${Math.round(canvasHeight * 0.07)}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.fillText(config.footerText, canvasWidth / 2, canvasHeight - Math.round(canvasHeight * (isCircle ? 0.15 : 0.09)));
+      }
     }
-  }
-
-  // Footer Text
-  if (config.showFooterText && config.footerText) {
-    ctx.fillStyle = "#64748b";
-    ctx.font = `bold ${Math.round(canvasHeight * 0.07)}px sans-serif`;
-    ctx.textAlign = "center";
-    ctx.fillText(config.footerText, canvasWidth / 2, canvasHeight - Math.round(canvasHeight * 0.1));
   }
 
   return new Promise((resolve, reject) => {

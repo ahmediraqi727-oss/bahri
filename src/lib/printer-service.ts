@@ -13,6 +13,8 @@ import {
   DEFAULT_EXTENDED_CUSTOMIZATION,
   GLOBAL_THERMAL_PRESETS,
   MARKLIFE_X4_PRESETS,
+  DEFAULT_LABEL_ELEMENT_ORDER,
+  moveElementOrder,
   generateTSPLCommands,
   generateZPLCommands,
   connectWebBluetoothPrinter,
@@ -28,6 +30,7 @@ import {
   LabelShape,
   QRErrorCorrection,
   QRTargetMode,
+  LabelElementId,
 } from "./thermal-printer-engine";
 
 export type CodePrintType = "barcode" | "qr" | "both";
@@ -54,6 +57,8 @@ export interface PrintJobOptions {
 export {
   GLOBAL_THERMAL_PRESETS,
   MARKLIFE_X4_PRESETS,
+  DEFAULT_LABEL_ELEMENT_ORDER,
+  moveElementOrder,
   generateTSPLCommands,
   generateZPLCommands,
   connectWebBluetoothPrinter,
@@ -65,7 +70,7 @@ export {
   renderLabelToImageBlob,
   resolveQRPayload,
 };
-export type { BarcodeSymbology, LabelShape, QRErrorCorrection, QRTargetMode };
+export type { BarcodeSymbology, LabelShape, QRErrorCorrection, QRTargetMode, LabelElementId };
 
 /**
  * Converts a 1D Barcode string into a pure Base64 PNG Data URL using off-screen HTMLCanvasElement.
@@ -126,6 +131,7 @@ export async function generateQRDataURL(
 
 /**
  * Generates an optimized, self-contained printable HTML document string formatted for thermal label printers.
+ * Enforces Circular Safe-Area layout, Element Reordering, and Strict Conditional Visibility.
  */
 export async function buildPrintableDocument(options: PrintJobOptions): Promise<string> {
   const { items, customization } = options;
@@ -140,8 +146,13 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
     ? customization.rollWidthMM
     : customization.rollHeightMM;
 
+  const elementOrder = customization.elementOrder && customization.elementOrder.length > 0
+    ? customization.elementOrder
+    : DEFAULT_LABEL_ELEMENT_ORDER;
+
   for (const item of items) {
     const p = item.product;
+    // STRICT CONDITIONAL BINDING
     if (customization.showBarcode && p.barcode && !barcodeMap.has(p.id)) {
       const dataUrl = generateBarcodeDataURL(
         p.barcode,
@@ -152,6 +163,7 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
     }
 
     const qrPayload = resolveQRPayload(p, customization);
+    // STRICT CONDITIONAL BINDING
     if ((customization.showQRCode || customization.showStoreURLQR) && qrPayload && !qrMap.has(p.id)) {
       const dataUrl = await generateQRDataURL(qrPayload, customization.qrErrorCorrection || "M");
       qrMap.set(p.id, dataUrl);
@@ -165,46 +177,48 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
     const barcodeDataUrl = barcodeMap.get(product.id) || "";
     const qrDataUrl = qrMap.get(product.id) || "";
 
-    const shapeClass = customization.labelShape === "circle" ? "border-radius: 50%;" : "";
+    const isCircle = customization.labelShape === "circle";
+    const shapeStyle = isCircle ? "border-radius: 50%; padding: 14% 10%;" : "padding: 8px;";
 
     for (let i = 0; i < qty; i++) {
+      const elementBlocks: string[] = [];
+
+      for (const elemId of elementOrder) {
+        if (elemId === "name" && customization.showProductName && product.name) {
+          elementBlocks.push(
+            `<div class="product-name" style="font-size: ${customization.nameFontSize}px;">${product.name}</div>`
+          );
+        } else if (elemId === "price" && customization.showProductPrice && product.retailPrice) {
+          elementBlocks.push(
+            `<div class="product-price" style="font-size: ${customization.priceFontSize}px;">${product.retailPrice.toLocaleString()} IQD</div>`
+          );
+        } else if (elemId === "codes") {
+          const codeParts: string[] = [];
+          if (customization.showBarcode && barcodeDataUrl) {
+            codeParts.push(
+              `<div class="barcode-wrapper">
+                <img src="${barcodeDataUrl}" alt="Barcode" class="barcode-img" style="height: ${customization.barcodeHeight}px;" />
+               </div>`
+            );
+          }
+          if ((customization.showQRCode || customization.showStoreURLQR) && qrDataUrl) {
+            codeParts.push(
+              `<div class="qr-wrapper">
+                <img src="${qrDataUrl}" alt="QR Code" class="qr-img" style="width: ${customization.qrSizePx || 56}px; height: ${customization.qrSizePx || 56}px;" />
+               </div>`
+            );
+          }
+          if (codeParts.length > 0) {
+            elementBlocks.push(`<div class="codes-container">${codeParts.join("\n")}</div>`);
+          }
+        } else if (elemId === "footer" && customization.showFooterText && customization.footerText) {
+          elementBlocks.push(`<div class="footer-text">${customization.footerText}</div>`);
+        }
+      }
+
       labelsHTML.push(`
-        <div class="label-card" style="width: ${widthMM}mm; min-height: ${heightMM}mm; ${shapeClass}">
-          ${
-            customization.showProductName
-              ? `<div class="product-name" style="font-size: ${customization.nameFontSize}px;">${product.name}</div>`
-              : ""
-          }
-          
-          ${
-            customization.showProductPrice
-              ? `<div class="product-price" style="font-size: ${customization.priceFontSize}px;">${product.retailPrice.toLocaleString()} IQD</div>`
-              : ""
-          }
-
-          <div class="codes-container">
-            ${
-              customization.showBarcode && barcodeDataUrl
-                ? `<div class="barcode-wrapper">
-                    <img src="${barcodeDataUrl}" alt="Barcode" class="barcode-img" style="height: ${customization.barcodeHeight}px;" />
-                   </div>`
-                : ""
-            }
-
-            ${
-              (customization.showQRCode || customization.showStoreURLQR) && qrDataUrl
-                ? `<div class="qr-wrapper">
-                    <img src="${qrDataUrl}" alt="QR Code" class="qr-img" style="width: ${customization.qrSizePx || 56}px; height: ${customization.qrSizePx || 56}px;" />
-                   </div>`
-                : ""
-            }
-          </div>
-
-          ${
-            customization.showFooterText && customization.footerText
-              ? `<div class="footer-text">${customization.footerText}</div>`
-              : ""
-          }
+        <div class="label-card" style="width: ${widthMM}mm; min-height: ${heightMM}mm; ${shapeStyle}">
+          ${elementBlocks.join("\n")}
         </div>
       `);
     }
@@ -271,8 +285,6 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
         .label-card {
           background: #fff;
           border: 1px dashed #cbd5e1;
-          border-radius: 8px;
-          padding: 8px;
           text-align: center;
           display: flex;
           flex-direction: column;
@@ -286,6 +298,7 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
           color: #0f172a;
           line-height: 1.2;
           word-break: break-word;
+          max-width: 100%;
         }
         .product-price {
           font-weight: 900;
@@ -297,6 +310,7 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
           align-items: center;
           justify-content: center;
           width: 100%;
+          max-width: 100%;
         }
         .barcode-wrapper, .qr-wrapper {
           display: flex;
@@ -304,6 +318,7 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
           align-items: center;
           justify-content: center;
           flex: 1;
+          max-width: 100%;
         }
         .barcode-img { max-width: 100%; object-fit: contain; }
         .qr-img { object-fit: contain; }

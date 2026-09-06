@@ -5,6 +5,9 @@ import type { Product } from "@/lib/types";
 import {
   LabelCustomizationOptions,
   DEFAULT_LABEL_CUSTOMIZATION,
+  DEFAULT_LABEL_ELEMENT_ORDER,
+  moveElementOrder,
+  LabelElementId,
   executePrintJob,
   generateBarcodeDataURL,
   generateQRDataURL,
@@ -32,6 +35,13 @@ export interface BatchPrintModalProps {
   selectedProducts: Product[];
 }
 
+const ELEMENT_LABELS: Record<LabelElementId, { title: string; icon: string }> = {
+  name: { title: "اسم المنتج", icon: "🏷" },
+  price: { title: "سعر المنتج", icon: "💰" },
+  codes: { title: "الأكواد والباركود (1D / 2D)", icon: "📊" },
+  footer: { title: "نص التذييل والملاحظات", icon: "✍️" },
+};
+
 export default function BatchPrintModal({
   isOpen,
   onClose,
@@ -41,6 +51,7 @@ export default function BatchPrintModal({
 
   const [customization, setCustomization] = useState<LabelCustomizationOptions>({
     ...DEFAULT_LABEL_CUSTOMIZATION,
+    elementOrder: [...DEFAULT_LABEL_ELEMENT_ORDER],
   });
 
   const [qtyMode, setQtyMode] = useState<"unified" | "custom">("unified");
@@ -66,7 +77,7 @@ export default function BatchPrintModal({
 
   useEffect(() => {
     if (!sampleProduct) return;
-    if (sampleProduct.barcode) {
+    if (sampleProduct.barcode && customization.showBarcode) {
       const url = generateBarcodeDataURL(
         sampleProduct.barcode,
         customization.barcodeHeight,
@@ -110,6 +121,13 @@ export default function BatchPrintModal({
   }, [printItems]);
 
   if (!isOpen) return null;
+
+  // Handle Element Order Movement
+  const handleShiftElement = (id: LabelElementId, direction: "up" | "down") => {
+    const currentOrder = customization.elementOrder || DEFAULT_LABEL_ELEMENT_ORDER;
+    const nextOrder = moveElementOrder(currentOrder, id, direction);
+    setCustomization((prev) => ({ ...prev, elementOrder: nextOrder }));
+  };
 
   // Apply Roll & Format Presets
   const applyPreset = (presetKey: string) => {
@@ -304,6 +322,10 @@ export default function BatchPrintModal({
     success(`✅ تم تحميل ملف أوامر ${type} بنجاح!`);
   };
 
+  const activeOrder = customization.elementOrder && customization.elementOrder.length > 0
+    ? customization.elementOrder
+    : DEFAULT_LABEL_ELEMENT_ORDER;
+
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center p-3 sm:p-5" dir="rtl">
       {/* Backdrop */}
@@ -320,10 +342,10 @@ export default function BatchPrintModal({
             </div>
             <div>
               <h2 className="font-black text-base sm:text-lg text-white leading-tight break-words whitespace-normal">
-                استوديو الملصقات الحرارية المتطور (Marklife X4 Multi-Shape Subsystem)
+                استوديو الملصقات الحرارية المتطور (Marklife X4 Studio)
               </h2>
               <p className="text-purple-300 text-xs break-words whitespace-normal leading-tight">
-                دعم الأشكال المتعددة (مستطيل/مربع/دائري)، توليد QR متجر أحمد بحري، وطباعة هجينة فورية
+                أشكال متعددة، منطقة آمنة دائرية، ترتيب ديناميكي، وإظهار مشروط صارم
               </p>
             </div>
           </div>
@@ -338,19 +360,19 @@ export default function BatchPrintModal({
         {/* Studio Body (Grid Layout) */}
         <div className="flex-1 overflow-y-auto p-5 grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-          {/* Left Column: Controls & Shape Switcher (7 Cols) */}
+          {/* Left Column: Controls, Order Engine & Shape Switcher (7 Cols) */}
           <div className="lg:col-span-7 flex flex-col gap-5">
             
-            {/* ── Phase 2: Multi-Shape Label Roll Switcher ── */}
+            {/* ── Multi-Shape Label Roll Switcher ── */}
             <div className="bg-[#15102a]/90 p-4 rounded-2xl border border-purple-500/40 flex flex-col gap-2">
               <label className="block text-xs font-extrabold text-purple-300">
-                🔷 الشكل الهندسي للرول (Label Roll Geometric Shape):
+                🔷 الشكل الهندسي للرول (Label Roll Shape & Circular Bounds):
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {[
                   { key: "rectangle", label: "مستطيل ▭", desc: "أبعاد قياسية" },
                   { key: "square", label: "مربع 🔲", desc: "متساوي الأضلاع" },
-                  { key: "circle", label: "دائري ⭕", desc: "أغطية وقناني" },
+                  { key: "circle", label: "دائري ⭕", desc: "أغطية وقناني Safe-Area" },
                 ].map(({ key, label, desc }) => (
                   <button
                     key={key}
@@ -374,10 +396,99 @@ export default function BatchPrintModal({
               </div>
             </div>
 
-            {/* ── Phase 3: Global Standard Thermal Roll Size Presets ── */}
+            {/* ── 3. Element Positioning & Reordering Engine ── */}
+            <div className="bg-[#15102a]/90 p-4 rounded-2xl border border-purple-500/40 flex flex-col gap-3">
+              <label className="block text-xs font-extrabold text-purple-300">
+                ↕ ترتيب تموضع العناصر على الملصق (Element Vertical Reordering):
+              </label>
+              <div className="flex flex-col gap-2">
+                {activeOrder.map((elemId, index) => {
+                  const meta = ELEMENT_LABELS[elemId];
+                  return (
+                    <div
+                      key={elemId}
+                      className="flex items-center justify-between bg-purple-950/60 p-2.5 rounded-xl border border-purple-500/30 text-xs font-bold text-white"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-purple-800 text-purple-200 flex items-center justify-center text-[10px]">
+                          {index + 1}
+                        </span>
+                        <span>{meta.icon}</span>
+                        <span>{meta.title}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          disabled={index === 0}
+                          onClick={() => handleShiftElement(elemId, "up")}
+                          className="px-2 py-1 bg-purple-900 hover:bg-purple-700 disabled:opacity-30 rounded text-xs text-white transition-all font-mono"
+                        >
+                          ▲ أعلى
+                        </button>
+                        <button
+                          type="button"
+                          disabled={index === activeOrder.length - 1}
+                          onClick={() => handleShiftElement(elemId, "down")}
+                          className="px-2 py-1 bg-purple-900 hover:bg-purple-700 disabled:opacity-30 rounded text-xs text-white transition-all font-mono"
+                        >
+                          ▼ أسفل
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ── 2. Strict Conditional Visibility Binding ── */}
+            <div className="bg-[#15102a]/80 p-4 rounded-2xl border border-purple-500/30 flex flex-col gap-3">
+              <label className="block text-xs font-extrabold text-purple-300">
+                👁 إظهار / إخفاء العناصر (Strict Conditional Visibility):
+              </label>
+
+              <div className="grid grid-cols-2 gap-2 text-xs font-bold pt-1">
+                {[
+                  { key: "showProductName", label: "اسم المنتج" },
+                  { key: "showProductPrice", label: "سعر المنتج" },
+                  { key: "showBarcode", label: "باركود خطي (1D)" },
+                  { key: "showQRCode", label: "كود 2D QR للمنتج" },
+                  { key: "showStoreURLQR", label: "QR متجر أحمد بحري" },
+                  { key: "showFooterText", label: "نص التذييل" },
+                ].map(({ key, label }) => (
+                  <label key={key} className="flex items-center gap-2 cursor-pointer text-purple-200">
+                    <input
+                      type="checkbox"
+                      checked={(customization as any)[key]}
+                      onChange={(e) =>
+                        setCustomization((prev) => ({ ...prev, [key]: e.target.checked }))
+                      }
+                      className="w-4 h-4 rounded accent-purple-600 cursor-pointer"
+                    />
+                    <span className="break-words whitespace-normal leading-tight">{label}</span>
+                  </label>
+                ))}
+              </div>
+
+              {/* Custom Footer Input */}
+              {customization.showFooterText && (
+                <div className="pt-2">
+                  <input
+                    type="text"
+                    value={customization.footerText}
+                    onChange={(e) =>
+                      setCustomization((prev) => ({ ...prev, footerText: e.target.value }))
+                    }
+                    placeholder="نص التذييل المخصص (مثال: معرض أحمد بحري)..."
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-purple-500/30 bg-purple-950/60 text-white placeholder-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Global Standard Thermal Roll Size Presets */}
             <div className="bg-[#15102a]/80 p-4 rounded-2xl border border-purple-500/30 flex flex-col gap-2">
               <label className="block text-xs font-bold text-purple-300">
-                ⚡ مقاسات الرول القياسية العالمية (Global Standard Presets):
+                ⚡ مقاسات الرول القياسية العالمية (Global Presets):
               </label>
               <div className="flex flex-wrap gap-2">
                 {[
@@ -385,7 +496,7 @@ export default function BatchPrintModal({
                   { key: "standard_50x30", label: "قياسي 50×30 mm" },
                   { key: "strips_25x50", label: "شريط 25×50 mm" },
                   { key: "medium_75x100", label: "شاشة 75×100 mm" },
-                  { key: "shipping_100x150", label: "شحن 100×150 mm (4x6 in)" },
+                  { key: "shipping_100x150", label: "شحن 100×150 mm" },
                   { key: "circular_50x50", label: "دائري 50×50 mm" },
                   { key: "square_50x50", label: "مربع 50×50 mm" },
                 ].map(({ key, label }) => (
@@ -398,91 +509,6 @@ export default function BatchPrintModal({
                     {label}
                   </button>
                 ))}
-              </div>
-            </div>
-
-            {/* ── Phase 1: Dual Barcode & Store URL QR Control Engine ── */}
-            <div className="bg-[#15102a]/80 p-4 rounded-2xl border border-purple-500/30 flex flex-col gap-3">
-              <label className="block text-xs font-extrabold text-purple-300">
-                🌐 إعدادات QR المتجر والكود الثنائي (Store URL QR & Dual Engine):
-              </label>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-bold">
-                <label className="flex items-center gap-2 cursor-pointer text-purple-200">
-                  <input
-                    type="checkbox"
-                    checked={customization.showStoreURLQR}
-                    onChange={(e) =>
-                      setCustomization((prev) => ({
-                        ...prev,
-                        showStoreURLQR: e.target.checked,
-                      }))
-                    }
-                    className="w-4 h-4 rounded accent-purple-600 cursor-pointer"
-                  />
-                  <span className="break-words whitespace-normal leading-tight">
-                    طباعة QR متجر أحمد بحري / المنتج
-                  </span>
-                </label>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-purple-300 shrink-0">وجهة QR:</span>
-                  <select
-                    value={customization.qrTargetMode || "store_url"}
-                    onChange={(e) =>
-                      setCustomization((prev) => ({
-                        ...prev,
-                        qrTargetMode: e.target.value as QRTargetMode,
-                      }))
-                    }
-                    className="w-full px-2.5 py-1 bg-purple-950 border border-purple-500/40 rounded-xl text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  >
-                    <option value="store_url">رابط المتجر الرئيسي</option>
-                    <option value="product_url">رابط المنتج المباشر</option>
-                    <option value="product_qr">كود QR المنتج الخاص</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-purple-300 font-bold shrink-0">تصحيح الأخطاء (ECC):</span>
-                  <select
-                    value={customization.qrErrorCorrection || "M"}
-                    onChange={(e) =>
-                      setCustomization((prev) => ({
-                        ...prev,
-                        qrErrorCorrection: e.target.value as QRErrorCorrection,
-                      }))
-                    }
-                    className="w-full px-2.5 py-1 bg-purple-950 border border-purple-500/40 rounded-xl text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  >
-                    <option value="L">L - منخفض (7%)</option>
-                    <option value="M">M - متوسط (15%)</option>
-                    <option value="Q">Q - عالي (25%)</option>
-                    <option value="H">H - أقصى (30%)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <div className="flex justify-between font-bold text-purple-200 mb-1">
-                    <span>حجم QR:</span>
-                    <span>{customization.qrSizePx || 56}px</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={30}
-                    max={120}
-                    value={customization.qrSizePx || 56}
-                    onChange={(e) =>
-                      setCustomization((prev) => ({
-                        ...prev,
-                        qrSizePx: Number(e.target.value),
-                      }))
-                    }
-                    className="w-full h-1.5 bg-purple-950 rounded-lg appearance-none cursor-pointer accent-purple-500"
-                  />
-                </div>
               </div>
             </div>
 
@@ -607,68 +633,6 @@ export default function BatchPrintModal({
               </div>
             </div>
 
-            {/* Element Toggles & Barcode Types */}
-            <div className="bg-[#15102a]/80 p-4 rounded-2xl border border-purple-500/30 flex flex-col gap-3">
-              <label className="block text-xs font-bold text-purple-300">
-                👁 إظهار العناصر ونوع الباركود (Symbology):
-              </label>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="text-xs font-bold text-purple-200">صيغة الباركود:</span>
-                <select
-                  value={customization.barcodeType || "CODE128"}
-                  onChange={(e) =>
-                    setCustomization((prev) => ({
-                      ...prev,
-                      barcodeType: e.target.value as BarcodeSymbology,
-                    }))
-                  }
-                  className="px-3 py-1.5 bg-purple-950 border border-purple-500/40 rounded-xl text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                >
-                  <option value="CODE128">Code 128 (قياسي افتراضي)</option>
-                  <option value="EAN13">EAN-13 عالمي</option>
-                  <option value="EAN8">EAN-8 قصير</option>
-                  <option value="CODE39">Code 39</option>
-                  <option value="UPC">UPC-A</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-xs font-bold pt-1">
-                {[
-                  { key: "showProductName", label: "اسم المنتج" },
-                  { key: "showProductPrice", label: "سعر المنتج" },
-                  { key: "showBarcode", label: "باركود خطي (1D)" },
-                  { key: "showQRCode", label: "كود QR (2D)" },
-                  { key: "showFooterText", label: "نص التذييل" },
-                ].map(({ key, label }) => (
-                  <label key={key} className="flex items-center gap-2 cursor-pointer text-purple-200">
-                    <input
-                      type="checkbox"
-                      checked={(customization as any)[key]}
-                      onChange={(e) =>
-                        setCustomization((prev) => ({ ...prev, [key]: e.target.checked }))
-                      }
-                      className="w-4 h-4 rounded accent-purple-600 cursor-pointer"
-                    />
-                    <span className="break-words whitespace-normal leading-tight">{label}</span>
-                  </label>
-                ))}
-              </div>
-
-              {/* Custom Footer Input */}
-              <div className="pt-2">
-                <input
-                  type="text"
-                  value={customization.footerText}
-                  onChange={(e) =>
-                    setCustomization((prev) => ({ ...prev, footerText: e.target.value }))
-                  }
-                  placeholder="نص التذييل المخصص (مثال: معرض أحمد بحري)..."
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-purple-500/30 bg-purple-950/60 text-white placeholder-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-            </div>
-
             {/* Quantity Allocation */}
             <div className="bg-[#15102a]/80 p-4 rounded-2xl border border-purple-500/30">
               <div className="flex items-center justify-between mb-3">
@@ -755,7 +719,7 @@ export default function BatchPrintModal({
 
           </div>
 
-          {/* Right Column: Multi-Shape Live Label Preview & Exports (5 Cols) */}
+          {/* Right Column: Multi-Shape Live Label Preview with Safe Area (5 Cols) */}
           <div className="lg:col-span-5 flex flex-col gap-4">
             
             {/* Live Interactive Preview Box */}
@@ -763,7 +727,7 @@ export default function BatchPrintModal({
               
               <div className="flex items-center justify-between w-full mb-3">
                 <span className="text-xs font-extrabold text-purple-300 flex items-center gap-1.5">
-                  <span>🔍 معاينة حية بالمليمتر</span>
+                  <span>🔍 معاينة حية (Reordered Safe-Area)</span>
                   <span className="px-2 py-0.5 rounded-full text-[10px] bg-purple-950 border border-purple-500/30 text-purple-300 font-mono">
                     {customization.labelShape === "circle" ? "⭕ دائري" : customization.labelShape === "square" ? "🔲 مربع" : "▭ مستطيل"}
                   </span>
@@ -775,8 +739,8 @@ export default function BatchPrintModal({
 
               {sampleProduct ? (
                 <div
-                  className={`bg-white text-gray-900 p-4 border-2 border-dashed border-gray-400 w-full shadow-2xl flex flex-col items-center justify-between transition-all overflow-hidden ${
-                    customization.labelShape === "circle" ? "rounded-full" : "rounded-2xl"
+                  className={`bg-white text-gray-900 border-2 border-dashed border-gray-400 w-full shadow-2xl flex flex-col items-center justify-between transition-all overflow-hidden ${
+                    customization.labelShape === "circle" ? "rounded-full p-6 max-w-[80%]" : "rounded-2xl p-4"
                   }`}
                   style={{
                     maxWidth: `${Math.min(280, customization.rollWidthMM * 5.5)}px`,
@@ -784,57 +748,75 @@ export default function BatchPrintModal({
                     aspectRatio: customization.labelShape === "circle" || customization.labelShape === "square" ? "1 / 1" : "auto",
                   }}
                 >
-                  {/* Name */}
-                  {customization.showProductName && (
-                    <div
-                      className="font-extrabold text-center text-gray-900 mb-1 leading-snug break-words whitespace-normal"
-                      style={{ fontSize: `${customization.nameFontSize}px` }}
-                    >
-                      {sampleProduct.name}
-                    </div>
-                  )}
+                  {/* Dynamic Reordering & Strict Conditional Rendering */}
+                  {activeOrder.map((elemId) => {
+                    if (elemId === "name" && customization.showProductName && sampleProduct.name) {
+                      return (
+                        <div
+                          key="name"
+                          className="font-extrabold text-center text-gray-900 mb-1 leading-snug break-words whitespace-normal max-w-full"
+                          style={{ fontSize: `${customization.nameFontSize}px` }}
+                        >
+                          {sampleProduct.name}
+                        </div>
+                      );
+                    }
 
-                  {/* Price */}
-                  {customization.showProductPrice && (
-                    <div
-                      className="font-black text-blue-600 mb-1"
-                      style={{ fontSize: `${customization.priceFontSize}px` }}
-                    >
-                      {sampleProduct.retailPrice.toLocaleString()} IQD
-                    </div>
-                  )}
+                    if (elemId === "price" && customization.showProductPrice && sampleProduct.retailPrice) {
+                      return (
+                        <div
+                          key="price"
+                          className="font-black text-blue-600 mb-1"
+                          style={{ fontSize: `${customization.priceFontSize}px` }}
+                        >
+                          {sampleProduct.retailPrice.toLocaleString()} IQD
+                        </div>
+                      );
+                    }
 
-                  {/* Simultaneous Dual Barcode & QR Code Container */}
-                  <div className="flex flex-wrap items-center justify-center gap-2 w-full my-2">
-                    {customization.showBarcode && previewBarcodeUrl && (
-                      <div className="flex flex-col items-center justify-center flex-1 min-w-[100px]">
-                        <img
-                          src={previewBarcodeUrl}
-                          alt="Barcode"
-                          style={{ height: `${customization.barcodeHeight}px` }}
-                          className="max-w-full object-contain block"
-                        />
-                      </div>
-                    )}
+                    if (elemId === "codes") {
+                      const hasBarcode = customization.showBarcode && previewBarcodeUrl;
+                      const hasQR = (customization.showQRCode || customization.showStoreURLQR) && previewQrUrl;
 
-                    {(customization.showQRCode || customization.showStoreURLQR) && previewQrUrl && (
-                      <div className="flex flex-col items-center justify-center">
-                        <img
-                          src={previewQrUrl}
-                          alt="QR Code"
-                          style={{ width: `${customization.qrSizePx || 56}px`, height: `${customization.qrSizePx || 56}px` }}
-                          className="object-contain block"
-                        />
-                      </div>
-                    )}
-                  </div>
+                      if (!hasBarcode && !hasQR) return null;
 
-                  {/* Footer */}
-                  {customization.showFooterText && customization.footerText && (
-                    <div className="text-[10px] text-gray-500 font-bold border-t border-gray-200 pt-1.5 w-full text-center mt-1 break-words whitespace-normal">
-                      {customization.footerText}
-                    </div>
-                  )}
+                      return (
+                        <div key="codes" className="flex flex-wrap items-center justify-center gap-2 w-full my-1.5 max-w-full">
+                          {hasBarcode && (
+                            <div className="flex flex-col items-center justify-center flex-1 min-w-[90px] max-w-full">
+                              <img
+                                src={previewBarcodeUrl}
+                                alt="Barcode"
+                                style={{ height: `${customization.barcodeHeight}px` }}
+                                className="max-w-full object-contain block"
+                              />
+                            </div>
+                          )}
+
+                          {hasQR && (
+                            <div className="flex flex-col items-center justify-center">
+                              <img
+                                src={previewQrUrl}
+                                alt="QR Code"
+                                style={{ width: `${customization.qrSizePx || 56}px`, height: `${customization.qrSizePx || 56}px` }}
+                                className="object-contain block"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    if (elemId === "footer" && customization.showFooterText && customization.footerText) {
+                      return (
+                        <div key="footer" className="text-[10px] text-gray-500 font-bold border-t border-gray-200 pt-1.5 w-full text-center mt-1 break-words whitespace-normal">
+                          {customization.footerText}
+                        </div>
+                      );
+                    }
+
+                    return null;
+                  })}
                 </div>
               ) : (
                 <span className="text-xs text-purple-400">لا يوجد منتج للمعاينة</span>
