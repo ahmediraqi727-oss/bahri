@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import type { Product } from "@/lib/types";
 import {
   LabelCustomizationOptions,
@@ -29,6 +29,9 @@ import {
   resolveQRPayload,
 } from "@/lib/printer-service";
 import { useToast } from "@/components/ToastProvider";
+import ThermalLabelPrinter, {
+  type ThermalLabelPrinterHandle,
+} from "@/components/ThermalLabelPrinter";
 
 export interface BatchPrintModalProps {
   isOpen: boolean;
@@ -59,6 +62,9 @@ export default function BatchPrintModal({
   const [unifiedQty, setUnifiedQty] = useState<number>(1);
   const [customQuantities, setCustomQuantities] = useState<Record<string, number>>({});
   const [isPrinting, setIsPrinting] = useState(false);
+
+  // Ref to the DOM-rasterization ThermalLabelPrinter instance (for imperative calls)
+  const thermalPrinterRef = useRef<ThermalLabelPrinterHandle>(null);
 
   // Hardware Connection State (Web Bluetooth / Web USB)
   const [connectedDevice, setConnectedDevice] = useState<{
@@ -1197,6 +1203,21 @@ export default function BatchPrintModal({
                 </span>
               </div>
             </div>
+
+            {/* ── DOM Raster Engine (ThermalLabelPrinter) ────────────────────────── */}
+            {sampleProduct && (
+              <div className="w-full mt-2 mb-1 bg-indigo-950/60 rounded-2xl p-3 border border-indigo-500/30">
+                <p className="text-[10px] font-bold text-indigo-300 mb-2 text-center" dir="rtl">
+                  🔬 محرك الطباعة DOM Raster — معاينة مباشرة + تصوير 4×
+                </p>
+                <ThermalLabelPrinter
+                  ref={thermalPrinterRef}
+                  product={sampleProduct}
+                  customization={customization}
+                  onError={(e) => toastError(e.message)}
+                />
+              </div>
+            )}
 
             {/* Multi-Format Export Action Bar */}
             <div className="flex flex-col gap-2 mt-auto">
