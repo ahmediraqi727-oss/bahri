@@ -13,6 +13,7 @@ import {
 } from "@/lib/barcode-service";
 import BarcodeDisplay from "@/components/BarcodeDisplay";
 import BatchPrintModal from "@/components/BatchPrintModal";
+import SmartFloatingBar from "@/components/SmartFloatingBar";
 import type { Product } from "@/lib/types";
 import { useToast } from "@/components/ToastProvider";
 import { useSettings } from "@/lib/settings-context";
@@ -593,7 +594,7 @@ export default function BarcodeManagementHub() {
 
       {/* ─── 4. Batch Actions Floating Toolbar (When items selected) ───────── */}
       {selectedIds.size > 0 && (
-        <div className="bg-gradient-to-l from-slate-900 to-indigo-950 text-white rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-3 animate-fadeIn border border-indigo-800/40">
+        <SmartFloatingBar className="p-4 shadow-xl flex flex-wrap items-center justify-between gap-3 animate-fadeIn">
           <div className="flex items-center gap-2">
             <span className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center font-extrabold text-xs">
               {selectedIds.size}
@@ -645,7 +646,7 @@ export default function BarcodeManagementHub() {
               إلغاء التحديد
             </button>
           </div>
-        </div>
+        </SmartFloatingBar>
       )}
 
       {/* ─── 5. Main Product Card Container & Data View ─────────────────────────────────────────── */}
