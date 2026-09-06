@@ -2,13 +2,8 @@
  * thermal-printer-engine.ts
  *
  * Enterprise Thermal Label Printing & Hardware Subsystem for Ahmed Bahri Store.
- * Tailored specifically for Marklife X4 and general ESC/POS, TSPL, ZPL thermal printers.
- *
- * Provides:
- * - TSPL / ZPL / ESC-POS Command Synthesizer (Exact density, speed, gap retraction)
- * - Web Bluetooth API & Web USB API Direct Hardware Printing
- * - External App Handshaking & Deep Linking (Marklife App / Web Share API)
- * - Multi-Format Export Engine (PNG, JPEG, Vector PDF via jsPDF, TSPL, ZPL)
+ * Supports Multi-Shape Label Rolls (Rectangle, Square, Circle), Global Thermal Dimensions,
+ * Dual 1D/2D QR Barcode Engine, and Dynamic Store URL QR Encoding.
  */
 
 import jsPDF from "jspdf";
@@ -18,6 +13,9 @@ import type { Product } from "./types";
 
 export type BarcodeSymbology = "CODE128" | "EAN13" | "EAN8" | "CODE39" | "UPC";
 export type ThermalProtocol = "TSPL" | "ZPL" | "ESCPOS";
+export type LabelShape = "rectangle" | "square" | "circle";
+export type QRErrorCorrection = "L" | "M" | "Q" | "H";
+export type QRTargetMode = "product_qr" | "store_url" | "product_url";
 
 export interface LabelRollDimensions {
   widthMM: number;
@@ -43,6 +41,11 @@ export interface ExtendedLabelCustomization {
   showProductPrice: boolean;
   showBarcode: boolean;
   showQRCode: boolean;
+  showStoreURLQR: boolean;
+  qrTargetMode: QRTargetMode;
+  qrErrorCorrection: QRErrorCorrection;
+  qrSizePx: number;
+  labelShape: LabelShape;
   showFooterText: boolean;
   footerText: string;
   barcodeHeight: number; // in px
@@ -51,6 +54,7 @@ export interface ExtendedLabelCustomization {
   enableSerialNumbers: boolean;
   serialStartNumber: number;
   presetName: string;
+  storeUrl: string;
 }
 
 export const DEFAULT_EXTENDED_CUSTOMIZATION: ExtendedLabelCustomization = {
@@ -64,22 +68,29 @@ export const DEFAULT_EXTENDED_CUSTOMIZATION: ExtendedLabelCustomization = {
   showProductPrice: true,
   showBarcode: true,
   showQRCode: true,
+  showStoreURLQR: true,
+  qrTargetMode: "store_url",
+  qrErrorCorrection: "M",
+  qrSizePx: 56,
+  labelShape: "rectangle",
   showFooterText: true,
   footerText: "معرض أحمد بحري",
-  barcodeHeight: 45,
+  barcodeHeight: 40,
   nameFontSize: 13,
   priceFontSize: 14,
   enableSerialNumbers: false,
   serialStartNumber: 1001,
   presetName: "marklife_40x30",
+  storeUrl: "https://ahmed-bahri.vercel.app",
 };
 
-export const MARKLIFE_X4_PRESETS: Record<string, Partial<ExtendedLabelCustomization>> = {
+export const GLOBAL_THERMAL_PRESETS: Record<string, Partial<ExtendedLabelCustomization>> = {
   marklife_40x30: {
     rollWidthMM: 40,
     rollHeightMM: 30,
     gapMM: 2,
     density: 10,
+    labelShape: "rectangle",
     presetName: "marklife_40x30",
   },
   standard_50x30: {
@@ -87,21 +98,75 @@ export const MARKLIFE_X4_PRESETS: Record<string, Partial<ExtendedLabelCustomizat
     rollHeightMM: 30,
     gapMM: 2,
     density: 10,
+    labelShape: "rectangle",
     presetName: "standard_50x30",
   },
-  shipping_60x40: {
-    rollWidthMM: 60,
-    rollHeightMM: 40,
+  strips_25x50: {
+    rollWidthMM: 25,
+    rollHeightMM: 50,
+    gapMM: 2,
+    density: 10,
+    labelShape: "rectangle",
+    presetName: "strips_25x50",
+  },
+  medium_75x100: {
+    rollWidthMM: 75,
+    rollHeightMM: 100,
     gapMM: 3,
     density: 12,
-    presetName: "shipping_60x40",
+    labelShape: "rectangle",
+    presetName: "medium_75x100",
+  },
+  shipping_100x150: {
+    rollWidthMM: 100,
+    rollHeightMM: 150,
+    gapMM: 3,
+    density: 12,
+    labelShape: "rectangle",
+    presetName: "shipping_100x150",
+  },
+  circular_50x50: {
+    rollWidthMM: 50,
+    rollHeightMM: 50,
+    gapMM: 3,
+    density: 11,
+    labelShape: "circle",
+    presetName: "circular_50x50",
+  },
+  square_50x50: {
+    rollWidthMM: 50,
+    rollHeightMM: 50,
+    gapMM: 3,
+    density: 11,
+    labelShape: "square",
+    presetName: "square_50x50",
   },
 };
+
+export const MARKLIFE_X4_PRESETS = GLOBAL_THERMAL_PRESETS;
 
 export interface ThermalPrintJobItem {
   product: Product;
   quantity: number;
   serialNumber?: string;
+}
+
+/**
+ * Resolves the string payload to encode into QR code based on user settings.
+ */
+export function resolveQRPayload(
+  product: Product,
+  config: ExtendedLabelCustomization
+): string {
+  const storeBase = config.storeUrl || "https://ahmed-bahri.vercel.app";
+
+  if (config.qrTargetMode === "store_url") {
+    return storeBase;
+  } else if (config.qrTargetMode === "product_url") {
+    return `${storeBase}/products/${product.id}`;
+  } else {
+    return product.qrCode || product.barcode || `${storeBase}/products/${product.id}`;
+  }
 }
 
 // ─── 1. TSPL COMMAND SYNTHESIZER (MARK LIFE X4 & TSC) ─────────────────────────
@@ -115,8 +180,15 @@ export function generateTSPLCommands(
 ): string {
   const commands: string[] = [];
 
-  // Setup label dimensions, gap, burn density, speed, direction
-  commands.push(`SIZE ${config.rollWidthMM} mm, ${config.rollHeightMM} mm`);
+  // Enforce square or circle width/height symmetry if applicable
+  const widthMM = config.labelShape === "square" || config.labelShape === "circle"
+    ? config.rollWidthMM
+    : config.rollWidthMM;
+  const heightMM = config.labelShape === "square" || config.labelShape === "circle"
+    ? config.rollWidthMM
+    : config.rollHeightMM;
+
+  commands.push(`SIZE ${widthMM} mm, ${heightMM} mm`);
   commands.push(`GAP ${config.gapMM} mm, 0 mm`);
   commands.push(`DENSITY ${Math.min(15, Math.max(1, config.density))}`);
   commands.push(`SPEED ${Math.min(5, Math.max(1, config.speed))}`);
@@ -128,51 +200,50 @@ export function generateTSPLCommands(
   for (const item of items) {
     const qty = Math.max(1, item.quantity);
     const p = item.product;
+    const qrPayload = resolveQRPayload(p, config);
 
     for (let q = 0; q < qty; q++) {
-      commands.push(`CLS`); // Clear buffer
+      commands.push(`CLS`);
 
-      let yCursor = 15; // in dots (203 DPI -> 8 dots per mm)
       const dotPerMM = 8;
-      const labelWidthDots = config.rollWidthMM * dotPerMM;
+      const labelWidthDots = widthMM * dotPerMM;
+      let yCursor = 15;
 
       // Title / Product Name
       if (config.showProductName && p.name) {
-        // Truncate name for small thermal display if needed
         const cleanName = p.name.replace(/"/g, '\\"');
         commands.push(`TEXT ${labelWidthDots / 2},${yCursor},"3.TTS",0,1,1,2,"${cleanName}"`);
-        yCursor += 30;
+        yCursor += 28;
       }
 
       // Price
       if (config.showProductPrice && p.retailPrice) {
         const priceStr = `${p.retailPrice.toLocaleString()} IQD`;
         commands.push(`TEXT ${labelWidthDots / 2},${yCursor},"4.TTS",0,1,1,2,"${priceStr}"`);
-        yCursor += 35;
+        yCursor += 32;
       }
 
-      // Linear Barcode
+      // Simultaneous Dual Barcode & QR Code Rendering
       if (config.showBarcode && p.barcode) {
         const barcodeCode = p.barcode.trim();
         const bHeightDots = Math.round(config.barcodeHeight * 1.5);
         commands.push(
-          `BARCODE ${Math.round(labelWidthDots * 0.15)},${yCursor},"128",${bHeightDots},1,0,2,2,"${barcodeCode}"`
+          `BARCODE ${Math.round(labelWidthDots * 0.1)},${yCursor},"128",${bHeightDots},1,0,2,2,"${barcodeCode}"`
         );
-        yCursor += bHeightDots + 25;
+        yCursor += bHeightDots + 20;
       }
 
-      // 2D QR Code
-      if (config.showQRCode && p.qrCode) {
-        const qrData = p.qrCode.trim();
-        commands.push(`QRCODE ${Math.round(labelWidthDots * 0.35)},${yCursor},L,4,A,0,"${qrData}"`);
-        yCursor += 65;
+      if ((config.showQRCode || config.showStoreURLQR) && qrPayload) {
+        const ecc = config.qrErrorCorrection || "M";
+        commands.push(`QRCODE ${Math.round(labelWidthDots * 0.35)},${yCursor},${ecc},4,A,0,"${qrPayload}"`);
+        yCursor += 60;
       }
 
-      // Serial Number (if enabled)
+      // Serial Number
       if (config.enableSerialNumbers) {
         const serialStr = `S/N: ${currentSerial++}`;
         commands.push(`TEXT ${labelWidthDots / 2},${yCursor},"2.TTS",0,1,1,2,"${serialStr}"`);
-        yCursor += 20;
+        yCursor += 18;
       }
 
       // Custom Footer Text
@@ -181,7 +252,6 @@ export function generateTSPLCommands(
         commands.push(`TEXT ${labelWidthDots / 2},${yCursor},"2.TTS",0,1,1,2,"${footer}"`);
       }
 
-      // Output print command
       commands.push(`PRINT 1,1`);
     }
   }
@@ -197,12 +267,16 @@ export function generateZPLCommands(
   config: ExtendedLabelCustomization
 ): string {
   const zpl: string[] = [];
-  const widthDots = config.rollWidthMM * 8;
-  const heightDots = config.rollHeightMM * 8;
+  const widthMM = config.labelShape === "square" || config.labelShape === "circle" ? config.rollWidthMM : config.rollWidthMM;
+  const heightMM = config.labelShape === "square" || config.labelShape === "circle" ? config.rollWidthMM : config.rollHeightMM;
+
+  const widthDots = widthMM * 8;
+  const heightDots = heightMM * 8;
 
   for (const item of items) {
     const qty = Math.max(1, item.quantity);
     const p = item.product;
+    const qrPayload = resolveQRPayload(p, config);
 
     for (let q = 0; q < qty; q++) {
       zpl.push("^XA");
@@ -228,8 +302,8 @@ export function generateZPLCommands(
         y += config.barcodeHeight + 25;
       }
 
-      if (config.showQRCode && p.qrCode) {
-        zpl.push(`^FO50,${y}^BQN,2,4^FDQA,${p.qrCode}^FS`);
+      if ((config.showQRCode || config.showStoreURLQR) && qrPayload) {
+        zpl.push(`^FO50,${y}^BQN,2,4^FDQA,${qrPayload}^FS`);
         y += 65;
       }
 
@@ -253,9 +327,6 @@ export interface DeviceConnectionStatus {
   error: string | null;
 }
 
-/**
- * Connects directly to wireless thermal printer via Web Bluetooth API (navigator.bluetooth).
- */
 export async function connectWebBluetoothPrinter(): Promise<{
   device: any;
   characteristic: any;
@@ -273,7 +344,7 @@ export async function connectWebBluetoothPrinter(): Promise<{
       { namePrefix: "POS" },
       { namePrefix: "BT" },
       { namePrefix: "Printer" },
-      { services: ["00001101-0000-1000-8000-00805f9b34fb"] }, // Serial Port Profile (SPP)
+      { services: ["00001101-0000-1000-8000-00805f9b34fb"] },
     ],
     optionalServices: [
       "00001101-0000-1000-8000-00805f9b34fb",
@@ -305,16 +376,13 @@ export async function connectWebBluetoothPrinter(): Promise<{
   };
 }
 
-/**
- * Sends binary TSPL / ESC-POS commands over Web Bluetooth GATT characteristic in chunks.
- */
 export async function sendTSPLToBluetooth(
   characteristic: any,
   tsplData: string
 ): Promise<void> {
   const encoder = new TextEncoder();
   const bytes = encoder.encode(tsplData);
-  const chunkSize = 100; // Chunk size for Bluetooth SPP stability
+  const chunkSize = 100;
 
   for (let i = 0; i < bytes.length; i += chunkSize) {
     const chunk = bytes.slice(i, i + chunkSize);
@@ -323,23 +391,17 @@ export async function sendTSPLToBluetooth(
     } else {
       await characteristic.writeValue(chunk);
     }
-    // Small delay to prevent buffer overrun on thermal microcontroller
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
 }
 
-/**
- * Connects directly to wired thermal printer via Web USB API (navigator.usb).
- */
 export async function connectWebUSBPrinter(): Promise<any> {
   if (typeof window === "undefined" || !("usb" in navigator)) {
     throw new Error("متصفحك لا يدعم الاتصال المباشر عبر الكابل Web USB.");
   }
 
   const device = await (navigator as any).usb.requestDevice({
-    filters: [
-      { classCode: 7 }, // Printer Class
-    ],
+    filters: [{ classCode: 7 }],
   });
 
   await device.open();
@@ -351,9 +413,6 @@ export async function connectWebUSBPrinter(): Promise<any> {
   return device;
 }
 
-/**
- * Sends raw TSPL bytes over Web USB endpoint.
- */
 export async function sendTSPLToUSB(device: any, tsplData: string): Promise<void> {
   const encoder = new TextEncoder();
   const data = encoder.encode(tsplData);
@@ -369,16 +428,11 @@ export async function sendTSPLToUSB(device: any, tsplData: string): Promise<void
 
 // ─── 3. EXTERNAL APP HANDSHAKING & DEEP LINKING ───────────────────────────────
 
-/**
- * Shares label data payload directly to Marklife mobile/desktop companion app
- * using Web Share API (navigator.share) or Custom URI Deep Linking.
- */
 export async function handshakeWithMarklifeApp(
   tsplString: string,
   imageBlob?: Blob,
   filename = "label_print_payload"
 ): Promise<boolean> {
-  // 1. Try Web Share API (Mobile Apps File Handshake)
   if (typeof window !== "undefined" && typeof navigator !== "undefined" && (navigator as any).share) {
     try {
       const fileToShare = imageBlob
@@ -398,7 +452,6 @@ export async function handshakeWithMarklifeApp(
     }
   }
 
-  // 2. Fallback to custom Deep Link URI scheme (e.g. marklife:// or intent://)
   try {
     const encodedPayload = encodeURIComponent(tsplString);
     const deepLinkUrl = `marklife://print?data=${encodedPayload}`;
@@ -414,15 +467,15 @@ export async function handshakeWithMarklifeApp(
 // ─── 4. MULTI-FORMAT EXPORT ENGINE (PNG, JPEG, VECTOR PDF, TSPL, ZPL) ──────────
 
 /**
- * Exports thermal labels as a High-DPI Vector PDF document (jsPDF) matching exact label mm dimensions.
+ * Exports thermal labels as a High-DPI Vector PDF document (jsPDF) matching exact label mm dimensions and shape.
  */
 export async function exportLabelsAsPDF(
   items: ThermalPrintJobItem[],
   config: ExtendedLabelCustomization,
   filename = "thermal_labels.pdf"
 ): Promise<void> {
-  const widthMM = config.rollWidthMM;
-  const heightMM = config.rollHeightMM;
+  const widthMM = config.labelShape === "square" || config.labelShape === "circle" ? config.rollWidthMM : config.rollWidthMM;
+  const heightMM = config.labelShape === "square" || config.labelShape === "circle" ? config.rollWidthMM : config.rollHeightMM;
 
   const pdf = new jsPDF({
     orientation: widthMM > heightMM ? "landscape" : "portrait",
@@ -435,18 +488,25 @@ export async function exportLabelsAsPDF(
   for (const item of items) {
     const qty = Math.max(1, item.quantity);
     const p = item.product;
+    const qrPayload = resolveQRPayload(p, config);
 
     for (let q = 0; q < qty; q++) {
       if (pageIndex > 0) {
         pdf.addPage([widthMM, heightMM], widthMM > heightMM ? "landscape" : "portrait");
       }
 
-      // Label background & border guide
-      pdf.setLineWidth(0.1);
-      pdf.setDrawColor(220, 220, 220);
-      pdf.rect(0.5, 0.5, widthMM - 1, heightMM - 1);
+      // Shape Guide
+      pdf.setLineWidth(0.2);
+      pdf.setDrawColor(200, 200, 200);
 
-      let yMM = 4;
+      if (config.labelShape === "circle") {
+        const radius = Math.min(widthMM, heightMM) / 2 - 0.5;
+        pdf.circle(widthMM / 2, heightMM / 2, radius);
+      } else {
+        pdf.rect(0.5, 0.5, widthMM - 1, heightMM - 1);
+      }
+
+      let yMM = config.labelShape === "circle" ? 6 : 4;
 
       // Product Name
       if (config.showProductName && p.name) {
@@ -454,10 +514,9 @@ export async function exportLabelsAsPDF(
         pdf.setFont("helvetica", "bold");
         pdf.setTextColor(15, 23, 42);
         
-        // Wrap text to fit widthMM
-        const splitText = pdf.splitTextToSize(p.name, widthMM - 4);
+        const splitText = pdf.splitTextToSize(p.name, widthMM - 6);
         pdf.text(splitText, widthMM / 2, yMM, { align: "center" });
-        yMM += splitText.length * 4 + 1;
+        yMM += splitText.length * 3.5 + 1;
       }
 
       // Retail Price
@@ -466,10 +525,10 @@ export async function exportLabelsAsPDF(
         pdf.setFont("helvetica", "bold");
         pdf.setTextColor(37, 99, 235);
         pdf.text(`${p.retailPrice.toLocaleString()} IQD`, widthMM / 2, yMM, { align: "center" });
-        yMM += 5;
+        yMM += 4.5;
       }
 
-      // Barcode image insertion
+      // Simultaneous Dual 1D Barcode & 2D QR Code
       if (config.showBarcode && p.barcode) {
         try {
           const canvas = document.createElement("canvas");
@@ -478,12 +537,12 @@ export async function exportLabelsAsPDF(
             width: 1.5,
             height: config.barcodeHeight,
             displayValue: true,
-            fontSize: 10,
+            fontSize: 9,
             margin: 2,
           });
           const barcodeDataUrl = canvas.toDataURL("image/png");
-          const bWidthMM = widthMM * 0.8;
-          const bHeightMM = Math.min(12, heightMM * 0.3);
+          const bWidthMM = widthMM * 0.75;
+          const bHeightMM = Math.min(10, heightMM * 0.25);
           pdf.addImage(barcodeDataUrl, "PNG", (widthMM - bWidthMM) / 2, yMM, bWidthMM, bHeightMM);
           yMM += bHeightMM + 2;
         } catch (e) {
@@ -491,11 +550,13 @@ export async function exportLabelsAsPDF(
         }
       }
 
-      // QR Code image insertion
-      if (config.showQRCode && p.qrCode) {
+      if ((config.showQRCode || config.showStoreURLQR) && qrPayload) {
         try {
-          const qrDataUrl = await QRCode.toDataURL(p.qrCode.trim(), { margin: 1 });
-          const qrSizeMM = Math.min(14, heightMM * 0.35);
+          const qrDataUrl = await QRCode.toDataURL(qrPayload, {
+            margin: 1,
+            errorCorrectionLevel: config.qrErrorCorrection || "M",
+          });
+          const qrSizeMM = Math.min(13, heightMM * 0.3);
           pdf.addImage(qrDataUrl, "PNG", (widthMM - qrSizeMM) / 2, yMM, qrSizeMM, qrSizeMM);
           yMM += qrSizeMM + 2;
         } catch (e) {
@@ -503,12 +564,13 @@ export async function exportLabelsAsPDF(
         }
       }
 
-      // Footer
+      // Footer Text
       if (config.showFooterText && config.footerText) {
-        pdf.setFontSize(6);
+        pdf.setFontSize(5.5);
         pdf.setFont("helvetica", "normal");
         pdf.setTextColor(100, 116, 139);
-        pdf.text(config.footerText, widthMM / 2, heightMM - 2, { align: "center" });
+        const footerY = config.labelShape === "circle" ? heightMM - 5 : heightMM - 2;
+        pdf.text(config.footerText, widthMM / 2, footerY, { align: "center" });
       }
 
       pageIndex++;
@@ -519,7 +581,7 @@ export async function exportLabelsAsPDF(
 }
 
 /**
- * Renders an offscreen canvas and exports label as high-DPI PNG or JPEG Blob.
+ * Renders an offscreen canvas with shape clipping and exports label as High-DPI PNG or JPEG Blob.
  */
 export async function renderLabelToImageBlob(
   product: Product,
@@ -530,11 +592,14 @@ export async function renderLabelToImageBlob(
     throw new Error("صناعة الصورة تتطلب بيئة المتصفح.");
   }
 
-  const dpi = 300; // High DPI for thermal printing
+  const dpi = 300;
   const mmToPx = (mm: number) => Math.round((mm / 25.4) * dpi);
 
-  const canvasWidth = mmToPx(config.rollWidthMM);
-  const canvasHeight = mmToPx(config.rollHeightMM);
+  const widthMM = config.labelShape === "square" || config.labelShape === "circle" ? config.rollWidthMM : config.rollWidthMM;
+  const heightMM = config.labelShape === "square" || config.labelShape === "circle" ? config.rollWidthMM : config.rollHeightMM;
+
+  const canvasWidth = mmToPx(widthMM);
+  const canvasHeight = mmToPx(heightMM);
 
   const canvas = document.createElement("canvas");
   canvas.width = canvasWidth;
@@ -543,59 +608,86 @@ export async function renderLabelToImageBlob(
 
   if (!ctx) throw new Error("Could not initialize 2D Context");
 
-  // Background
+  // Canvas background & shape clipping
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-  // Border guide
-  ctx.strokeStyle = "#cbd5e1";
-  ctx.lineWidth = Math.round(dpi / 100);
-  ctx.strokeRect(4, 4, canvasWidth - 8, canvasHeight - 8);
+  if (config.labelShape === "circle") {
+    ctx.beginPath();
+    ctx.arc(canvasWidth / 2, canvasHeight / 2, canvasWidth / 2 - 4, 0, Math.PI * 2);
+    ctx.strokeStyle = "#cbd5e1";
+    ctx.lineWidth = Math.round(dpi / 100);
+    ctx.stroke();
+    ctx.clip(); // Circle masking
+  } else {
+    ctx.strokeStyle = "#cbd5e1";
+    ctx.lineWidth = Math.round(dpi / 100);
+    ctx.strokeRect(4, 4, canvasWidth - 8, canvasHeight - 8);
+  }
 
-  let yCursor = Math.round(canvasHeight * 0.1);
+  let yCursor = Math.round(canvasHeight * (config.labelShape === "circle" ? 0.15 : 0.1));
 
-  // Title
+  // Product Name
   if (config.showProductName && product.name) {
     ctx.fillStyle = "#0f172a";
-    ctx.font = `bold ${Math.round(canvasHeight * 0.12)}px sans-serif`;
+    ctx.font = `bold ${Math.round(canvasHeight * 0.11)}px sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.fillText(product.name, canvasWidth / 2, yCursor, canvasWidth * 0.9);
-    yCursor += Math.round(canvasHeight * 0.14);
+    ctx.fillText(product.name, canvasWidth / 2, yCursor, canvasWidth * 0.85);
+    yCursor += Math.round(canvasHeight * 0.13);
   }
 
   // Price
   if (config.showProductPrice && product.retailPrice) {
     ctx.fillStyle = "#2563eb";
-    ctx.font = `black ${Math.round(canvasHeight * 0.14)}px sans-serif`;
+    ctx.font = `black ${Math.round(canvasHeight * 0.13)}px sans-serif`;
     ctx.textAlign = "center";
     ctx.fillText(`${product.retailPrice.toLocaleString()} IQD`, canvasWidth / 2, yCursor);
-    yCursor += Math.round(canvasHeight * 0.16);
+    yCursor += Math.round(canvasHeight * 0.15);
   }
 
-  // Barcode
+  // 1D Barcode
   if (config.showBarcode && product.barcode) {
     const barcodeCanvas = document.createElement("canvas");
     JsBarcode(barcodeCanvas, product.barcode.trim(), {
       format: config.barcodeType || "CODE128",
       width: 2,
-      height: 60,
+      height: 55,
       displayValue: true,
-      fontSize: 14,
+      fontSize: 13,
     });
 
-    const bWidth = Math.round(canvasWidth * 0.8);
-    const bHeight = Math.round(canvasHeight * 0.35);
+    const bWidth = Math.round(canvasWidth * 0.75);
+    const bHeight = Math.round(canvasHeight * 0.3);
     ctx.drawImage(barcodeCanvas, (canvasWidth - bWidth) / 2, yCursor, bWidth, bHeight);
-    yCursor += bHeight + 10;
+    yCursor += bHeight + 8;
   }
 
-  // Footer
+  // 2D Store URL QR Code
+  const qrPayload = resolveQRPayload(product, config);
+  if ((config.showQRCode || config.showStoreURLQR) && qrPayload) {
+    try {
+      const qrDataUrl = await QRCode.toDataURL(qrPayload, {
+        margin: 1,
+        errorCorrectionLevel: config.qrErrorCorrection || "M",
+      });
+      const qrImg = new Image();
+      qrImg.src = qrDataUrl;
+      await new Promise((res) => { qrImg.onload = res; });
+      const qrSize = Math.round(canvasHeight * 0.28);
+      ctx.drawImage(qrImg, (canvasWidth - qrSize) / 2, yCursor, qrSize, qrSize);
+      yCursor += qrSize + 6;
+    } catch (e) {
+      console.warn("[ThermalEngine] Canvas QR draw error:", e);
+    }
+  }
+
+  // Footer Text
   if (config.showFooterText && config.footerText) {
     ctx.fillStyle = "#64748b";
-    ctx.font = `bold ${Math.round(canvasHeight * 0.08)}px sans-serif`;
+    ctx.font = `bold ${Math.round(canvasHeight * 0.07)}px sans-serif`;
     ctx.textAlign = "center";
-    ctx.fillText(config.footerText, canvasWidth / 2, canvasHeight - Math.round(canvasHeight * 0.12));
+    ctx.fillText(config.footerText, canvasWidth / 2, canvasHeight - Math.round(canvasHeight * 0.1));
   }
 
   return new Promise((resolve, reject) => {

@@ -6,10 +6,12 @@ import {
   LabelCustomizationOptions,
   DEFAULT_LABEL_CUSTOMIZATION,
   executePrintJob,
-  exportPrintableFile,
   generateBarcodeDataURL,
   generateQRDataURL,
   BarcodeSymbology,
+  LabelShape,
+  QRErrorCorrection,
+  QRTargetMode,
   generateTSPLCommands,
   generateZPLCommands,
   connectWebBluetoothPrinter,
@@ -19,7 +21,8 @@ import {
   handshakeWithMarklifeApp,
   exportLabelsAsPDF,
   renderLabelToImageBlob,
-  MARKLIFE_X4_PRESETS,
+  GLOBAL_THERMAL_PRESETS,
+  resolveQRPayload,
 } from "@/lib/printer-service";
 import { useToast } from "@/components/ToastProvider";
 
@@ -74,8 +77,11 @@ export default function BatchPrintModal({
       setPreviewBarcodeUrl("");
     }
 
-    if (sampleProduct.qrCode) {
-      generateQRDataURL(sampleProduct.qrCode).then(setPreviewQrUrl);
+    const qrPayload = resolveQRPayload(sampleProduct, customization);
+    if (qrPayload && (customization.showQRCode || customization.showStoreURLQR)) {
+      generateQRDataURL(qrPayload, customization.qrErrorCorrection || "M").then(
+        setPreviewQrUrl
+      );
     } else {
       setPreviewQrUrl("");
     }
@@ -85,6 +91,10 @@ export default function BatchPrintModal({
     customization.barcodeType,
     customization.showBarcode,
     customization.showQRCode,
+    customization.showStoreURLQR,
+    customization.qrTargetMode,
+    customization.qrErrorCorrection,
+    customization.storeUrl,
   ]);
 
   // Compute print items list with quantities
@@ -102,43 +112,46 @@ export default function BatchPrintModal({
   if (!isOpen) return null;
 
   // Apply Roll & Format Presets
-  const applyPreset = (preset: string) => {
-    if (preset in MARKLIFE_X4_PRESETS) {
+  const applyPreset = (presetKey: string) => {
+    if (presetKey in GLOBAL_THERMAL_PRESETS) {
       setCustomization((prev) => ({
         ...prev,
-        ...MARKLIFE_X4_PRESETS[preset],
+        ...GLOBAL_THERMAL_PRESETS[presetKey],
       }));
-      success(`✅ تم تطبيق قوالب رول طابعة Marklife (${preset})`);
+      success(`✅ تم تطبيق قالب الأحجام القياسية (${presetKey})`);
       return;
     }
 
-    if (preset === "full") {
+    if (presetKey === "full") {
       setCustomization((prev) => ({
         ...prev,
         showProductName: true,
         showProductPrice: true,
         showBarcode: true,
         showQRCode: true,
+        showStoreURLQR: true,
         showFooterText: true,
         presetName: "full",
       }));
-    } else if (preset === "codes_only") {
+    } else if (presetKey === "codes_only") {
       setCustomization((prev) => ({
         ...prev,
         showProductName: false,
         showProductPrice: false,
         showBarcode: true,
         showQRCode: true,
+        showStoreURLQR: true,
         showFooterText: false,
         presetName: "codes_only",
       }));
-    } else if (preset === "price_code") {
+    } else if (presetKey === "price_code") {
       setCustomization((prev) => ({
         ...prev,
         showProductName: true,
         showProductPrice: true,
         showBarcode: true,
         showQRCode: false,
+        showStoreURLQR: false,
         showFooterText: false,
         presetName: "price_code",
       }));
@@ -263,7 +276,7 @@ export default function BatchPrintModal({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `label_${sampleProduct.name.replace(/\s+/g, "_")}.png`;
+      a.download = `label_${sampleProduct.name.replace(/\s+/g, "_")}_${customization.labelShape}.png`;
       a.click();
       URL.revokeObjectURL(url);
       dismiss(toastId);
@@ -297,7 +310,7 @@ export default function BatchPrintModal({
       <div className="absolute inset-0 bg-black/80 backdrop-blur-xl" onClick={onClose} />
 
       {/* Studio Container */}
-      <div className="relative bg-[#1e1936] text-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[94vh] overflow-hidden border border-purple-500/40 flex flex-col animate-fadeIn">
+      <div className="relative bg-[#1e1936] text-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[94vh] overflow-hidden border border-purple-500/40 flex flex-col animate-fadeIn">
         
         {/* Header Bar */}
         <div className="bg-gradient-to-l from-purple-950 via-slate-900 to-indigo-950 px-6 py-4 flex items-center justify-between border-b border-purple-500/30">
@@ -307,10 +320,10 @@ export default function BatchPrintModal({
             </div>
             <div>
               <h2 className="font-black text-base sm:text-lg text-white leading-tight break-words whitespace-normal">
-                استوديو الملصقات الحرارية الجاهزة (Marklife X4 Subsystem)
+                استوديو الملصقات الحرارية المتطور (Marklife X4 Multi-Shape Subsystem)
               </h2>
               <p className="text-purple-300 text-xs break-words whitespace-normal leading-tight">
-                تحكم مليمتر دقيق، اتصال مباشر بالبلوتوث/USB، وتصدير متعدد الصيغ
+                دعم الأشكال المتعددة (مستطيل/مربع/دائري)، توليد QR متجر أحمد بحري، وطباعة هجينة فورية
               </p>
             </div>
           </div>
@@ -325,37 +338,155 @@ export default function BatchPrintModal({
         {/* Studio Body (Grid Layout) */}
         <div className="flex-1 overflow-y-auto p-5 grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-          {/* Left Column: Controls & Hardware Connection (7 Cols) */}
+          {/* Left Column: Controls & Shape Switcher (7 Cols) */}
           <div className="lg:col-span-7 flex flex-col gap-5">
             
-            {/* 1. Marklife X4 & Roll Presets */}
-            <div className="bg-[#15102a]/80 p-4 rounded-2xl border border-purple-500/30">
-              <label className="block text-xs font-bold text-purple-300 mb-2">
-                ⚡ القوالب المسبقة لرول طابعة Marklife X4 والأحجام القياسية:
+            {/* ── Phase 2: Multi-Shape Label Roll Switcher ── */}
+            <div className="bg-[#15102a]/90 p-4 rounded-2xl border border-purple-500/40 flex flex-col gap-2">
+              <label className="block text-xs font-extrabold text-purple-300">
+                🔷 الشكل الهندسي للرول (Label Roll Geometric Shape):
               </label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 {[
-                  { key: "marklife_40x30", label: "Marklife 40×30 mm", icon: "🏷" },
-                  { key: "standard_50x30", label: "قياسي 50×30 mm", icon: "📦" },
-                  { key: "shipping_60x40", label: "شحن 60×40 mm", icon: "🚚" },
-                  { key: "full", label: "كامل التفاصيل", icon: "✨" },
-                  { key: "codes_only", label: "الأكواد فقط", icon: "📊" },
-                  { key: "price_code", label: "السعر والباركود", icon: "🏷" },
-                ].map(({ key, label, icon }) => (
+                  { key: "rectangle", label: "مستطيل ▭", desc: "أبعاد قياسية" },
+                  { key: "square", label: "مربع 🔲", desc: "متساوي الأضلاع" },
+                  { key: "circle", label: "دائري ⭕", desc: "أغطية وقناني" },
+                ].map(({ key, label, desc }) => (
                   <button
                     key={key}
                     type="button"
-                    onClick={() => applyPreset(key)}
-                    className="px-2.5 py-2 bg-purple-950/40 hover:bg-purple-800/40 border border-purple-500/30 rounded-xl text-xs sm:text-sm font-bold text-white transition-all flex items-center justify-center gap-1.5 shadow-2xs text-center break-words whitespace-normal leading-tight min-w-0"
+                    onClick={() =>
+                      setCustomization((prev) => ({
+                        ...prev,
+                        labelShape: key as LabelShape,
+                      }))
+                    }
+                    className={`p-2.5 rounded-xl border text-xs sm:text-sm font-bold transition-all flex flex-col items-center justify-center gap-0.5 ${
+                      customization.labelShape === key
+                        ? "bg-gradient-to-l from-purple-600 to-indigo-600 border-purple-400 text-white shadow-lg"
+                        : "bg-purple-950/40 border-purple-500/30 text-purple-200 hover:bg-purple-900/40"
+                    }`}
                   >
-                    <span className="shrink-0">{icon}</span>
-                    <span className="break-words whitespace-normal leading-tight">{label}</span>
+                    <span>{label}</span>
+                    <span className="text-[10px] text-purple-300 font-normal">{desc}</span>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* 2. Direct Hardware Connection Panel (Web Bluetooth / Web USB) */}
+            {/* ── Phase 3: Global Standard Thermal Roll Size Presets ── */}
+            <div className="bg-[#15102a]/80 p-4 rounded-2xl border border-purple-500/30 flex flex-col gap-2">
+              <label className="block text-xs font-bold text-purple-300">
+                ⚡ مقاسات الرول القياسية العالمية (Global Standard Presets):
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { key: "marklife_40x30", label: "Marklife 40×30 mm" },
+                  { key: "standard_50x30", label: "قياسي 50×30 mm" },
+                  { key: "strips_25x50", label: "شريط 25×50 mm" },
+                  { key: "medium_75x100", label: "شاشة 75×100 mm" },
+                  { key: "shipping_100x150", label: "شحن 100×150 mm (4x6 in)" },
+                  { key: "circular_50x50", label: "دائري 50×50 mm" },
+                  { key: "square_50x50", label: "مربع 50×50 mm" },
+                ].map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => applyPreset(key)}
+                    className="px-3 py-1.5 bg-purple-950/50 hover:bg-purple-800/40 border border-purple-500/30 rounded-xl text-xs font-bold text-white transition-all text-center break-words whitespace-normal leading-tight"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Phase 1: Dual Barcode & Store URL QR Control Engine ── */}
+            <div className="bg-[#15102a]/80 p-4 rounded-2xl border border-purple-500/30 flex flex-col gap-3">
+              <label className="block text-xs font-extrabold text-purple-300">
+                🌐 إعدادات QR المتجر والكود الثنائي (Store URL QR & Dual Engine):
+              </label>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-bold">
+                <label className="flex items-center gap-2 cursor-pointer text-purple-200">
+                  <input
+                    type="checkbox"
+                    checked={customization.showStoreURLQR}
+                    onChange={(e) =>
+                      setCustomization((prev) => ({
+                        ...prev,
+                        showStoreURLQR: e.target.checked,
+                      }))
+                    }
+                    className="w-4 h-4 rounded accent-purple-600 cursor-pointer"
+                  />
+                  <span className="break-words whitespace-normal leading-tight">
+                    طباعة QR متجر أحمد بحري / المنتج
+                  </span>
+                </label>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-purple-300 shrink-0">وجهة QR:</span>
+                  <select
+                    value={customization.qrTargetMode || "store_url"}
+                    onChange={(e) =>
+                      setCustomization((prev) => ({
+                        ...prev,
+                        qrTargetMode: e.target.value as QRTargetMode,
+                      }))
+                    }
+                    className="w-full px-2.5 py-1 bg-purple-950 border border-purple-500/40 rounded-xl text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="store_url">رابط المتجر الرئيسي</option>
+                    <option value="product_url">رابط المنتج المباشر</option>
+                    <option value="product_qr">كود QR المنتج الخاص</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-purple-300 font-bold shrink-0">تصحيح الأخطاء (ECC):</span>
+                  <select
+                    value={customization.qrErrorCorrection || "M"}
+                    onChange={(e) =>
+                      setCustomization((prev) => ({
+                        ...prev,
+                        qrErrorCorrection: e.target.value as QRErrorCorrection,
+                      }))
+                    }
+                    className="w-full px-2.5 py-1 bg-purple-950 border border-purple-500/40 rounded-xl text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="L">L - منخفض (7%)</option>
+                    <option value="M">M - متوسط (15%)</option>
+                    <option value="Q">Q - عالي (25%)</option>
+                    <option value="H">H - أقصى (30%)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <div className="flex justify-between font-bold text-purple-200 mb-1">
+                    <span>حجم QR:</span>
+                    <span>{customization.qrSizePx || 56}px</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={30}
+                    max={120}
+                    value={customization.qrSizePx || 56}
+                    onChange={(e) =>
+                      setCustomization((prev) => ({
+                        ...prev,
+                        qrSizePx: Number(e.target.value),
+                      }))
+                    }
+                    className="w-full h-1.5 bg-purple-950 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Direct Hardware Connection Panel (Web Bluetooth / Web USB) */}
             <div className="bg-gradient-to-l from-indigo-950/80 to-purple-950/80 p-4 rounded-2xl border border-indigo-500/40 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -416,7 +547,7 @@ export default function BatchPrintModal({
               )}
             </div>
 
-            {/* 3. Millimeter & Pixel Layout Control Sliders */}
+            {/* Millimeter & Pixel Layout Control Sliders */}
             <div className="bg-[#15102a]/80 p-4 rounded-2xl border border-purple-500/30 flex flex-col gap-4">
               <label className="block text-xs font-bold text-purple-300">
                 📏 أبعاد الرول بالمليمتر وقوة الحرق (Millimeter & Burn Control):
@@ -431,7 +562,7 @@ export default function BatchPrintModal({
                   <input
                     type="range"
                     min={20}
-                    max={100}
+                    max={150}
                     value={customization.rollWidthMM}
                     onChange={(e) =>
                       setCustomization((prev) => ({ ...prev, rollWidthMM: Number(e.target.value) }))
@@ -448,7 +579,7 @@ export default function BatchPrintModal({
                   <input
                     type="range"
                     min={15}
-                    max={120}
+                    max={200}
                     value={customization.rollHeightMM}
                     onChange={(e) =>
                       setCustomization((prev) => ({ ...prev, rollHeightMM: Number(e.target.value) }))
@@ -476,7 +607,7 @@ export default function BatchPrintModal({
               </div>
             </div>
 
-            {/* 4. Element Toggles & Barcode Types */}
+            {/* Element Toggles & Barcode Types */}
             <div className="bg-[#15102a]/80 p-4 rounded-2xl border border-purple-500/30 flex flex-col gap-3">
               <label className="block text-xs font-bold text-purple-300">
                 👁 إظهار العناصر ونوع الباركود (Symbology):
@@ -538,7 +669,7 @@ export default function BatchPrintModal({
               </div>
             </div>
 
-            {/* 5. Quantity Allocation */}
+            {/* Quantity Allocation */}
             <div className="bg-[#15102a]/80 p-4 rounded-2xl border border-purple-500/30">
               <div className="flex items-center justify-between mb-3">
                 <label className="text-xs font-bold text-purple-300">
@@ -624,27 +755,33 @@ export default function BatchPrintModal({
 
           </div>
 
-          {/* Right Column: Interactive Live Label Preview & Multi-Format Exports (5 Cols) */}
+          {/* Right Column: Multi-Shape Live Label Preview & Exports (5 Cols) */}
           <div className="lg:col-span-5 flex flex-col gap-4">
             
             {/* Live Interactive Preview Box */}
             <div className="bg-[#15102a]/90 rounded-3xl p-5 border border-purple-500/40 flex flex-col items-center justify-between min-h-[380px] shadow-inner">
               
               <div className="flex items-center justify-between w-full mb-3">
-                <span className="text-xs font-extrabold text-purple-300">
-                  🔍 معاينة حية بالمليمتر (Marklife X4 Preview)
+                <span className="text-xs font-extrabold text-purple-300 flex items-center gap-1.5">
+                  <span>🔍 معاينة حية بالمليمتر</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] bg-purple-950 border border-purple-500/30 text-purple-300 font-mono">
+                    {customization.labelShape === "circle" ? "⭕ دائري" : customization.labelShape === "square" ? "🔲 مربع" : "▭ مستطيل"}
+                  </span>
                 </span>
                 <span className="text-[11px] font-mono text-purple-400 bg-purple-950 px-2 py-0.5 rounded-full border border-purple-500/30">
-                  {customization.rollWidthMM}×{customization.rollHeightMM} mm
+                  {customization.rollWidthMM}×{customization.labelShape === "square" || customization.labelShape === "circle" ? customization.rollWidthMM : customization.rollHeightMM} mm
                 </span>
               </div>
 
               {sampleProduct ? (
                 <div
-                  className="bg-white text-gray-900 rounded-2xl p-4 border-2 border-dashed border-gray-400 w-full shadow-2xl flex flex-col items-center justify-between transition-all"
+                  className={`bg-white text-gray-900 p-4 border-2 border-dashed border-gray-400 w-full shadow-2xl flex flex-col items-center justify-between transition-all overflow-hidden ${
+                    customization.labelShape === "circle" ? "rounded-full" : "rounded-2xl"
+                  }`}
                   style={{
-                    maxWidth: `${Math.min(280, customization.rollWidthMM * 6)}px`,
-                    minHeight: `${Math.min(240, customization.rollHeightMM * 6)}px`,
+                    maxWidth: `${Math.min(280, customization.rollWidthMM * 5.5)}px`,
+                    minHeight: `${Math.min(260, (customization.labelShape === "square" || customization.labelShape === "circle" ? customization.rollWidthMM : customization.rollHeightMM) * 5.5)}px`,
+                    aspectRatio: customization.labelShape === "circle" || customization.labelShape === "square" ? "1 / 1" : "auto",
                   }}
                 >
                   {/* Name */}
@@ -667,10 +804,10 @@ export default function BatchPrintModal({
                     </div>
                   )}
 
-                  {/* Codes Container */}
-                  <div className="flex items-center justify-center gap-2 w-full my-2">
+                  {/* Simultaneous Dual Barcode & QR Code Container */}
+                  <div className="flex flex-wrap items-center justify-center gap-2 w-full my-2">
                     {customization.showBarcode && previewBarcodeUrl && (
-                      <div className="flex flex-col items-center justify-center flex-1">
+                      <div className="flex flex-col items-center justify-center flex-1 min-w-[100px]">
                         <img
                           src={previewBarcodeUrl}
                           alt="Barcode"
@@ -680,9 +817,14 @@ export default function BatchPrintModal({
                       </div>
                     )}
 
-                    {customization.showQRCode && previewQrUrl && (
+                    {(customization.showQRCode || customization.showStoreURLQR) && previewQrUrl && (
                       <div className="flex flex-col items-center justify-center">
-                        <img src={previewQrUrl} alt="QR Code" className="w-14 h-14 object-contain block" />
+                        <img
+                          src={previewQrUrl}
+                          alt="QR Code"
+                          style={{ width: `${customization.qrSizePx || 56}px`, height: `${customization.qrSizePx || 56}px` }}
+                          className="object-contain block"
+                        />
                       </div>
                     )}
                   </div>

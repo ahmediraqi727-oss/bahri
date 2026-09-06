@@ -11,6 +11,7 @@ import type { Product } from "./types";
 import {
   ExtendedLabelCustomization,
   DEFAULT_EXTENDED_CUSTOMIZATION,
+  GLOBAL_THERMAL_PRESETS,
   MARKLIFE_X4_PRESETS,
   generateTSPLCommands,
   generateZPLCommands,
@@ -21,8 +22,12 @@ import {
   handshakeWithMarklifeApp,
   exportLabelsAsPDF,
   renderLabelToImageBlob,
+  resolveQRPayload,
   ThermalPrintJobItem,
   BarcodeSymbology,
+  LabelShape,
+  QRErrorCorrection,
+  QRTargetMode,
 } from "./thermal-printer-engine";
 
 export type CodePrintType = "barcode" | "qr" | "both";
@@ -47,6 +52,7 @@ export interface PrintJobOptions {
 
 // Re-export thermal engine capabilities
 export {
+  GLOBAL_THERMAL_PRESETS,
   MARKLIFE_X4_PRESETS,
   generateTSPLCommands,
   generateZPLCommands,
@@ -57,8 +63,9 @@ export {
   handshakeWithMarklifeApp,
   exportLabelsAsPDF,
   renderLabelToImageBlob,
+  resolveQRPayload,
 };
-export type { BarcodeSymbology };
+export type { BarcodeSymbology, LabelShape, QRErrorCorrection, QRTargetMode };
 
 /**
  * Converts a 1D Barcode string into a pure Base64 PNG Data URL using off-screen HTMLCanvasElement.
@@ -92,7 +99,10 @@ export function generateBarcodeDataURL(
 /**
  * Converts a 2D QR Code string into a pure Base64 PNG Data URL using QRCode library.
  */
-export async function generateQRDataURL(text: string): Promise<string> {
+export async function generateQRDataURL(
+  text: string,
+  ecc: QRErrorCorrection = "M"
+): Promise<string> {
   if (!text || !text.trim()) return "";
   try {
     const toDataURLFn =
@@ -105,7 +115,7 @@ export async function generateQRDataURL(text: string): Promise<string> {
         width: 180,
         margin: 1,
         color: { dark: "#000000", light: "#ffffff" },
-        errorCorrectionLevel: "M",
+        errorCorrectionLevel: ecc,
       });
     }
   } catch (err) {
@@ -123,6 +133,13 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
   const barcodeMap = new Map<string, string>();
   const qrMap = new Map<string, string>();
 
+  const widthMM = customization.labelShape === "square" || customization.labelShape === "circle"
+    ? customization.rollWidthMM
+    : customization.rollWidthMM;
+  const heightMM = customization.labelShape === "square" || customization.labelShape === "circle"
+    ? customization.rollWidthMM
+    : customization.rollHeightMM;
+
   for (const item of items) {
     const p = item.product;
     if (customization.showBarcode && p.barcode && !barcodeMap.has(p.id)) {
@@ -133,8 +150,10 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
       );
       barcodeMap.set(p.id, dataUrl);
     }
-    if (customization.showQRCode && p.qrCode && !qrMap.has(p.id)) {
-      const dataUrl = await generateQRDataURL(p.qrCode);
+
+    const qrPayload = resolveQRPayload(p, customization);
+    if ((customization.showQRCode || customization.showStoreURLQR) && qrPayload && !qrMap.has(p.id)) {
+      const dataUrl = await generateQRDataURL(qrPayload, customization.qrErrorCorrection || "M");
       qrMap.set(p.id, dataUrl);
     }
   }
@@ -146,9 +165,11 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
     const barcodeDataUrl = barcodeMap.get(product.id) || "";
     const qrDataUrl = qrMap.get(product.id) || "";
 
+    const shapeClass = customization.labelShape === "circle" ? "border-radius: 50%;" : "";
+
     for (let i = 0; i < qty; i++) {
       labelsHTML.push(`
-        <div class="label-card" style="width: ${customization.rollWidthMM || 40}mm; min-height: ${customization.rollHeightMM || 30}mm;">
+        <div class="label-card" style="width: ${widthMM}mm; min-height: ${heightMM}mm; ${shapeClass}">
           ${
             customization.showProductName
               ? `<div class="product-name" style="font-size: ${customization.nameFontSize}px;">${product.name}</div>`
@@ -171,9 +192,9 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
             }
 
             ${
-              customization.showQRCode && qrDataUrl
+              (customization.showQRCode || customization.showStoreURLQR) && qrDataUrl
                 ? `<div class="qr-wrapper">
-                    <img src="${qrDataUrl}" alt="QR Code" class="qr-img" />
+                    <img src="${qrDataUrl}" alt="QR Code" class="qr-img" style="width: ${customization.qrSizePx || 56}px; height: ${customization.qrSizePx || 56}px;" />
                    </div>`
                 : ""
             }
@@ -205,7 +226,7 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
         }
         @media print {
           @page {
-            size: ${customization.rollWidthMM || 40}mm ${customization.rollHeightMM || 30}mm;
+            size: ${widthMM}mm ${heightMM}mm;
             margin: 0;
           }
           body {
@@ -243,7 +264,7 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
         }
         .labels-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(${customization.rollWidthMM || 40}mm, 1fr));
+          grid-template-columns: repeat(auto-fill, minmax(${widthMM}mm, 1fr));
           gap: 16px;
           justify-content: center;
         }
@@ -258,6 +279,7 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
           align-items: center;
           justify-content: space-between;
           margin: 0 auto;
+          overflow: hidden;
         }
         .product-name {
           font-weight: 800;
@@ -271,7 +293,7 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
         }
         .codes-container {
           display: flex;
-          gap: 4px;
+          gap: 6px;
           align-items: center;
           justify-content: center;
           width: 100%;
@@ -284,7 +306,7 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
           flex: 1;
         }
         .barcode-img { max-width: 100%; object-fit: contain; }
-        .qr-img { width: 48px; height: 48px; object-fit: contain; }
+        .qr-img { object-fit: contain; }
         .footer-text {
           font-size: 9px;
           color: #64748b;
@@ -298,7 +320,7 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
       <div class="header-bar no-print">
         <div>
           <h2 style="font-size:18px;">معاينة استوديو الملصقات الحرارية</h2>
-          <p style="font-size:12px; color:#64748b;">إجمالي عدد الملصقات: <strong>${labelsHTML.length}</strong> ملصق (${customization.rollWidthMM}×${customization.rollHeightMM} mm)</p>
+          <p style="font-size:12px; color:#64748b;">إجمالي عدد الملصقات: <strong>${labelsHTML.length}</strong> ملصق (${widthMM}×${heightMM} mm)</p>
         </div>
         <div style="display:flex; gap:10px;">
           <button class="btn-print" onclick="window.print()">🖨 أمر الطباعة الفوري</button>
