@@ -12,6 +12,7 @@ import jsPDF from "jspdf";
 import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
 import type { Product } from "./types";
+import { shapeArabicText, prepareRTLText, wrapCanvasText } from "./arabic-text-shaper";
 
 export type BarcodeSymbology = "CODE128" | "EAN13" | "EAN8" | "CODE39" | "UPC";
 export type ThermalProtocol = "TSPL" | "ZPL" | "ESCPOS";
@@ -644,7 +645,8 @@ export async function exportLabelsAsPDF(
             pdf.setFont("helvetica", "bold");
             pdf.setTextColor(config.textColor || "#0f172a");
             
-            const splitText = pdf.splitTextToSize(p.name, safeWidthMM);
+            const shapedName = prepareRTLText(p.name);
+            const splitText = pdf.splitTextToSize(shapedName, safeWidthMM);
             pdf.text(splitText, widthMM / 2, yMM, { align: "center" });
             yMM += splitText.length * 3.5 + 1;
           }
@@ -697,7 +699,7 @@ export async function exportLabelsAsPDF(
             pdf.setFont("helvetica", "normal");
             pdf.setTextColor(config.textColor || "#64748b");
             const footerY = isCircle ? heightMM * 0.84 : heightMM - 2;
-            pdf.text(config.footerText, widthMM / 2, footerY, { align: "center" });
+            pdf.text(prepareRTLText(config.footerText), widthMM / 2, footerY, { align: "center" });
           }
         }
       }
@@ -793,11 +795,17 @@ export async function renderLabelToImageBlob(
     if (elemId === "name") {
       if (config.showProductName && product.name) {
         ctx.fillStyle = config.textColor || "#0f172a";
-        ctx.font = `bold ${Math.round(canvasHeight * 0.11)}px sans-serif`;
+        const fontSizePx = Math.round(canvasHeight * 0.11);
+        ctx.font = `bold ${fontSizePx}px sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
-        ctx.fillText(product.name, canvasWidth / 2, yCursor, maxContentWidth);
-        yCursor += Math.round(canvasHeight * 0.13);
+
+        const lines = wrapCanvasText(ctx, product.name, maxContentWidth);
+        for (const line of lines) {
+          ctx.fillText(shapeArabicText(line), canvasWidth / 2, yCursor, maxContentWidth);
+          yCursor += Math.round(fontSizePx * 1.15);
+        }
+        yCursor += 4;
       }
     } else if (elemId === "price") {
       if (config.showProductPrice && product.retailPrice) {
@@ -846,7 +854,7 @@ export async function renderLabelToImageBlob(
         ctx.fillStyle = config.textColor || "#64748b";
         ctx.font = `bold ${Math.round(canvasHeight * 0.07)}px sans-serif`;
         ctx.textAlign = "center";
-        ctx.fillText(config.footerText, canvasWidth / 2, canvasHeight - Math.round(canvasHeight * (isCircle ? 0.15 : 0.09)));
+        ctx.fillText(shapeArabicText(config.footerText), canvasWidth / 2, canvasHeight - Math.round(canvasHeight * (isCircle ? 0.15 : 0.09)));
       }
     }
   }

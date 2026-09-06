@@ -254,17 +254,25 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
             size: ${widthMM}mm ${heightMM}mm;
             margin: 0;
           }
-          body {
+          html, body {
+            width: ${widthMM}mm !important;
+            height: ${heightMM}mm !important;
             background: #fff !important;
             padding: 0 !important;
+            margin: 0 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           .no-print { display: none !important; }
-          .labels-grid { gap: 0 !important; display: block !important; }
+          .labels-grid { gap: 0 !important; display: block !important; margin: 0 !important; padding: 0 !important; }
           .label-card {
+            width: ${widthMM}mm !important;
+            height: ${heightMM}mm !important;
             break-after: page !important;
             page-break-after: always !important;
             border: none !important;
             box-shadow: none !important;
+            margin: 0 !important;
           }
         }
         .header-bar {
