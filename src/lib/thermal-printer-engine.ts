@@ -648,7 +648,7 @@ export async function exportLabelsAsPDF(
             const shapedName = prepareRTLText(p.name);
             const splitText = pdf.splitTextToSize(shapedName, safeWidthMM);
             pdf.text(splitText, widthMM / 2, yMM, { align: "center" });
-            yMM += splitText.length * 3.5 + 1;
+            yMM += splitText.length * 3.5 + 1.5;
           }
         } else if (elemId === "price") {
           if (config.showProductPrice && p.retailPrice) {
@@ -659,7 +659,10 @@ export async function exportLabelsAsPDF(
             yMM += 4.5;
           }
         } else if (elemId === "codes") {
-          if (config.showBarcode && p.barcode) {
+          const hasBarcode = config.showBarcode && p.barcode;
+          const hasQR = (config.showQRCode || config.showStoreURLQR) && qrPayload;
+
+          if (hasBarcode) {
             try {
               const canvas = document.createElement("canvas");
               JsBarcode(canvas, p.barcode.trim(), {
@@ -671,8 +674,8 @@ export async function exportLabelsAsPDF(
                 margin: 2,
               });
               const barcodeDataUrl = canvas.toDataURL("image/png");
-              const bWidthMM = safeWidthMM * 0.9;
-              const bHeightMM = Math.min(10, heightMM * 0.25);
+              const bWidthMM = safeWidthMM * 0.85;
+              const bHeightMM = Math.min(10, heightMM * (hasQR ? 0.20 : 0.26));
               pdf.addImage(barcodeDataUrl, "PNG", (widthMM - bWidthMM) / 2, yMM, bWidthMM, bHeightMM);
               yMM += bHeightMM + 2;
             } catch (e) {
@@ -680,13 +683,13 @@ export async function exportLabelsAsPDF(
             }
           }
 
-          if ((config.showQRCode || config.showStoreURLQR) && qrPayload) {
+          if (hasQR) {
             try {
               const qrDataUrl = await QRCode.toDataURL(qrPayload, {
                 margin: 1,
                 errorCorrectionLevel: config.qrErrorCorrection || "M",
               });
-              const qrSizeMM = Math.min(13, heightMM * 0.3);
+              const qrSizeMM = Math.min(12, heightMM * (hasBarcode ? 0.20 : 0.28));
               pdf.addImage(qrDataUrl, "PNG", (widthMM - qrSizeMM) / 2, yMM, qrSizeMM, qrSizeMM);
               yMM += qrSizeMM + 2;
             } catch (e) {
@@ -698,7 +701,7 @@ export async function exportLabelsAsPDF(
             pdf.setFontSize(5.5);
             pdf.setFont("helvetica", "normal");
             pdf.setTextColor(config.textColor || "#64748b");
-            const footerY = isCircle ? heightMM * 0.84 : heightMM - 2;
+            const footerY = Math.min(yMM + 3, isCircle ? heightMM * 0.84 : heightMM - 1.5);
             pdf.text(prepareRTLText(config.footerText), widthMM / 2, footerY, { align: "center" });
           }
         }
@@ -720,17 +723,17 @@ export async function renderLabelToImageBlob(
   format: "image/png" | "image/jpeg" = "image/png"
 ): Promise<Blob> {
   if (typeof document === "undefined") {
-    throw new Error("صناعة الصورة تتطلب بيئة المتصفح.");
+    throw new Error("Canvas rendering only supported in browser environment.");
   }
 
   const dpi = 300;
-  const mmToPx = (mm: number) => Math.round((mm / 25.4) * dpi);
+  const mmToPx = (mm: number, dpiVal: number) => Math.round((mm / 25.4) * dpiVal);
 
   const widthMM = config.labelShape === "square" || config.labelShape === "circle" ? config.rollWidthMM : config.rollWidthMM;
   const heightMM = config.labelShape === "square" || config.labelShape === "circle" ? config.rollWidthMM : config.rollHeightMM;
 
-  const canvasWidth = mmToPx(widthMM);
-  const canvasHeight = mmToPx(heightMM);
+  const canvasWidth = mmToPx(widthMM, dpi);
+  const canvasHeight = mmToPx(heightMM, dpi);
   const isCircle = config.labelShape === "circle";
   const elementOrder = config.elementOrder && config.elementOrder.length > 0
     ? config.elementOrder
@@ -762,7 +765,8 @@ export async function renderLabelToImageBlob(
 
   // Circular Safe Area width constraint (70.7% of diameter)
   const maxContentWidth = isCircle ? canvasWidth * 0.707 : canvasWidth * 0.9;
-  let yCursor = Math.round(canvasHeight * (isCircle ? 0.16 : 0.08));
+  let yCursor = Math.round(canvasHeight * (isCircle ? 0.15 : 0.07));
+  const gapPx = Math.max(4, Math.round(canvasHeight * 0.025));
 
   // Brand Logo Drawing
   if (config.showLogo && config.logoUrl) {
@@ -784,7 +788,7 @@ export async function renderLabelToImageBlob(
         ctx.restore();
       } else {
         ctx.drawImage(logoImg, logoX, yCursor, logoPx, logoPx);
-        if (config.logoPosition === "top_center") yCursor += logoPx + 8;
+        if (config.logoPosition === "top_center") yCursor += logoPx + gapPx;
       }
     } catch (e) {
       console.warn("[ThermalEngine] Canvas Logo draw error:", e);
@@ -795,45 +799,50 @@ export async function renderLabelToImageBlob(
     if (elemId === "name") {
       if (config.showProductName && product.name) {
         ctx.fillStyle = config.textColor || "#0f172a";
-        const fontSizePx = Math.round(canvasHeight * 0.11);
+        const fontSizePx = Math.round(canvasHeight * 0.095);
         ctx.font = `bold ${fontSizePx}px sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
 
         const lines = wrapCanvasText(ctx, product.name, maxContentWidth);
         for (const line of lines) {
-          ctx.fillText(shapeArabicText(line), canvasWidth / 2, yCursor, maxContentWidth);
+          ctx.fillText(line, canvasWidth / 2, yCursor, maxContentWidth);
           yCursor += Math.round(fontSizePx * 1.15);
         }
-        yCursor += 4;
+        yCursor += gapPx;
       }
     } else if (elemId === "price") {
       if (config.showProductPrice && product.retailPrice) {
         ctx.fillStyle = config.textColor || "#2563eb";
-        ctx.font = `black ${Math.round(canvasHeight * 0.13)}px sans-serif`;
+        const priceFontPx = Math.round(canvasHeight * 0.11);
+        ctx.font = `black ${priceFontPx}px sans-serif`;
         ctx.textAlign = "center";
+        ctx.textBaseline = "top";
         ctx.fillText(`${product.retailPrice.toLocaleString()} IQD`, canvasWidth / 2, yCursor);
-        yCursor += Math.round(canvasHeight * 0.15);
+        yCursor += priceFontPx + gapPx;
       }
     } else if (elemId === "codes") {
-      if (config.showBarcode && product.barcode) {
+      const hasBarcode = config.showBarcode && product.barcode;
+      const qrPayload = resolveQRPayload(product, config);
+      const hasQR = (config.showQRCode || config.showStoreURLQR) && qrPayload;
+
+      if (hasBarcode) {
         const barcodeCanvas = document.createElement("canvas");
         JsBarcode(barcodeCanvas, product.barcode.trim(), {
           format: config.barcodeType || "CODE128",
           width: 2,
-          height: 55,
+          height: 45,
           displayValue: true,
-          fontSize: 13,
+          fontSize: 12,
         });
 
-        const bWidth = Math.round(maxContentWidth * 0.9);
-        const bHeight = Math.round(canvasHeight * 0.28);
+        const bWidth = Math.round(maxContentWidth * 0.85);
+        const bHeight = Math.round(canvasHeight * (hasQR ? 0.20 : 0.28));
         ctx.drawImage(barcodeCanvas, (canvasWidth - bWidth) / 2, yCursor, bWidth, bHeight);
-        yCursor += bHeight + 8;
+        yCursor += bHeight + gapPx;
       }
 
-      const qrPayload = resolveQRPayload(product, config);
-      if ((config.showQRCode || config.showStoreURLQR) && qrPayload) {
+      if (hasQR) {
         try {
           const qrDataUrl = await QRCode.toDataURL(qrPayload, {
             margin: 1,
@@ -842,9 +851,9 @@ export async function renderLabelToImageBlob(
           const qrImg = new Image();
           qrImg.src = qrDataUrl;
           await new Promise((res) => { qrImg.onload = res; });
-          const qrSize = Math.round(canvasHeight * 0.26);
+          const qrSize = Math.round(canvasHeight * (hasBarcode ? 0.20 : 0.26));
           ctx.drawImage(qrImg, (canvasWidth - qrSize) / 2, yCursor, qrSize, qrSize);
-          yCursor += qrSize + 6;
+          yCursor += qrSize + gapPx;
         } catch (e) {
           console.warn("[ThermalEngine] Canvas QR draw error:", e);
         }
@@ -852,9 +861,12 @@ export async function renderLabelToImageBlob(
     } else if (elemId === "footer") {
       if (config.showFooterText && config.footerText) {
         ctx.fillStyle = config.textColor || "#64748b";
-        ctx.font = `bold ${Math.round(canvasHeight * 0.07)}px sans-serif`;
+        const footerFontPx = Math.round(canvasHeight * 0.065);
+        ctx.font = `bold ${footerFontPx}px sans-serif`;
         ctx.textAlign = "center";
-        ctx.fillText(shapeArabicText(config.footerText), canvasWidth / 2, canvasHeight - Math.round(canvasHeight * (isCircle ? 0.15 : 0.09)));
+        ctx.textBaseline = "top";
+        const footerY = Math.min(yCursor, canvasHeight - footerFontPx - Math.round(canvasHeight * (isCircle ? 0.12 : 0.05)));
+        ctx.fillText(prepareRTLText(config.footerText), canvasWidth / 2, footerY, maxContentWidth);
       }
     }
   }

@@ -140,27 +140,30 @@ export function shapeArabicText(text: string): string {
 }
 
 /**
- * Prepares Arabic text for Canvas or vector PDF engines that do not natively handle RTL rendering.
- * Shapes Arabic letters and reverses character order for pure Arabic segments while preserving numbers.
+ * Prepares Arabic & mixed BiDi text for Canvas or vector PDF engines that do not natively handle RTL rendering.
+ * Shapes Arabic letters and reverses word/character order for Arabic tokens while preserving English & numbers.
  */
 export function prepareRTLText(text: string): string {
   if (!text) return "";
-  const shaped = shapeArabicText(text);
 
-  // If text contains Arabic characters, split into words/tokens and order RTL
-  const containsArabic = /[\u0600-\u06FF\uFE70-\uFEFF]/.test(shaped);
-  if (!containsArabic) return shaped;
+  // Check if string contains Arabic characters
+  const hasArabic = /[\u0600-\u06FF]/.test(text);
+  if (!hasArabic) return text;
 
-  // Split into words, reverse word order, and reverse individual Arabic character sequences
-  const words = shaped.split(" ");
-  const processedWords = words.map((word) => {
-    if (/[\u0600-\u06FF\uFE70-\uFEFF]/.test(word)) {
-      return Array.from(word).reverse().join("");
+  // Tokenize by space boundaries while preserving spaces
+  const tokens = text.split(/(\s+)/);
+  const processedTokens = tokens.map((token) => {
+    if (/[\u0600-\u06FF]/.test(token)) {
+      // Shape Arabic characters into contextual joined glyphs and reverse character order for LTR canvas/pdf
+      const shaped = shapeArabicText(token);
+      return Array.from(shaped).reverse().join("");
     }
-    return word;
+    // English words, numbers (5,400), and currency symbols (IQD) remain in natural LTR order
+    return token;
   });
 
-  return processedWords.reverse().join(" ");
+  // Reverse overall token sequence so RTL sentence order is preserved
+  return processedTokens.reverse().join("");
 }
 
 /**
@@ -174,17 +177,17 @@ export function wrapCanvasText(
 ): string[] {
   if (!text) return [];
 
-  const shapedText = shapeArabicText(text);
-  const words = shapedText.split(" ");
+  const words = text.split(" ");
   const lines: string[] = [];
   let currentLine = "";
 
   for (const word of words) {
     const testLine = currentLine ? `${currentLine} ${word}` : word;
-    const metrics = ctx.measureText(testLine);
+    const shapedTestLine = prepareRTLText(testLine);
+    const metrics = ctx.measureText(shapedTestLine);
 
     if (metrics.width > maxWidth && currentLine) {
-      lines.push(currentLine);
+      lines.push(prepareRTLText(currentLine));
       currentLine = word;
     } else {
       currentLine = testLine;
@@ -192,7 +195,7 @@ export function wrapCanvasText(
   }
 
   if (currentLine) {
-    lines.push(currentLine);
+    lines.push(prepareRTLText(currentLine));
   }
 
   return lines;
