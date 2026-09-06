@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import ScrollableIndicatorContainer from "./ScrollableIndicatorContainer";
 
 export interface SmartFloatingBarProps {
   children?: React.ReactNode;
@@ -52,7 +53,9 @@ export default function SmartFloatingBar({
         ${className}
       `.trim().replace(/\s+/g, " ")}
     >
-      {children}
+      <ScrollableIndicatorContainer>
+        {children}
+      </ScrollableIndicatorContainer>
     </div>
   );
 }
