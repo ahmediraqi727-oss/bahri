@@ -3,6 +3,7 @@
  *
  * Enterprise Thermal Label Printing & Hardware Subsystem for Ahmed Bahri Store.
  * Supports Multi-Shape Label Rolls (Rectangle, Square, Circle with Circular Safe-Area),
+ * Global Standard Presets, Expanded Colors Suite, Site Logo Integration & Watermarking,
  * Strict Conditional Visibility, Dynamic Element Reordering Engine,
  * Dual 1D/2D QR Barcode Engine, and Dynamic Store URL QR Encoding.
  */
@@ -18,6 +19,7 @@ export type LabelShape = "rectangle" | "square" | "circle";
 export type QRErrorCorrection = "L" | "M" | "Q" | "H";
 export type QRTargetMode = "product_qr" | "store_url" | "product_url";
 export type LabelElementId = "name" | "price" | "codes" | "footer";
+export type LogoPlacement = "top_center" | "top_left" | "top_right" | "background_watermark";
 
 export interface LabelRollDimensions {
   widthMM: number;
@@ -58,6 +60,15 @@ export interface ExtendedLabelCustomization {
   presetName: string;
   storeUrl: string;
   elementOrder: LabelElementId[];
+  // Color Customization Suite
+  labelBgColor: string;
+  textColor: string;
+  borderColor: string;
+  // Site Logo Integration & Watermark Engine
+  showLogo: boolean;
+  logoUrl: string;
+  logoPosition: LogoPlacement;
+  logoSizePx: number;
 }
 
 export const DEFAULT_LABEL_ELEMENT_ORDER: LabelElementId[] = ["name", "price", "codes", "footer"];
@@ -88,6 +99,13 @@ export const DEFAULT_EXTENDED_CUSTOMIZATION: ExtendedLabelCustomization = {
   presetName: "marklife_40x30",
   storeUrl: "https://ahmed-bahri.vercel.app",
   elementOrder: [...DEFAULT_LABEL_ELEMENT_ORDER],
+  labelBgColor: "#FFFFFF",
+  textColor: "#000000",
+  borderColor: "#cbd5e1",
+  showLogo: false,
+  logoUrl: "",
+  logoPosition: "top_center",
+  logoSizePx: 36,
 };
 
 export const GLOBAL_THERMAL_PRESETS: Record<string, Partial<ExtendedLabelCustomization>> = {
@@ -107,6 +125,14 @@ export const GLOBAL_THERMAL_PRESETS: Record<string, Partial<ExtendedLabelCustomi
     labelShape: "rectangle",
     presetName: "standard_50x30",
   },
+  jewelry_25x15: {
+    rollWidthMM: 25,
+    rollHeightMM: 15,
+    gapMM: 2,
+    density: 10,
+    labelShape: "rectangle",
+    presetName: "jewelry_25x15",
+  },
   strips_25x50: {
     rollWidthMM: 25,
     rollHeightMM: 50,
@@ -115,13 +141,13 @@ export const GLOBAL_THERMAL_PRESETS: Record<string, Partial<ExtendedLabelCustomi
     labelShape: "rectangle",
     presetName: "strips_25x50",
   },
-  medium_75x100: {
-    rollWidthMM: 75,
-    rollHeightMM: 100,
+  logistics_100x75: {
+    rollWidthMM: 100,
+    rollHeightMM: 75,
     gapMM: 3,
     density: 12,
     labelShape: "rectangle",
-    presetName: "medium_75x100",
+    presetName: "logistics_100x75",
   },
   shipping_100x150: {
     rollWidthMM: 100,
@@ -130,6 +156,14 @@ export const GLOBAL_THERMAL_PRESETS: Record<string, Partial<ExtendedLabelCustomi
     density: 12,
     labelShape: "rectangle",
     presetName: "shipping_100x150",
+  },
+  circular_40x40: {
+    rollWidthMM: 40,
+    rollHeightMM: 40,
+    gapMM: 2,
+    density: 11,
+    labelShape: "circle",
+    presetName: "circular_40x40",
   },
   circular_50x50: {
     rollWidthMM: 50,
@@ -146,6 +180,14 @@ export const GLOBAL_THERMAL_PRESETS: Record<string, Partial<ExtendedLabelCustomi
     density: 11,
     labelShape: "square",
     presetName: "square_50x50",
+  },
+  continuous_100: {
+    rollWidthMM: 100,
+    rollHeightMM: 80,
+    gapMM: 0,
+    density: 12,
+    labelShape: "rectangle",
+    presetName: "continuous_100",
   },
 };
 
@@ -237,21 +279,18 @@ export function generateTSPLCommands(
 
       for (const elemId of elementOrder) {
         if (elemId === "name") {
-          // STRICT CONDITIONAL VISIBILITY
           if (config.showProductName && p.name) {
             const cleanName = p.name.replace(/"/g, '\\"');
             commands.push(`TEXT ${labelWidthDots / 2},${yCursor},"3.TTS",0,1,1,2,"${cleanName}"`);
             yCursor += 28;
           }
         } else if (elemId === "price") {
-          // STRICT CONDITIONAL VISIBILITY
           if (config.showProductPrice && p.retailPrice) {
             const priceStr = `${p.retailPrice.toLocaleString()} IQD`;
             commands.push(`TEXT ${labelWidthDots / 2},${yCursor},"4.TTS",0,1,1,2,"${priceStr}"`);
             yCursor += 32;
           }
         } else if (elemId === "codes") {
-          // STRICT CONDITIONAL VISIBILITY FOR BARCODE & QR
           if (config.showBarcode && p.barcode) {
             const barcodeCode = p.barcode.trim();
             const bHeightDots = Math.round(config.barcodeHeight * 1.5);
@@ -273,7 +312,6 @@ export function generateTSPLCommands(
             yCursor += 18;
           }
 
-          // STRICT CONDITIONAL VISIBILITY
           if (config.showFooterText && config.footerText) {
             const footer = config.footerText.replace(/"/g, '\\"');
             commands.push(`TEXT ${labelWidthDots / 2},${yCursor},"2.TTS",0,1,1,2,"${footer}"`);
@@ -503,7 +541,7 @@ export async function handshakeWithMarklifeApp(
 // ─── 4. MULTI-FORMAT EXPORT ENGINE (PNG, JPEG, VECTOR PDF, TSPL, ZPL) ──────────
 
 /**
- * Exports thermal labels as a High-DPI Vector PDF document (jsPDF) matching exact label mm dimensions, shape, reordering & strict conditional visibility.
+ * Exports thermal labels as a High-DPI Vector PDF document (jsPDF) matching exact label mm dimensions, shape, colors, logo, reordering & strict conditional visibility.
  */
 export async function exportLabelsAsPDF(
   items: ThermalPrintJobItem[],
@@ -535,9 +573,15 @@ export async function exportLabelsAsPDF(
         pdf.addPage([widthMM, heightMM], widthMM > heightMM ? "landscape" : "portrait");
       }
 
-      // Shape Guide with Safe Area Inset for Circular labels
+      // Background fill color if not pure white
+      if (config.labelBgColor && config.labelBgColor.toUpperCase() !== "#FFFFFF") {
+        pdf.setFillColor(config.labelBgColor);
+        pdf.rect(0, 0, widthMM, heightMM, "F");
+      }
+
+      // Shape Guide with Safe Area Inset
       pdf.setLineWidth(0.2);
-      pdf.setDrawColor(200, 200, 200);
+      pdf.setDrawColor(config.borderColor || "#cbd5e1");
 
       const isCircle = config.labelShape === "circle";
       const safeWidthMM = isCircle ? widthMM * 0.707 : widthMM - 2;
@@ -551,29 +595,41 @@ export async function exportLabelsAsPDF(
 
       let yMM = isCircle ? heightMM * 0.16 : 4;
 
+      // Brand Logo Integration
+      if (config.showLogo && config.logoUrl) {
+        try {
+          const lSizeMM = Math.min(10, (config.logoSizePx || 36) * 0.25);
+          let logoX = (widthMM - lSizeMM) / 2;
+          if (config.logoPosition === "top_left") logoX = 2;
+          if (config.logoPosition === "top_right") logoX = widthMM - lSizeMM - 2;
+
+          pdf.addImage(config.logoUrl, "PNG", logoX, yMM, lSizeMM, lSizeMM);
+          if (config.logoPosition === "top_center") yMM += lSizeMM + 1;
+        } catch (e) {
+          console.warn("[ThermalEngine] PDF Logo render error:", e);
+        }
+      }
+
       for (const elemId of elementOrder) {
         if (elemId === "name") {
-          // STRICT CONDITIONAL VISIBILITY
           if (config.showProductName && p.name) {
             pdf.setFontSize(Math.max(7, Math.round(config.nameFontSize * 0.75)));
             pdf.setFont("helvetica", "bold");
-            pdf.setTextColor(15, 23, 42);
+            pdf.setTextColor(config.textColor || "#0f172a");
             
             const splitText = pdf.splitTextToSize(p.name, safeWidthMM);
             pdf.text(splitText, widthMM / 2, yMM, { align: "center" });
             yMM += splitText.length * 3.5 + 1;
           }
         } else if (elemId === "price") {
-          // STRICT CONDITIONAL VISIBILITY
           if (config.showProductPrice && p.retailPrice) {
             pdf.setFontSize(Math.max(8, Math.round(config.priceFontSize * 0.85)));
             pdf.setFont("helvetica", "bold");
-            pdf.setTextColor(37, 99, 235);
+            pdf.setTextColor(config.textColor || "#2563eb");
             pdf.text(`${p.retailPrice.toLocaleString()} IQD`, widthMM / 2, yMM, { align: "center" });
             yMM += 4.5;
           }
         } else if (elemId === "codes") {
-          // STRICT CONDITIONAL VISIBILITY
           if (config.showBarcode && p.barcode) {
             try {
               const canvas = document.createElement("canvas");
@@ -609,11 +665,10 @@ export async function exportLabelsAsPDF(
             }
           }
         } else if (elemId === "footer") {
-          // STRICT CONDITIONAL VISIBILITY
           if (config.showFooterText && config.footerText) {
             pdf.setFontSize(5.5);
             pdf.setFont("helvetica", "normal");
-            pdf.setTextColor(100, 116, 139);
+            pdf.setTextColor(config.textColor || "#64748b");
             const footerY = isCircle ? heightMM * 0.84 : heightMM - 2;
             pdf.text(config.footerText, widthMM / 2, footerY, { align: "center" });
           }
@@ -628,7 +683,7 @@ export async function exportLabelsAsPDF(
 }
 
 /**
- * Renders an offscreen canvas with Circular Safe-Area padding, element reordering & strict conditional checks.
+ * Renders an offscreen canvas with Circular Safe-Area padding, Colors, Site Logo, Reordering & Strict Conditional Checks.
  */
 export async function renderLabelToImageBlob(
   product: Product,
@@ -659,19 +714,19 @@ export async function renderLabelToImageBlob(
 
   if (!ctx) throw new Error("Could not initialize 2D Context");
 
-  // Canvas background & shape clipping
-  ctx.fillStyle = "#ffffff";
+  // Background Customization
+  ctx.fillStyle = config.labelBgColor || "#ffffff";
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
   if (isCircle) {
     ctx.beginPath();
     ctx.arc(canvasWidth / 2, canvasHeight / 2, canvasWidth / 2 - 4, 0, Math.PI * 2);
-    ctx.strokeStyle = "#cbd5e1";
+    ctx.strokeStyle = config.borderColor || "#cbd5e1";
     ctx.lineWidth = Math.round(dpi / 100);
     ctx.stroke();
     ctx.clip(); // Circle masking
   } else {
-    ctx.strokeStyle = "#cbd5e1";
+    ctx.strokeStyle = config.borderColor || "#cbd5e1";
     ctx.lineWidth = Math.round(dpi / 100);
     ctx.strokeRect(4, 4, canvasWidth - 8, canvasHeight - 8);
   }
@@ -680,11 +735,37 @@ export async function renderLabelToImageBlob(
   const maxContentWidth = isCircle ? canvasWidth * 0.707 : canvasWidth * 0.9;
   let yCursor = Math.round(canvasHeight * (isCircle ? 0.16 : 0.08));
 
+  // Brand Logo Drawing
+  if (config.showLogo && config.logoUrl) {
+    try {
+      const logoImg = new Image();
+      logoImg.crossOrigin = "anonymous";
+      logoImg.src = config.logoUrl;
+      await new Promise((res) => { logoImg.onload = res; logoImg.onerror = res; });
+      
+      const logoPx = Math.round((config.logoSizePx || 36) * (dpi / 96));
+      let logoX = (canvasWidth - logoPx) / 2;
+      if (config.logoPosition === "top_left") logoX = 10;
+      if (config.logoPosition === "top_right") logoX = canvasWidth - logoPx - 10;
+
+      if (config.logoPosition === "background_watermark") {
+        ctx.save();
+        ctx.globalAlpha = 0.15;
+        ctx.drawImage(logoImg, (canvasWidth - logoPx * 2) / 2, (canvasHeight - logoPx * 2) / 2, logoPx * 2, logoPx * 2);
+        ctx.restore();
+      } else {
+        ctx.drawImage(logoImg, logoX, yCursor, logoPx, logoPx);
+        if (config.logoPosition === "top_center") yCursor += logoPx + 8;
+      }
+    } catch (e) {
+      console.warn("[ThermalEngine] Canvas Logo draw error:", e);
+    }
+  }
+
   for (const elemId of elementOrder) {
     if (elemId === "name") {
-      // STRICT CONDITIONAL VISIBILITY
       if (config.showProductName && product.name) {
-        ctx.fillStyle = "#0f172a";
+        ctx.fillStyle = config.textColor || "#0f172a";
         ctx.font = `bold ${Math.round(canvasHeight * 0.11)}px sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
@@ -692,16 +773,14 @@ export async function renderLabelToImageBlob(
         yCursor += Math.round(canvasHeight * 0.13);
       }
     } else if (elemId === "price") {
-      // STRICT CONDITIONAL VISIBILITY
       if (config.showProductPrice && product.retailPrice) {
-        ctx.fillStyle = "#2563eb";
+        ctx.fillStyle = config.textColor || "#2563eb";
         ctx.font = `black ${Math.round(canvasHeight * 0.13)}px sans-serif`;
         ctx.textAlign = "center";
         ctx.fillText(`${product.retailPrice.toLocaleString()} IQD`, canvasWidth / 2, yCursor);
         yCursor += Math.round(canvasHeight * 0.15);
       }
     } else if (elemId === "codes") {
-      // STRICT CONDITIONAL VISIBILITY
       if (config.showBarcode && product.barcode) {
         const barcodeCanvas = document.createElement("canvas");
         JsBarcode(barcodeCanvas, product.barcode.trim(), {
@@ -736,9 +815,8 @@ export async function renderLabelToImageBlob(
         }
       }
     } else if (elemId === "footer") {
-      // STRICT CONDITIONAL VISIBILITY
       if (config.showFooterText && config.footerText) {
-        ctx.fillStyle = "#64748b";
+        ctx.fillStyle = config.textColor || "#64748b";
         ctx.font = `bold ${Math.round(canvasHeight * 0.07)}px sans-serif`;
         ctx.textAlign = "center";
         ctx.fillText(config.footerText, canvasWidth / 2, canvasHeight - Math.round(canvasHeight * (isCircle ? 0.15 : 0.09)));

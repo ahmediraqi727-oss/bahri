@@ -31,6 +31,7 @@ import {
   QRErrorCorrection,
   QRTargetMode,
   LabelElementId,
+  LogoPlacement,
 } from "./thermal-printer-engine";
 
 export type CodePrintType = "barcode" | "qr" | "both";
@@ -70,7 +71,7 @@ export {
   renderLabelToImageBlob,
   resolveQRPayload,
 };
-export type { BarcodeSymbology, LabelShape, QRErrorCorrection, QRTargetMode, LabelElementId };
+export type { BarcodeSymbology, LabelShape, QRErrorCorrection, QRTargetMode, LabelElementId, LogoPlacement };
 
 /**
  * Converts a 1D Barcode string into a pure Base64 PNG Data URL using off-screen HTMLCanvasElement.
@@ -131,7 +132,7 @@ export async function generateQRDataURL(
 
 /**
  * Generates an optimized, self-contained printable HTML document string formatted for thermal label printers.
- * Enforces Circular Safe-Area layout, Element Reordering, and Strict Conditional Visibility.
+ * Enforces Colors, Logo Watermark, Circular Safe-Area layout, Element Reordering, and Strict Conditional Visibility.
  */
 export async function buildPrintableDocument(options: PrintJobOptions): Promise<string> {
   const { items, customization } = options;
@@ -152,7 +153,6 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
 
   for (const item of items) {
     const p = item.product;
-    // STRICT CONDITIONAL BINDING
     if (customization.showBarcode && p.barcode && !barcodeMap.has(p.id)) {
       const dataUrl = generateBarcodeDataURL(
         p.barcode,
@@ -163,7 +163,6 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
     }
 
     const qrPayload = resolveQRPayload(p, customization);
-    // STRICT CONDITIONAL BINDING
     if ((customization.showQRCode || customization.showStoreURLQR) && qrPayload && !qrMap.has(p.id)) {
       const dataUrl = await generateQRDataURL(qrPayload, customization.qrErrorCorrection || "M");
       qrMap.set(p.id, dataUrl);
@@ -179,18 +178,30 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
 
     const isCircle = customization.labelShape === "circle";
     const shapeStyle = isCircle ? "border-radius: 50%; padding: 14% 10%;" : "padding: 8px;";
+    const bgColor = customization.labelBgColor || "#ffffff";
+    const textColor = customization.textColor || "#0f172a";
+    const borderColor = customization.borderColor || "#cbd5e1";
 
     for (let i = 0; i < qty; i++) {
       const elementBlocks: string[] = [];
 
+      // Logo Block
+      if (customization.showLogo && customization.logoUrl) {
+        elementBlocks.push(
+          `<div class="logo-wrapper" style="text-align: center; margin-bottom: 4px;">
+            <img src="${customization.logoUrl}" alt="Logo" style="height: ${customization.logoSizePx || 36}px; max-width: 100%; object-fit: contain;" />
+           </div>`
+        );
+      }
+
       for (const elemId of elementOrder) {
         if (elemId === "name" && customization.showProductName && product.name) {
           elementBlocks.push(
-            `<div class="product-name" style="font-size: ${customization.nameFontSize}px;">${product.name}</div>`
+            `<div class="product-name" style="font-size: ${customization.nameFontSize}px; color: ${textColor};">${product.name}</div>`
           );
         } else if (elemId === "price" && customization.showProductPrice && product.retailPrice) {
           elementBlocks.push(
-            `<div class="product-price" style="font-size: ${customization.priceFontSize}px;">${product.retailPrice.toLocaleString()} IQD</div>`
+            `<div class="product-price" style="font-size: ${customization.priceFontSize}px; color: ${textColor};">${product.retailPrice.toLocaleString()} IQD</div>`
           );
         } else if (elemId === "codes") {
           const codeParts: string[] = [];
@@ -212,12 +223,12 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
             elementBlocks.push(`<div class="codes-container">${codeParts.join("\n")}</div>`);
           }
         } else if (elemId === "footer" && customization.showFooterText && customization.footerText) {
-          elementBlocks.push(`<div class="footer-text">${customization.footerText}</div>`);
+          elementBlocks.push(`<div class="footer-text" style="color: ${textColor};">${customization.footerText}</div>`);
         }
       }
 
       labelsHTML.push(`
-        <div class="label-card" style="width: ${widthMM}mm; min-height: ${heightMM}mm; ${shapeStyle}">
+        <div class="label-card" style="width: ${widthMM}mm; min-height: ${heightMM}mm; background-color: ${bgColor}; border-color: ${borderColor}; ${shapeStyle}">
           ${elementBlocks.join("\n")}
         </div>
       `);
@@ -283,7 +294,6 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
           justify-content: center;
         }
         .label-card {
-          background: #fff;
           border: 1px dashed #cbd5e1;
           text-align: center;
           display: flex;
@@ -295,14 +305,12 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
         }
         .product-name {
           font-weight: 800;
-          color: #0f172a;
           line-height: 1.2;
           word-break: break-word;
           max-width: 100%;
         }
         .product-price {
           font-weight: 900;
-          color: #2563eb;
         }
         .codes-container {
           display: flex;
@@ -324,7 +332,6 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
         .qr-img { object-fit: contain; }
         .footer-text {
           font-size: 9px;
-          color: #64748b;
           font-weight: bold;
           border-top: 1px solid #f1f5f9;
           width: 100%;

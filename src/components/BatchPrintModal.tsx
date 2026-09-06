@@ -8,6 +8,7 @@ import {
   DEFAULT_LABEL_ELEMENT_ORDER,
   moveElementOrder,
   LabelElementId,
+  LogoPlacement,
   executePrintJob,
   generateBarcodeDataURL,
   generateQRDataURL,
@@ -127,6 +128,25 @@ export default function BatchPrintModal({
     const currentOrder = customization.elementOrder || DEFAULT_LABEL_ELEMENT_ORDER;
     const nextOrder = moveElementOrder(currentOrder, id, direction);
     setCustomization((prev) => ({ ...prev, elementOrder: nextOrder }));
+  };
+
+  // Handle Image Upload for Logo
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (result) {
+        setCustomization((prev) => ({
+          ...prev,
+          logoUrl: result,
+          showLogo: true,
+        }));
+        success("✅ تم إدراج شعار الموقع المخصص بنجاح!");
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   // Apply Roll & Format Presets
@@ -338,14 +358,14 @@ export default function BatchPrintModal({
         <div className="bg-gradient-to-l from-purple-950 via-slate-900 to-indigo-950 px-6 py-4 flex items-center justify-between border-b border-purple-500/30">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-2xl bg-purple-600/30 border border-purple-400/40 flex items-center justify-center text-2xl shadow-lg">
-              🖨
+              🎨
             </div>
             <div>
               <h2 className="font-black text-base sm:text-lg text-white leading-tight break-words whitespace-normal">
-                استوديو الملصقات الحرارية المتطور (Marklife X4 Studio)
+                استوديو الملصقات الحرارية المتكامل (Ahmed Bahri Thermal Suite)
               </h2>
               <p className="text-purple-300 text-xs break-words whitespace-normal leading-tight">
-                أشكال متعددة، منطقة آمنة دائرية، ترتيب ديناميكي، وإظهار مشروط صارم
+                مقاسات قياسية عالمية، ألوان مخصصة، إدراج الشعار، وترتيب العناصر الفوري
               </p>
             </div>
           </div>
@@ -360,13 +380,201 @@ export default function BatchPrintModal({
         {/* Studio Body (Grid Layout) */}
         <div className="flex-1 overflow-y-auto p-5 grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-          {/* Left Column: Controls, Order Engine & Shape Switcher (7 Cols) */}
+          {/* Left Column: Presets, Colors, Logo & Controls (7 Cols) */}
           <div className="lg:col-span-7 flex flex-col gap-5">
             
-            {/* ── Multi-Shape Label Roll Switcher ── */}
+            {/* ── 1. Expanded Global Thermal Presets & Dropdown Selector ── */}
+            <div className="bg-[#15102a]/90 p-4 rounded-2xl border border-purple-500/40 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-extrabold text-purple-300">
+                  🌐 مقاسات الرول القياسية العالمية (Global Presets Dropdown):
+                </label>
+              </div>
+
+              {/* Comprehensive Dropdown Selector */}
+              <select
+                value={customization.presetName || "marklife_40x30"}
+                onChange={(e) => applyPreset(e.target.value)}
+                className="w-full px-3 py-2 bg-purple-950 border border-purple-500/50 rounded-xl text-xs sm:text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="shipping_100x150">🚚 Standard Shipping (4x6 in / 100×150 mm)</option>
+                <option value="logistics_100x75">📦 Medium Logistics (4x3 in / 100×75 mm)</option>
+                <option value="standard_50x30">🏷 Retail Price Tag (50×30 mm / 2x1.2 in)</option>
+                <option value="marklife_40x30">🏷 Marklife X4 Standard Roll (40×30 mm)</option>
+                <option value="jewelry_25x15">💍 Small Jewelry / Strips (25×15 mm)</option>
+                <option value="square_50x50">🔲 Square Product Tag (50×50 mm)</option>
+                <option value="circular_40x40">⭕ Circular Jar Label (40×40 mm)</option>
+                <option value="circular_50x50">⭕ Circular Jar Label (50×50 mm)</option>
+                <option value="continuous_100">📜 Continuous / Fanfold Roll (100mm Width)</option>
+              </select>
+
+              {/* Quick-Select Size Pills */}
+              <div className="flex flex-wrap gap-2 pt-1">
+                {[
+                  { key: "shipping_100x150", label: "شحن 100×150" },
+                  { key: "logistics_100x75", label: "لوجستي 100×75" },
+                  { key: "standard_50x30", label: "قياسي 50×30" },
+                  { key: "marklife_40x30", label: "Marklife 40×30" },
+                  { key: "jewelry_25x15", label: "مجوهرات 25×15" },
+                  { key: "square_50x50", label: "مربع 50×50" },
+                  { key: "circular_50x50", label: "دائري 50×50" },
+                ].map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => applyPreset(key)}
+                    className="px-2.5 py-1 bg-purple-950/60 hover:bg-purple-800/50 border border-purple-500/30 rounded-xl text-xs font-bold text-white transition-all"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ── 2. Advanced Color Customization Suite ── */}
+            <div className="bg-[#15102a]/90 p-4 rounded-2xl border border-purple-500/40 flex flex-col gap-3">
+              <label className="block text-xs font-extrabold text-purple-300">
+                🎨 تخصيص ألوان الملصق والطباعة (Color Customization Suite):
+              </label>
+
+              <div className="grid grid-cols-3 gap-3 text-xs">
+                {/* Background Color */}
+                <div className="flex flex-col gap-1.5 bg-purple-950/50 p-2.5 rounded-xl border border-purple-500/30">
+                  <span className="font-bold text-purple-200">خلفية الملصق:</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={customization.labelBgColor || "#FFFFFF"}
+                      onChange={(e) =>
+                        setCustomization((prev) => ({ ...prev, labelBgColor: e.target.value }))
+                      }
+                      className="w-8 h-8 rounded cursor-pointer border border-purple-500/50 bg-transparent"
+                    />
+                    <span className="font-mono text-[11px] text-purple-300">{customization.labelBgColor || "#FFFFFF"}</span>
+                  </div>
+                </div>
+
+                {/* Text Color */}
+                <div className="flex flex-col gap-1.5 bg-purple-950/50 p-2.5 rounded-xl border border-purple-500/30">
+                  <span className="font-bold text-purple-200">لون النصوص:</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={customization.textColor || "#000000"}
+                      onChange={(e) =>
+                        setCustomization((prev) => ({ ...prev, textColor: e.target.value }))
+                      }
+                      className="w-8 h-8 rounded cursor-pointer border border-purple-500/50 bg-transparent"
+                    />
+                    <span className="font-mono text-[11px] text-purple-300">{customization.textColor || "#000000"}</span>
+                  </div>
+                </div>
+
+                {/* Border Color */}
+                <div className="flex flex-col gap-1.5 bg-purple-950/50 p-2.5 rounded-xl border border-purple-500/30">
+                  <span className="font-bold text-purple-200">لون الإطار:</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={customization.borderColor || "#cbd5e1"}
+                      onChange={(e) =>
+                        setCustomization((prev) => ({ ...prev, borderColor: e.target.value }))
+                      }
+                      className="w-8 h-8 rounded cursor-pointer border border-purple-500/50 bg-transparent"
+                    />
+                    <span className="font-mono text-[11px] text-purple-300">{customization.borderColor || "#cbd5e1"}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── 3. Site Logo Integration & Watermarking Engine ── */}
+            <div className="bg-[#15102a]/90 p-4 rounded-2xl border border-purple-500/40 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-extrabold text-purple-300">
+                  <input
+                    type="checkbox"
+                    checked={customization.showLogo}
+                    onChange={(e) =>
+                      setCustomization((prev) => ({ ...prev, showLogo: e.target.checked }))
+                    }
+                    className="w-4 h-4 rounded accent-purple-600 cursor-pointer"
+                  />
+                  <span>🖼 إدراج شعار الموقع والعلامة المائية (Brand Logo Integration)</span>
+                </label>
+              </div>
+
+              {customization.showLogo && (
+                <div className="flex flex-col gap-3 pt-1 border-t border-purple-950">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    {/* Logo Placement */}
+                    <div>
+                      <span className="block text-purple-200 font-bold mb-1">موضع الشعار:</span>
+                      <select
+                        value={customization.logoPosition || "top_center"}
+                        onChange={(e) =>
+                          setCustomization((prev) => ({
+                            ...prev,
+                            logoPosition: e.target.value as LogoPlacement,
+                          }))
+                        }
+                        className="w-full px-3 py-1.5 bg-purple-950 border border-purple-500/40 rounded-xl text-xs font-bold text-white focus:outline-none"
+                      >
+                        <option value="top_center">أعلى المنتصف</option>
+                        <option value="top_left">أعلى اليسار</option>
+                        <option value="top_right">أعلى اليمين</option>
+                        <option value="background_watermark">علامة مائية بالخلفية</option>
+                      </select>
+                    </div>
+
+                    {/* Logo Size */}
+                    <div>
+                      <div className="flex justify-between font-bold text-purple-200 mb-1">
+                        <span>حجم الشعار:</span>
+                        <span>{customization.logoSizePx || 36}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={20}
+                        max={90}
+                        value={customization.logoSizePx || 36}
+                        onChange={(e) =>
+                          setCustomization((prev) => ({ ...prev, logoSizePx: Number(e.target.value) }))
+                        }
+                        className="w-full h-1.5 bg-purple-950 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Logo Custom File Upload */}
+                  <div className="flex items-center gap-3">
+                    <label className="px-3 py-1.5 bg-purple-900 hover:bg-purple-800 text-white rounded-xl text-xs font-bold cursor-pointer transition-all shrink-0">
+                      <span>📁 رفع شعار مخصص</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLogoUpload}
+                        className="hidden"
+                      />
+                    </label>
+                    <input
+                      type="text"
+                      value={customization.logoUrl}
+                      onChange={(e) =>
+                        setCustomization((prev) => ({ ...prev, logoUrl: e.target.value }))
+                      }
+                      placeholder="أو ضع رابط الشعار مباشر..."
+                      className="w-full px-3 py-1.5 bg-purple-950 border border-purple-500/30 rounded-xl text-xs text-white placeholder-purple-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Shape Switcher */}
             <div className="bg-[#15102a]/90 p-4 rounded-2xl border border-purple-500/40 flex flex-col gap-2">
               <label className="block text-xs font-extrabold text-purple-300">
-                🔷 الشكل الهندسي للرول (Label Roll Shape & Circular Bounds):
+                🔷 الشكل الهندسي للرول (Label Shape):
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {[
@@ -396,7 +604,7 @@ export default function BatchPrintModal({
               </div>
             </div>
 
-            {/* ── 3. Element Positioning & Reordering Engine ── */}
+            {/* Element Positioning & Reordering Engine */}
             <div className="bg-[#15102a]/90 p-4 rounded-2xl border border-purple-500/40 flex flex-col gap-3">
               <label className="block text-xs font-extrabold text-purple-300">
                 ↕ ترتيب تموضع العناصر على الملصق (Element Vertical Reordering):
@@ -437,78 +645,6 @@ export default function BatchPrintModal({
                     </div>
                   );
                 })}
-              </div>
-            </div>
-
-            {/* ── 2. Strict Conditional Visibility Binding ── */}
-            <div className="bg-[#15102a]/80 p-4 rounded-2xl border border-purple-500/30 flex flex-col gap-3">
-              <label className="block text-xs font-extrabold text-purple-300">
-                👁 إظهار / إخفاء العناصر (Strict Conditional Visibility):
-              </label>
-
-              <div className="grid grid-cols-2 gap-2 text-xs font-bold pt-1">
-                {[
-                  { key: "showProductName", label: "اسم المنتج" },
-                  { key: "showProductPrice", label: "سعر المنتج" },
-                  { key: "showBarcode", label: "باركود خطي (1D)" },
-                  { key: "showQRCode", label: "كود 2D QR للمنتج" },
-                  { key: "showStoreURLQR", label: "QR متجر أحمد بحري" },
-                  { key: "showFooterText", label: "نص التذييل" },
-                ].map(({ key, label }) => (
-                  <label key={key} className="flex items-center gap-2 cursor-pointer text-purple-200">
-                    <input
-                      type="checkbox"
-                      checked={(customization as any)[key]}
-                      onChange={(e) =>
-                        setCustomization((prev) => ({ ...prev, [key]: e.target.checked }))
-                      }
-                      className="w-4 h-4 rounded accent-purple-600 cursor-pointer"
-                    />
-                    <span className="break-words whitespace-normal leading-tight">{label}</span>
-                  </label>
-                ))}
-              </div>
-
-              {/* Custom Footer Input */}
-              {customization.showFooterText && (
-                <div className="pt-2">
-                  <input
-                    type="text"
-                    value={customization.footerText}
-                    onChange={(e) =>
-                      setCustomization((prev) => ({ ...prev, footerText: e.target.value }))
-                    }
-                    placeholder="نص التذييل المخصص (مثال: معرض أحمد بحري)..."
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-purple-500/30 bg-purple-950/60 text-white placeholder-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Global Standard Thermal Roll Size Presets */}
-            <div className="bg-[#15102a]/80 p-4 rounded-2xl border border-purple-500/30 flex flex-col gap-2">
-              <label className="block text-xs font-bold text-purple-300">
-                ⚡ مقاسات الرول القياسية العالمية (Global Presets):
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { key: "marklife_40x30", label: "Marklife 40×30 mm" },
-                  { key: "standard_50x30", label: "قياسي 50×30 mm" },
-                  { key: "strips_25x50", label: "شريط 25×50 mm" },
-                  { key: "medium_75x100", label: "شاشة 75×100 mm" },
-                  { key: "shipping_100x150", label: "شحن 100×150 mm" },
-                  { key: "circular_50x50", label: "دائري 50×50 mm" },
-                  { key: "square_50x50", label: "مربع 50×50 mm" },
-                ].map(({ key, label }) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => applyPreset(key)}
-                    className="px-3 py-1.5 bg-purple-950/50 hover:bg-purple-800/40 border border-purple-500/30 rounded-xl text-xs font-bold text-white transition-all text-center break-words whitespace-normal leading-tight"
-                  >
-                    {label}
-                  </button>
-                ))}
               </div>
             </div>
 
@@ -719,7 +855,7 @@ export default function BatchPrintModal({
 
           </div>
 
-          {/* Right Column: Multi-Shape Live Label Preview with Safe Area (5 Cols) */}
+          {/* Right Column: Multi-Shape Live Label Preview with Safe Area & Custom Colors (5 Cols) */}
           <div className="lg:col-span-5 flex flex-col gap-4">
             
             {/* Live Interactive Preview Box */}
@@ -727,7 +863,7 @@ export default function BatchPrintModal({
               
               <div className="flex items-center justify-between w-full mb-3">
                 <span className="text-xs font-extrabold text-purple-300 flex items-center gap-1.5">
-                  <span>🔍 معاينة حية (Reordered Safe-Area)</span>
+                  <span>🔍 معاينة الألوان والشعار</span>
                   <span className="px-2 py-0.5 rounded-full text-[10px] bg-purple-950 border border-purple-500/30 text-purple-300 font-mono">
                     {customization.labelShape === "circle" ? "⭕ دائري" : customization.labelShape === "square" ? "🔲 مربع" : "▭ مستطيل"}
                   </span>
@@ -739,23 +875,53 @@ export default function BatchPrintModal({
 
               {sampleProduct ? (
                 <div
-                  className={`bg-white text-gray-900 border-2 border-dashed border-gray-400 w-full shadow-2xl flex flex-col items-center justify-between transition-all overflow-hidden ${
+                  className={`w-full shadow-2xl flex flex-col items-center justify-between transition-all overflow-hidden relative border-2 ${
                     customization.labelShape === "circle" ? "rounded-full p-6 max-w-[80%]" : "rounded-2xl p-4"
                   }`}
                   style={{
+                    backgroundColor: customization.labelBgColor || "#ffffff",
+                    borderColor: customization.borderColor || "#cbd5e1",
+                    color: customization.textColor || "#0f172a",
                     maxWidth: `${Math.min(280, customization.rollWidthMM * 5.5)}px`,
                     minHeight: `${Math.min(260, (customization.labelShape === "square" || customization.labelShape === "circle" ? customization.rollWidthMM : customization.rollHeightMM) * 5.5)}px`,
                     aspectRatio: customization.labelShape === "circle" || customization.labelShape === "square" ? "1 / 1" : "auto",
                   }}
                 >
+                  {/* Brand Logo Watermark Background */}
+                  {customization.showLogo && customization.logoUrl && customization.logoPosition === "background_watermark" && (
+                    <div className="absolute inset-0 flex items-center justify-center opacity-15 pointer-events-none p-4">
+                      <img src={customization.logoUrl} alt="Watermark" className="max-w-full max-h-full object-contain" />
+                    </div>
+                  )}
+
+                  {/* Brand Logo Header */}
+                  {customization.showLogo && customization.logoUrl && customization.logoPosition !== "background_watermark" && (
+                    <div
+                      className={`w-full flex mb-1 ${
+                        customization.logoPosition === "top_left"
+                          ? "justify-start"
+                          : customization.logoPosition === "top_right"
+                          ? "justify-end"
+                          : "justify-center"
+                      }`}
+                    >
+                      <img
+                        src={customization.logoUrl}
+                        alt="Brand Logo"
+                        style={{ height: `${customization.logoSizePx || 36}px` }}
+                        className="max-w-full object-contain"
+                      />
+                    </div>
+                  )}
+
                   {/* Dynamic Reordering & Strict Conditional Rendering */}
                   {activeOrder.map((elemId) => {
                     if (elemId === "name" && customization.showProductName && sampleProduct.name) {
                       return (
                         <div
                           key="name"
-                          className="font-extrabold text-center text-gray-900 mb-1 leading-snug break-words whitespace-normal max-w-full"
-                          style={{ fontSize: `${customization.nameFontSize}px` }}
+                          className="font-extrabold text-center mb-1 leading-snug break-words whitespace-normal max-w-full"
+                          style={{ fontSize: `${customization.nameFontSize}px`, color: customization.textColor || "#0f172a" }}
                         >
                           {sampleProduct.name}
                         </div>
@@ -766,8 +932,8 @@ export default function BatchPrintModal({
                       return (
                         <div
                           key="price"
-                          className="font-black text-blue-600 mb-1"
-                          style={{ fontSize: `${customization.priceFontSize}px` }}
+                          className="font-black mb-1"
+                          style={{ fontSize: `${customization.priceFontSize}px`, color: customization.textColor || "#2563eb" }}
                         >
                           {sampleProduct.retailPrice.toLocaleString()} IQD
                         </div>
@@ -809,7 +975,11 @@ export default function BatchPrintModal({
 
                     if (elemId === "footer" && customization.showFooterText && customization.footerText) {
                       return (
-                        <div key="footer" className="text-[10px] text-gray-500 font-bold border-t border-gray-200 pt-1.5 w-full text-center mt-1 break-words whitespace-normal">
+                        <div
+                          key="footer"
+                          className="text-[10px] font-bold border-t border-gray-200/60 pt-1.5 w-full text-center mt-1 break-words whitespace-normal"
+                          style={{ color: customization.textColor || "#64748b" }}
+                        >
                           {customization.footerText}
                         </div>
                       );
