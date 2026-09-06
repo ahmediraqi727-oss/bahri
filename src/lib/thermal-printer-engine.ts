@@ -659,10 +659,10 @@ export async function exportLabelsAsPDF(
             yMM += 4.5;
           }
         } else if (elemId === "codes") {
-          const hasBarcode = config.showBarcode && p.barcode;
+          const hasBarcode = Boolean(config.showBarcode && p.barcode);
           const hasQR = (config.showQRCode || config.showStoreURLQR) && qrPayload;
 
-          if (hasBarcode) {
+          if (hasBarcode && p.barcode) {
             try {
               const canvas = document.createElement("canvas");
               JsBarcode(canvas, p.barcode.trim(), {
@@ -822,11 +822,11 @@ export async function renderLabelToImageBlob(
         yCursor += priceFontPx + gapPx;
       }
     } else if (elemId === "codes") {
-      const hasBarcode = config.showBarcode && product.barcode;
+      const hasBarcode = Boolean(config.showBarcode && product.barcode);
       const qrPayload = resolveQRPayload(product, config);
       const hasQR = (config.showQRCode || config.showStoreURLQR) && qrPayload;
 
-      if (hasBarcode) {
+      if (hasBarcode && product.barcode) {
         const barcodeCanvas = document.createElement("canvas");
         JsBarcode(barcodeCanvas, product.barcode.trim(), {
           format: config.barcodeType || "CODE128",
