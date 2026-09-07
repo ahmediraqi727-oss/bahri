@@ -233,9 +233,9 @@ export function resolveQRPayload(
   if (config.qrTargetMode === "store_url") {
     return storeBase;
   } else if (config.qrTargetMode === "product_url") {
-    return `${storeBase}/products/${product.id}`;
+    return `${storeBase}/qr/${product.id}`;
   } else {
-    return product.qrCode || product.barcode || `${storeBase}/products/${product.id}`;
+    return product.qrCode || `${storeBase}/qr/${product.id}`;
   }
 }
 

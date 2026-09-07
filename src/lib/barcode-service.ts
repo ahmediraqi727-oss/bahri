@@ -56,14 +56,38 @@ export function generateEAN13(sequence: number, prefix = "622000"): string {
 }
 
 /**
- * Generates a UUID-based QR code data string (unique, non-sequential).
+ * Generates a URL-based QR code data string for smart deep linking.
  */
 export function generateQRData(productId: string): string {
-  const rand = Math.random().toString(36).slice(2, 10).toUpperCase();
-  return `QR-${productId.slice(0, 8).toUpperCase()}-${rand}`;
+  return `https://ahmed-bahri.vercel.app/qr/${productId}`;
 }
 
 // ─── Core Service Functions ───────────────────────────────────────────────────
+
+/**
+ * Look up a product by ID, barcode, or QR code.
+ * Checks ID first, then indexed products.barcode / products.qr_code columns.
+ */
+export async function lookupByQROrId(idOrCode: string): Promise<Product | null> {
+  const cleaned = decodeURIComponent(idOrCode).trim();
+  if (!cleaned) return null;
+
+  // 1. Try exact Product ID match
+  const { data: byId } = await supabase
+    .from("products")
+    .select("*")
+    .eq("id", cleaned)
+    .maybeSingle();
+
+  if (byId) {
+    const p = mapRow(byId);
+    incrementScanCount(p.id);
+    return p;
+  }
+
+  // 2. Fallback to barcode / QR code / lookup table search
+  return lookupByBarcode(cleaned);
+}
 
 /**
  * Look up a product by its barcode or QR code.
