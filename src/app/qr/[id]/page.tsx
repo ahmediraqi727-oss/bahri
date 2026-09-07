@@ -13,7 +13,7 @@ import { lookupByQROrId } from "@/lib/barcode-service";
 import {
   resolveTierForQty,
   calculateTierPrice,
-  buildTierBadgeText,
+  DEFAULT_PRICING_CONFIG,
 } from "@/lib/pricing-engine";
 
 export default function SmartQRProductPage() {
@@ -22,7 +22,7 @@ export default function SmartQRProductPage() {
   const { user, loading: authLoading } = useAuth();
   const { addItem, itemCount } = useCart();
   const { isFavorite, toggleFavorite } = useFavorites();
-  const { pricingConfig, getEffectiveTiers } = useData();
+  const { getEffectiveTiers } = useData();
 
   const rawId = (params?.id as string) || "";
   const decodedId = useMemo(() => {
@@ -85,8 +85,8 @@ export default function SmartQRProductPage() {
   // 3. Pricing Engine Calculations
   const tiers = useMemo(() => {
     if (!product) return [];
-    return getEffectiveTiers ? getEffectiveTiers(product.id, pricingConfig) : [];
-  }, [product, getEffectiveTiers, pricingConfig]);
+    return getEffectiveTiers ? getEffectiveTiers(product.id, DEFAULT_PRICING_CONFIG) : [];
+  }, [product, getEffectiveTiers]);
 
   const activeTier = useMemo(() => resolveTierForQty(qty, tiers), [qty, tiers]);
   const unitPrice = useMemo(
@@ -295,14 +295,14 @@ export default function SmartQRProductPage() {
 
             {/* Badges Bar */}
             <div className="flex flex-wrap gap-2 w-full justify-center">
-              {product.category && (
+              {(product as Record<string, any>).category && (
                 <span className="text-xs bg-purple-500/10 text-purple-300 border border-purple-500/30 px-3 py-1 rounded-full font-medium">
-                  {product.category}
+                  {(product as Record<string, any>).category}
                 </span>
               )}
-              {product.sku && (
+              {(product as Record<string, any>).sku && (
                 <span className="text-xs bg-white/5 text-purple-200/80 border border-white/10 px-3 py-1 rounded-full font-mono">
-                  SKU: {product.sku}
+                  SKU: {(product as Record<string, any>).sku}
                 </span>
               )}
               {product.barcode && (
@@ -378,7 +378,7 @@ export default function SmartQRProductPage() {
                                 : "bg-white/5 border-white/5 text-purple-300/70"
                             }`}
                           >
-                            <span>{buildTierBadgeText(t)}</span>
+                            <span>{t.label} ({t.minQty}+ قطعة)</span>
                             <span className="text-amber-300 font-mono">
                               {calculateTierPrice(product.retailPrice, t).toLocaleString("ar-IQ")} د.ع
                             </span>
