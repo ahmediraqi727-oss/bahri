@@ -42,7 +42,23 @@ export async function decodeBarcodeFromCanvas(
 ): Promise<string | null> {
   if (!sourceCanvas || sourceCanvas.width === 0 || sourceCanvas.height === 0) return null;
 
-  // Pass 1: Raw canvas decode with ZXing MultiFormatReader
+  // Pass 1: High-Speed Native BarcodeDetector API (Sub-millisecond GPU/C++ hardware decoding)
+  if (typeof window !== "undefined" && "BarcodeDetector" in window) {
+    try {
+      // @ts-expect-error — BarcodeDetector API
+      const detector = new window.BarcodeDetector({
+        formats: ["ean_13", "ean_8", "code_128", "code_39", "qr_code", "upc_a", "upc_e", "data_matrix", "aztec", "pdf417"],
+      });
+      const detected = await detector.detect(sourceCanvas);
+      if (detected && detected.length > 0 && detected[0].rawValue) {
+        return detected[0].rawValue;
+      }
+    } catch {
+      // Continue to Pass 2
+    }
+  }
+
+  // Pass 2: Raw canvas decode with ZXing MultiFormatReader
   try {
     const luminanceSource = new HTMLCanvasElementLuminanceSource(sourceCanvas);
     const binarizer = new HybridBinarizer(luminanceSource);
@@ -52,23 +68,7 @@ export async function decodeBarcodeFromCanvas(
       return result.getText();
     }
   } catch {
-    // Continue to Pass 1.5
-  }
-
-  // Pass 1.5: Native BarcodeDetector API if available
-  if (typeof window !== "undefined" && "BarcodeDetector" in window) {
-    try {
-      // @ts-expect-error — BarcodeDetector API
-      const detector = new window.BarcodeDetector({
-        formats: ["ean_13", "ean_8", "code_128", "code_39", "qr_code", "upc_a", "upc_e", "data_matrix"],
-      });
-      const detected = await detector.detect(sourceCanvas);
-      if (detected && detected.length > 0 && detected[0].rawValue) {
-        return detected[0].rawValue;
-      }
-    } catch {
-      // Continue to Pass 2
-    }
+    // Continue to Pass 3
   }
 
   // Create an off-screen processing canvas for image optimization

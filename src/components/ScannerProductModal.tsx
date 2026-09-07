@@ -201,23 +201,29 @@ export default function ScannerProductModal({
             <div className="flex items-center gap-3 w-full">
               <button
                 onClick={onClose}
-                className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold text-sm transition-all"
+                className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold text-sm transition-all active:scale-95"
               >
                 إغلاق
               </button>
-              {onRequestLink && (
-                <button
-                  onClick={() => {
-                    const code = scannedCode;
-                    onClose();
-                    if (code) onRequestLink(code);
-                  }}
-                  className="flex-[1.5] py-2.5 bg-gradient-to-l from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-extrabold text-sm shadow-lg transition-all flex items-center justify-center gap-1.5 active:scale-95"
-                >
-                  <span>🔗</span>
-                  <span>إدخال / ربط بمنتج</span>
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  const code = scannedCode;
+                  onClose();
+                  if (code) {
+                    if (onRequestLink) {
+                      onRequestLink(code);
+                    } else {
+                      window.dispatchEvent(
+                        new CustomEvent("ahmed_bahri_open_product_link", { detail: { code } })
+                      );
+                    }
+                  }
+                }}
+                className="flex-[1.5] py-2.5 bg-gradient-to-l from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-extrabold text-sm shadow-lg transition-all flex items-center justify-center gap-1.5 active:scale-95"
+              >
+                <span>🔗</span>
+                <span>إدخال / ربط سريع</span>
+              </button>
             </div>
           </div>
         )}

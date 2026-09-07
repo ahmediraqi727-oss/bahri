@@ -9,6 +9,7 @@ import NotificationsBell from "@/components/NotificationsBell";
 import GlobalSearch from "@/components/GlobalSearch";
 import ContactLocationModal from "@/components/ContactLocationModal";
 import ShareModal from "@/components/ShareModal";
+import ProductLinkModal from "@/components/ProductLinkModal";
 import BarcodeScanner from "@/components/BarcodeScanner";
 import ScannerProductModal from "@/components/ScannerProductModal";
 import { HardwareScannerService, subscribeToHardwareScan } from "@/lib/hardware-scanner";
@@ -31,6 +32,20 @@ export default function Header() {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannedCode, setScannedCode] = useState<string | null>(null);
+  const [linkingCode, setLinkingCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      const code = typeof detail === "string" ? detail : detail?.code;
+      if (code) {
+        setScannedCode(null);
+        setLinkingCode(code);
+      }
+    };
+    window.addEventListener("ahmed_bahri_open_product_link", handler);
+    return () => window.removeEventListener("ahmed_bahri_open_product_link", handler);
+  }, []);
 
   // Scanner RBAC
   const adminPermConfig = getAdminPermissionsConfig();
@@ -155,6 +170,16 @@ export default function Header() {
       <ScannerProductModal
         scannedCode={scannedCode}
         onClose={() => setScannedCode(null)}
+        onRequestLink={(code) => {
+          setScannedCode(null);
+          setLinkingCode(code);
+        }}
+      />
+
+      <ProductLinkModal
+        isOpen={Boolean(linkingCode)}
+        scannedCode={linkingCode}
+        onClose={() => setLinkingCode(null)}
       />
     </>
   );

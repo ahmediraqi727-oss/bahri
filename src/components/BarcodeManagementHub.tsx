@@ -10,9 +10,11 @@ import {
   generateQRData,
   batchResetCodes,
   batchToggleBarcodeActive,
+  lookupByQROrId,
 } from "@/lib/barcode-service";
 import BarcodeDisplay from "@/components/BarcodeDisplay";
 import BatchPrintModal from "@/components/BatchPrintModal";
+import ProductLinkModal from "@/components/ProductLinkModal";
 import SmartFloatingBar from "@/components/SmartFloatingBar";
 import type { Product } from "@/lib/types";
 import { useToast } from "@/components/ToastProvider";
@@ -85,6 +87,7 @@ export default function BarcodeManagementHub() {
   const [editBarcode, setEditBarcode] = useState("");
   const [editQR, setEditQR] = useState("");
   const [saving, setSaving] = useState(false);
+  const [linkingCode, setLinkingCode] = useState<string | null>(null);
 
   const loadSummary = useCallback(async () => {
     const s = await getBarcodeSummary();
@@ -92,6 +95,39 @@ export default function BarcodeManagementHub() {
   }, []);
 
   useEffect(() => { loadSummary(); }, [loadSummary, products]);
+
+  // Handle URL deep links & custom events (e.g. /dashboard/scanner?edit=XXX or ?assign=YYY)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const editCode = params.get("edit");
+    const assignCode = params.get("assign") || params.get("link");
+
+    if (editCode) {
+      lookupByQROrId(editCode).then((p) => {
+        if (p) {
+          setEditingProduct(p);
+          setEditBarcode(p.barcode || "");
+          setEditQR(p.qrCode || "");
+        } else {
+          setLinkingCode(editCode);
+        }
+      });
+    } else if (assignCode) {
+      setLinkingCode(assignCode);
+    }
+
+    const customEventHandler = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      const code = typeof detail === "string" ? detail : detail?.code;
+      if (code) {
+        setLinkingCode(code);
+      }
+    };
+
+    window.addEventListener("ahmed_bahri_open_product_link", customEventHandler);
+    return () => window.removeEventListener("ahmed_bahri_open_product_link", customEventHandler);
+  }, [products]);
 
   // ─── Date Range Helper ────────────────────────────────────────────────────
   const isWithinDateRange = useCallback((dateStr?: string | null) => {
@@ -941,6 +977,18 @@ export default function BarcodeManagementHub() {
           </div>
         </div>
       )}
+
+      {/* Advanced Product Link Modal */}
+      <ProductLinkModal
+        isOpen={Boolean(linkingCode)}
+        scannedCode={linkingCode}
+        onClose={() => setLinkingCode(null)}
+        onLinked={() => {
+          setLinkingCode(null);
+          reloadAllData();
+          loadSummary();
+        }}
+      />
     </div>
   );
 }

@@ -110,18 +110,34 @@ export default function BarcodeScanner({
     }
     lastScanTimeRef.current = now;
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
     const tryDetect = async () => {
+      // 1. Zero-copy hardware detection directly on video stream if supported
+      if (typeof window !== "undefined" && "BarcodeDetector" in window) {
+        try {
+          // @ts-expect-error — BarcodeDetector API
+          const detector = new window.BarcodeDetector({
+            formats: ["ean_13", "ean_8", "code_128", "code_39", "qr_code", "upc_a", "upc_e", "data_matrix", "aztec", "pdf417"],
+          });
+          const detected = await detector.detect(video);
+          if (detected && detected.length > 0 && detected[0].rawValue) {
+            handleScannedCode(detected[0].rawValue);
+            return;
+          }
+        } catch { /* fall through */ }
+      }
+
+      // 2. Canvas fallback for legacy browsers
       try {
-        const code = await decodeBarcodeFromCanvas(canvas);
-        if (code) {
-          handleScannedCode(code);
-          return;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const code = await decodeBarcodeFromCanvas(canvas);
+          if (code) {
+            handleScannedCode(code);
+            return;
+          }
         }
       } catch { /* silent */ }
 
