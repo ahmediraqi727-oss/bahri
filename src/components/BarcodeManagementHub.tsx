@@ -16,6 +16,7 @@ import BarcodeDisplay from "@/components/BarcodeDisplay";
 import BatchPrintModal from "@/components/BatchPrintModal";
 import ProductLinkModal from "@/components/ProductLinkModal";
 import SmartFloatingBar from "@/components/SmartFloatingBar";
+import StickyHorizontalScrollContainer from "@/components/StickyHorizontalScrollContainer";
 import type { Product } from "@/lib/types";
 import { useToast } from "@/components/ToastProvider";
 import { useSettings } from "@/lib/settings-context";
@@ -596,87 +597,89 @@ export default function BarcodeManagementHub() {
           </div>
         </div>
 
-        {/* Desktop Table View */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-sm text-right">
-            <thead className="bg-gray-100 dark:bg-gray-950 text-gray-600 dark:text-gray-400 text-xs font-bold uppercase">
-              <tr>
-                <th className="px-4 py-3 text-center">
-                  <input
-                    type="checkbox"
-                    checked={allVisibleSelected}
-                    onChange={toggleSelectAll}
-                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                  />
-                </th>
-                <th className="px-4 py-3">المنتج</th>
-                <th className="px-4 py-3">الباركود (1D)</th>
-                <th className="px-4 py-3">QR Code (2D)</th>
-                <th className="px-4 py-3 text-center">مرات المسح 🔥</th>
-                <th className="px-4 py-3 text-center">الحالة</th>
-                <th className="px-4 py-3 text-center">إجراءات</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {visibleProducts.map((product) => {
-                const isSelected = selectedIds.has(product.id);
-                const hasCode = !!(product.barcode || product.qrCode);
-                return (
-                  <tr
-                    key={product.id}
-                    className={`transition-colors ${isSelected ? "bg-blue-50/70 dark:bg-blue-950/30" : "hover:bg-gray-50 dark:hover:bg-gray-800/40"}`}
-                  >
-                    <td className="px-4 py-3 text-center">
-                      <input type="checkbox" checked={isSelected} onChange={() => toggleSelectId(product.id)} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer" />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        {product.image && (<img src={product.image} alt={product.name} className="w-10 h-10 rounded-xl object-cover border border-gray-200 dark:border-gray-700 flex-shrink-0" />)}
-                        <div className="min-w-0">
-                          <p className="font-extrabold text-gray-900 dark:text-white truncate max-w-[200px]">{product.name}</p>
-                          <p className="text-xs text-gray-400 font-mono">{product.retailPrice.toLocaleString()} د.ع</p>
+        {/* Desktop Table View with Sticky Synchronized Double Horizontal Scrollbar */}
+        <div className="hidden md:block">
+          <StickyHorizontalScrollContainer>
+            <table className="w-full text-sm text-right">
+              <thead className="bg-gray-100 dark:bg-gray-950 text-gray-600 dark:text-gray-400 text-xs font-bold uppercase">
+                <tr>
+                  <th className="px-4 py-3 text-center">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={toggleSelectAll}
+                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                  </th>
+                  <th className="px-4 py-3">المنتج</th>
+                  <th className="px-4 py-3">الباركود (1D)</th>
+                  <th className="px-4 py-3">QR Code (2D)</th>
+                  <th className="px-4 py-3 text-center">مرات المسح 🔥</th>
+                  <th className="px-4 py-3 text-center">الحالة</th>
+                  <th className="px-4 py-3 text-center">إجراءات</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {visibleProducts.map((product) => {
+                  const isSelected = selectedIds.has(product.id);
+                  const hasCode = !!(product.barcode || product.qrCode);
+                  return (
+                    <tr
+                      key={product.id}
+                      className={`transition-colors ${isSelected ? "bg-blue-50/70 dark:bg-blue-950/30" : "hover:bg-gray-50 dark:hover:bg-gray-800/40"}`}
+                    >
+                      <td className="px-4 py-3 text-center">
+                        <input type="checkbox" checked={isSelected} onChange={() => toggleSelectId(product.id)} className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          {product.image && (<img src={product.image} alt={product.name} className="w-10 h-10 rounded-xl object-cover border border-gray-200 dark:border-gray-700 flex-shrink-0" />)}
+                          <div className="min-w-0">
+                            <p className="font-extrabold text-gray-900 dark:text-white truncate max-w-[200px]">{product.name}</p>
+                            <p className="text-xs text-gray-400 font-mono">{product.retailPrice.toLocaleString()} د.ع</p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {product.barcode ? (
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs text-gray-800 dark:text-gray-200 select-all font-bold" dir="ltr">{product.barcode}</span>
-                          <button onClick={() => { navigator.clipboard.writeText(product.barcode!); success("نسخ الكود بنجاح"); }} className="text-gray-400 hover:text-blue-500 transition-colors text-xs shrink-0" title="نسخ">📋</button>
+                      </td>
+                      <td className="px-4 py-3">
+                        {product.barcode ? (
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs text-gray-800 dark:text-gray-200 select-all font-bold" dir="ltr">{product.barcode}</span>
+                            <button onClick={() => { navigator.clipboard.writeText(product.barcode!); success("نسخ الكود بنجاح"); }} className="text-gray-400 hover:text-blue-500 transition-colors text-xs shrink-0" title="نسخ">📋</button>
+                          </div>
+                        ) : (<span className="text-gray-300 dark:text-gray-600 text-xs">—</span>)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {product.qrCode ? (
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs text-gray-800 dark:text-gray-200 truncate max-w-[120px] select-all" dir="ltr">{product.qrCode}</span>
+                            <button onClick={() => { navigator.clipboard.writeText(product.qrCode!); success("نسخ كود QR بنجاح"); }} className="text-gray-400 hover:text-blue-500 transition-colors text-xs shrink-0" title="نسخ">📋</button>
+                          </div>
+                        ) : (<span className="text-gray-300 dark:text-gray-600 text-xs">—</span>)}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-extrabold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300">🔥 {product.scanCount || 0}</span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold ${hasCode ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300" : "bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400"}`}>
+                          {hasCode ? "✅ مرمّز" : "❌ بدون كود"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center gap-2">
+                          <button onClick={() => handleGenerateSingle(product)} className="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold transition-all border border-blue-200">⚡ توليد</button>
+                          <button onClick={() => { setEditingProduct(product); setEditBarcode(product.barcode || ""); setEditQR(product.qrCode || ""); }} className="px-3 py-1.5 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold transition-all border border-gray-200">✏ تعديل</button>
+                          {(product.barcode || product.qrCode) && (<BarcodeDisplay barcode={product.barcode} qrCode={product.qrCode} productName={product.name} compact showPrint />)}
                         </div>
-                      ) : (<span className="text-gray-300 dark:text-gray-600 text-xs">—</span>)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {product.qrCode ? (
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs text-gray-800 dark:text-gray-200 truncate max-w-[120px] select-all" dir="ltr">{product.qrCode}</span>
-                          <button onClick={() => { navigator.clipboard.writeText(product.qrCode!); success("نسخ كود QR بنجاح"); }} className="text-gray-400 hover:text-blue-500 transition-colors text-xs shrink-0" title="نسخ">📋</button>
-                        </div>
-                      ) : (<span className="text-gray-300 dark:text-gray-600 text-xs">—</span>)}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-extrabold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300">🔥 {product.scanCount || 0}</span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold ${hasCode ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300" : "bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400"}`}>
-                        {hasCode ? "✅ مرمّز" : "❌ بدون كود"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-2">
-                        <button onClick={() => handleGenerateSingle(product)} className="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold transition-all border border-blue-200">⚡ توليد</button>
-                        <button onClick={() => { setEditingProduct(product); setEditBarcode(product.barcode || ""); setEditQR(product.qrCode || ""); }} className="px-3 py-1.5 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 text-gray-700 dark:text-gray-300 rounded-xl text-xs font-bold transition-all border border-gray-200">✏ تعديل</button>
-                        {(product.barcode || product.qrCode) && (<BarcodeDisplay barcode={product.barcode} qrCode={product.qrCode} productName={product.name} compact showPrint />)}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {visibleProducts.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-12 text-gray-400 text-sm">لا توجد منتجات تطابق شروط التصفية أو البحث</td></tr>
-              )}
-            </tbody>
-          </table>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {visibleProducts.length === 0 && (
+                  <tr><td colSpan={7} className="text-center py-12 text-gray-400 text-sm">لا توجد منتجات تطابق شروط التصفية أو البحث</td></tr>
+                )}
+              </tbody>
+            </table>
+          </StickyHorizontalScrollContainer>
         </div>
 
         {/* Mobile Cards View */}
