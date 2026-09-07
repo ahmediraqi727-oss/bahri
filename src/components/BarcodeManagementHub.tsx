@@ -75,6 +75,15 @@ export default function BarcodeManagementHub() {
   const [endDate, setEndDate] = useState("");
   const [sortOption, setSortOption] = useState<SortOption>("default");
 
+  // ─── Pagination State (ترقيم الصفحات) ────────────────────────────────────
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 50; // عرض 50 منتجاً في الصفحة الواحدة لتسريع الأداء
+
+  // إعادة ضبط الصفحة إلى 1 عند تغيير البحث أو الفلتر
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterMode, datePreset, sortOption]);
+
   // ─── Multi-Selection & Batch Modal State ──────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchPrintOpen, setBatchPrintOpen] = useState(false);
@@ -96,7 +105,7 @@ export default function BarcodeManagementHub() {
 
   useEffect(() => { loadSummary(); }, [loadSummary, products]);
 
-  // Handle URL deep links & custom events (e.g. /dashboard/scanner?edit=XXX or ?assign=YYY)
+  // Handle URL deep links & custom events
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -170,14 +179,12 @@ export default function BarcodeManagementHub() {
   // ─── Filtered & Sorted Products List ──────────────────────────────────────
   const filteredProducts = useMemo(() => {
     const list = products.filter((p) => {
-      // Search
       const matchSearch =
         !search.trim() ||
         p.name.toLowerCase().includes(search.toLowerCase()) ||
         (p.barcode || "").includes(search) ||
         (p.qrCode || "").includes(search);
 
-      // Status Filter
       const matchFilter =
         filterMode === "all"
           ? true
@@ -185,13 +192,11 @@ export default function BarcodeManagementHub() {
           ? !p.barcode && !p.qrCode
           : !!(p.barcode || p.qrCode);
 
-      // Date Filter (matches created_at or last_scanned_at)
       const matchDate = isWithinDateRange(p.createdAt || p.lastScannedAt);
 
       return matchSearch && matchFilter && matchDate;
     });
 
-    // Sorting
     return [...list].sort((a, b) => {
       if (sortOption === "most_scanned") {
         return (b.scanCount || 0) - (a.scanCount || 0);
@@ -202,20 +207,27 @@ export default function BarcodeManagementHub() {
       if (sortOption === "newest") {
         return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
       }
-      return 0; // Default
+      return 0;
     });
   }, [products, search, filterMode, sortOption, isWithinDateRange]);
 
+  // حساب المنتجات الخاصة بالصفحة الحالية فقط
+  const totalPages = Math.ceil(filteredProducts.length / pageSize) || 1;
+  const paginatedProducts = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredProducts.slice(start, start + pageSize);
+  }, [filteredProducts, currentPage, pageSize]);
+
   // ─── Selection Helpers ────────────────────────────────────────────────────
   const allFilteredSelected =
-    filteredProducts.length > 0 &&
-    filteredProducts.every((p) => selectedIds.has(p.id));
+    paginatedProducts.length > 0 &&
+    paginatedProducts.every((p) => selectedIds.has(p.id));
 
   const toggleSelectAll = () => {
     if (allFilteredSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredProducts.map((p) => p.id)));
+      setSelectedIds(new Set(paginatedProducts.map((p) => p.id)));
     }
   };
 
@@ -301,7 +313,6 @@ export default function BarcodeManagementHub() {
     }
   };
 
-  // ─── Single Bulk Auto-Generate Missing ────────────────────────────────────
   const handleBulkGenerateAll = async () => {
     const confirmed = window.confirm(
       `سيتم توليد باركود تلقائي لـ ${summary.missing} منتج غير مرمّز. هل تريد المتابعة؟`
@@ -328,7 +339,6 @@ export default function BarcodeManagementHub() {
     setGenProgress({ done: 0, total: 0 });
   };
 
-  // ─── Single Product Generate/Save ─────────────────────────────────────────
   const handleGenerateSingle = async (product: Product) => {
     if (product.barcode) {
       if (!window.confirm("هذا المنتج لديه باركود بالفعل. هل تريد إعادة التوليد؟")) return;
@@ -370,10 +380,10 @@ export default function BarcodeManagementHub() {
   return (
     <div className="flex flex-col gap-6" dir="rtl">
 
-      {/* ─── 1. Card-Based Grid System for Barcode Controls & Actions (100% Responsive Grid) ─── */}
+      {/* ─── 1. Card-Based Grid System ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         
-        {/* Card 1: Master Engine Status & Control */}
+        {/* Card 1 */}
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm flex flex-col justify-between gap-3 min-w-0">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
@@ -425,7 +435,7 @@ export default function BarcodeManagementHub() {
           </div>
         </div>
 
-        {/* Card 2: Bulk Auto-Generation Action Trigger */}
+        {/* Card 2 */}
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm flex flex-col justify-between gap-3 min-w-0">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
@@ -455,7 +465,7 @@ export default function BarcodeManagementHub() {
           </div>
         </div>
 
-        {/* Card 3: Products Counter & Scope Indicator */}
+        {/* Card 3 */}
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm flex flex-col justify-between gap-3 min-w-0">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
@@ -465,7 +475,7 @@ export default function BarcodeManagementHub() {
               </span>
             </div>
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 shrink-0">
-              عرض {filteredProducts.length} من أصل {products.length} منتج
+              إجمالي {products.length} منتج
             </span>
           </div>
 
@@ -515,7 +525,7 @@ export default function BarcodeManagementHub() {
         ))}
       </div>
 
-      {/* Progress Bar (during generation) */}
+      {/* Progress Bar */}
       {generating && genProgress.total > 0 && (
         <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl p-4 shadow-2xs">
           <div className="flex items-center justify-between mb-2">
@@ -531,12 +541,10 @@ export default function BarcodeManagementHub() {
         </div>
       )}
 
-      {/* ─── 3. Advanced Filtering & Date Range Engine Card ─────────────────────── */}
+      {/* ─── 3. Advanced Filtering ───────────────────────────────────────── */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm flex flex-col gap-4 min-w-0">
-        
         <div className="flex flex-wrap items-center justify-between gap-3">
           
-          {/* Status Filter Tabs */}
           <div className="flex bg-gray-100 dark:bg-gray-800 rounded-xl p-1 gap-1 shrink-0 max-w-full overflow-x-auto">
             {([
               { key: "all", label: "الكل" },
@@ -546,7 +554,7 @@ export default function BarcodeManagementHub() {
               <button
                 key={key}
                 onClick={() => setFilterMode(key)}
-                className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold text-center break-words whitespace-normal leading-tight transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold text-center transition-all ${
                   filterMode === key
                     ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-xs"
                     : "text-gray-500 dark:text-gray-400"
@@ -557,7 +565,6 @@ export default function BarcodeManagementHub() {
             ))}
           </div>
 
-          {/* Date Range Selector */}
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-xs font-bold text-gray-600 dark:text-gray-400">📅 التاريخ:</span>
             <select
@@ -574,7 +581,6 @@ export default function BarcodeManagementHub() {
             </select>
           </div>
 
-          {/* Sort Option Dropdown */}
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-xs font-bold text-gray-600 dark:text-gray-400">📊 الترتيب:</span>
             <select
@@ -589,7 +595,6 @@ export default function BarcodeManagementHub() {
             </select>
           </div>
 
-          {/* Global Search */}
           <input
             type="text"
             value={search}
@@ -598,86 +603,46 @@ export default function BarcodeManagementHub() {
             className="flex-1 min-w-[200px] px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
-
-        {/* Custom Date Pickers (visible only when datePreset === 'custom') */}
-        {datePreset === "custom" && (
-          <div className="flex items-center gap-3 pt-2 border-t border-gray-100 dark:border-gray-800 flex-wrap">
-            <span className="text-xs text-gray-500 font-bold">من تاريخ:</span>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="px-3 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-xs bg-white dark:bg-gray-800"
-            />
-            <span className="text-xs text-gray-500 font-bold">إلى تاريخ:</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="px-3 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-xs bg-white dark:bg-gray-800"
-            />
-            {(startDate || endDate) && (
-              <button
-                onClick={() => { setStartDate(""); setEndDate(""); }}
-                className="text-xs text-red-500 underline font-bold"
-              >
-                مسح التواريخ
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* ─── 4. Batch Actions Floating Toolbar (When items selected) ───────── */}
+      {/* ─── 4. Batch Actions Floating Toolbar ───────────────────────────── */}
       {selectedIds.size > 0 && (
         <SmartFloatingBar className="p-4 shadow-xl flex flex-wrap items-center justify-between gap-3 animate-fadeIn">
           <div className="flex items-center gap-2">
-            <span className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center font-extrabold text-xs">
+            <span className="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center font-extrabold text-xs text-white">
               {selectedIds.size}
             </span>
-            <span className="font-extrabold text-xs sm:text-sm break-words whitespace-normal leading-tight">منتجات محددة</span>
+            <span className="font-extrabold text-xs sm:text-sm">منتجات محددة</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Batch Print Button */}
             <button
               onClick={() => setBatchPrintOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold text-center break-words whitespace-normal leading-tight transition-all shadow-xs"
+              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold transition-all shadow-xs"
             >
-              <span>🖨</span>
-              <span>طباعة الملصقات</span>
+              <span>🖨</span><span>طباعة الملصقات</span>
             </button>
-
-            {/* Batch Generate Button */}
             <button
               onClick={handleBatchGenerate}
-              className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-bold text-center break-words whitespace-normal leading-tight transition-all shadow-xs"
+              className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-bold transition-all shadow-xs"
             >
-              <span>⚡</span>
-              <span>توليد باركود</span>
+              <span>⚡</span><span>توليد باركود</span>
             </button>
-
-            {/* Batch Enable/Disable Toggle */}
             <button
               onClick={() => handleBatchToggleActive(true)}
-              className="px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs sm:text-sm font-bold text-center break-words whitespace-normal leading-tight transition-all"
+              className="px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs sm:text-sm font-bold transition-all"
             >
               تفعيل الأكواد
             </button>
-
-            {/* Batch Reset Button */}
             <button
               onClick={handleBatchReset}
-              className="flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs sm:text-sm font-bold text-center break-words whitespace-normal leading-tight transition-all shadow-xs"
+              className="flex items-center gap-1.5 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs sm:text-sm font-bold transition-all shadow-xs"
             >
-              <span>🗑</span>
-              <span>تصفير الأكواد</span>
+              <span>🗑</span><span>تصفير الأكواد</span>
             </button>
-
-            {/* Clear Selection */}
             <button
               onClick={() => setSelectedIds(new Set())}
-              className="px-3 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs sm:text-sm font-bold text-center break-words whitespace-normal leading-tight transition-all"
+              className="px-3 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs sm:text-sm font-bold transition-all"
             >
               إلغاء التحديد
             </button>
@@ -685,10 +650,9 @@ export default function BarcodeManagementHub() {
         </SmartFloatingBar>
       )}
 
-      {/* ─── 5. Main Product Data View — Desktop Table + Mobile Cards ─────────────── */}
+      {/* ─── 5. Main Product Data View (Desktop & Mobile with Pagination) ─── */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm max-w-full">
 
-        {/* Top action bar */}
         <div className="p-3 sm:p-4 bg-gray-50 dark:bg-gray-950 flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800">
           <button
             onClick={handleBulkGenerateAll}
@@ -699,11 +663,11 @@ export default function BarcodeManagementHub() {
             <span className="truncate">توليد تلقائي للكل غير المرمّز ({summary.missing})</span>
           </button>
           <div className="px-3 py-1 bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 text-xs text-gray-700 dark:text-gray-300 font-extrabold shadow-2xs whitespace-nowrap">
-            {filteredProducts.length} / {products.length} منتج
+            عرض الصفحة {currentPage} من {totalPages} (إجمالي النتائج: {filteredProducts.length})
           </div>
         </div>
 
-        {/* ── Desktop Table View (md+) ─────────────────────────────────── */}
+        {/* Desktop Table View */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm text-right">
             <thead className="bg-gray-100 dark:bg-gray-950 text-gray-600 dark:text-gray-400 text-xs font-bold uppercase">
@@ -725,7 +689,7 @@ export default function BarcodeManagementHub() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {filteredProducts.slice(0, 200).map((product) => {
+              {paginatedProducts.map((product) => {
                 const isSelected = selectedIds.has(product.id);
                 const hasCode = !!(product.barcode || product.qrCode);
                 return (
@@ -783,23 +747,22 @@ export default function BarcodeManagementHub() {
                   </tr>
                 );
               })}
-              {filteredProducts.length === 0 && (
+              {paginatedProducts.length === 0 && (
                 <tr><td colSpan={7} className="text-center py-12 text-gray-400 text-sm">لا توجد منتجات تطابق شروط التصفية أو البحث</td></tr>
               )}
             </tbody>
           </table>
         </div>
 
-        {/* ── Mobile Cards View (< md) ─────────────────────────────────── */}
+        {/* Mobile Cards View */}
         <div className="block md:hidden">
-          {filteredProducts.length === 0 ? (
+          {paginatedProducts.length === 0 ? (
             <div className="text-center py-12 text-gray-400 text-sm">
               <span className="text-4xl block mb-3">📷</span>
               لا توجد منتجات تطابق شروط التصفية أو البحث
             </div>
           ) : (
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
-              {/* Mobile Select All header */}
               <div className="px-4 py-2.5 bg-gray-50 dark:bg-gray-800/50 flex items-center gap-3">
                 <input
                   type="checkbox"
@@ -808,11 +771,11 @@ export default function BarcodeManagementHub() {
                   className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                 />
                 <span className="text-xs font-bold text-gray-600 dark:text-gray-400">
-                  تحديد الكل ({filteredProducts.slice(0, 200).length} منتج)
+                  تحديد الكل في هذه الصفحة ({paginatedProducts.length} منتج)
                 </span>
               </div>
 
-              {filteredProducts.slice(0, 200).map((product) => {
+              {paginatedProducts.map((product) => {
                 const isSelected = selectedIds.has(product.id);
                 const hasCode = !!(product.barcode || product.qrCode);
                 return (
@@ -820,7 +783,6 @@ export default function BarcodeManagementHub() {
                     key={product.id}
                     className={`p-3.5 transition-colors ${isSelected ? "bg-blue-50/60 dark:bg-blue-950/20" : "bg-white dark:bg-gray-900"}`}
                   >
-                    {/* Card Header: Checkbox + Name + Status */}
                     <div className="flex items-center gap-3 mb-3">
                       <input
                         type="checkbox"
@@ -844,7 +806,6 @@ export default function BarcodeManagementHub() {
                       </span>
                     </div>
 
-                    {/* Barcode + QR code info */}
                     <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 space-y-2 mb-3 border border-gray-100 dark:border-gray-800">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 flex-shrink-0">باركود:</span>
@@ -864,13 +825,8 @@ export default function BarcodeManagementHub() {
                           </div>
                         ) : <span className="text-xs text-gray-300 dark:text-gray-600">غير مرمّز</span>}
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400">مرات المسح:</span>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-extrabold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300">🔥 {product.scanCount || 0}</span>
-                      </div>
                     </div>
 
-                    {/* Mobile Action Buttons */}
                     <div className="flex items-center gap-2 flex-wrap">
                       <button
                         onClick={() => handleGenerateSingle(product)}
@@ -884,9 +840,6 @@ export default function BarcodeManagementHub() {
                       >
                         <span>✏</span><span>تعديل الكود</span>
                       </button>
-                      {(product.barcode || product.qrCode) && (
-                        <BarcodeDisplay barcode={product.barcode} qrCode={product.qrCode} productName={product.name} compact showPrint />
-                      )}
                     </div>
                   </div>
                 );
@@ -895,21 +848,42 @@ export default function BarcodeManagementHub() {
           )}
         </div>
 
-        {filteredProducts.length > 200 && (
-          <div className="text-center py-3 text-xs text-gray-400 border-t border-gray-100 dark:border-gray-800">
-            يعرض أول 200 نتيجة من أصل {filteredProducts.length}. استخدم البحث لتضييق النتائج.
+        {/* ─── أزرار التنقل بين الصفحات (Pagination Controls) ─────────────── */}
+        <div className="p-4 bg-gray-50 dark:bg-gray-950 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between flex-wrap gap-3">
+          <div className="text-xs text-gray-600 dark:text-gray-400 font-bold">
+            عرض المنتجات من <span className="text-blue-600 font-extrabold">{((currentPage - 1) * pageSize) + 1}</span> إلى <span className="text-blue-600 font-extrabold">{Math.min(currentPage * pageSize, filteredProducts.length)}</span> من أصل <span className="text-blue-600 font-extrabold">{filteredProducts.length}</span> منتج
           </div>
-        )}
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl text-xs font-bold disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all text-gray-800 dark:text-gray-200 shadow-xs"
+            >
+              السابق
+            </button>
+            <span className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-extrabold shadow-sm">
+              {currentPage} / {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl text-xs font-bold disabled:opacity-40 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all text-gray-800 dark:text-gray-200 shadow-xs"
+            >
+              التالي
+            </button>
+          </div>
+        </div>
+
       </div>
 
-      {/* ─── Batch Print Configuration Modal ─────────────────────────────── */}
+      {/* Modals */}
       <BatchPrintModal
         isOpen={batchPrintOpen}
         onClose={() => setBatchPrintOpen(false)}
         selectedProducts={selectedProductsList}
       />
 
-      {/* ─── Single Product Manual Edit Modal ─────────────────────────────── */}
       {editingProduct && (
         <div className="fixed inset-0 z-[95] flex items-center justify-center p-4" dir="rtl">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setEditingProduct(null)} />
@@ -920,9 +894,7 @@ export default function BarcodeManagementHub() {
 
             <div className="flex flex-col gap-4 mb-6">
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  الباركود (1D)
-                </label>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">الباركود (1D)</label>
                 <input
                   type="text"
                   value={editBarcode}
@@ -932,9 +904,7 @@ export default function BarcodeManagementHub() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">
-                  QR Code (2D)
-                </label>
+                <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1">QR Code (2D)</label>
                 <input
                   type="text"
                   value={editQR}
@@ -945,23 +915,11 @@ export default function BarcodeManagementHub() {
               </div>
             </div>
 
-            {/* Live Preview */}
-            {(editBarcode || editQR) && (
-              <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl flex justify-center">
-                <BarcodeDisplay
-                  barcode={editBarcode || null}
-                  qrCode={editQR || null}
-                  productName={editingProduct.name}
-                  showPrint
-                />
-              </div>
-            )}
-
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={() => setEditingProduct(null)}
-                className="flex-1 py-3 rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold transition-all hover:bg-gray-200 dark:hover:bg-gray-700 text-xs"
+                className="flex-1 py-3 rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold transition-all hover:bg-gray-200 text-xs"
               >
                 إلغاء
               </button>
@@ -969,7 +927,7 @@ export default function BarcodeManagementHub() {
                 type="button"
                 onClick={handleSaveEdit}
                 disabled={saving}
-                className="flex-[2] py-3 rounded-2xl bg-gradient-to-l from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold transition-all disabled:opacity-40 shadow-lg text-xs"
+                className="flex-[2] py-3 rounded-2xl bg-gradient-to-l from-blue-600 to-indigo-600 text-white font-extrabold transition-all disabled:opacity-40 shadow-lg text-xs"
               >
                 {saving ? "جاري الحفظ..." : "💾 حفظ الكود"}
               </button>
