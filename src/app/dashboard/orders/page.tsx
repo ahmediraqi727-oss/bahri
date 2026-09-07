@@ -6,6 +6,7 @@ import { useSettings } from "@/lib/settings-context";
 import { useActivityLog } from "@/lib/activity-log";
 import { supabase } from "@/lib/supabase-client";
 import { Order, CartItem, formatInvoiceSerial } from "@/lib/order-types";
+import { useAdaptiveOrders } from "@/lib/useAdaptiveOrders";
 import PermissionGate from "@/components/PermissionGate";
 import jsPDF from "jspdf";
 
@@ -50,11 +51,25 @@ export default function OrdersPage() {
   const { settings } = useSettings();
   const { logActivity } = useActivityLog();
 
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+
+  // Server-Side Range Chunked Fetching with AbortController & Independent Metrics Stream
+  const {
+    orders,
+    loading,
+    loadingMore,
+    hasMore,
+    totalCount,
+    metrics,
+    loadMore,
+    refetch: loadOrders,
+  } = useAdaptiveOrders({
+    searchQuery,
+    statusFilter,
+    batchSize: 20,
+  });
 
   // Edit Invoice Modal Draft State
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -70,42 +85,7 @@ export default function OrdersPage() {
   const [savingOrder, setSavingOrder] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Load Orders from Supabase
-  const loadOrders = useCallback(async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
-      if (error) {
-        console.error("Fetch orders error:", error.message);
-        return;
-      }
-      if (data) {
-        const mapped: Order[] = data.map((r) => ({
-          id: r.id,
-          serialNumber: r.serial_number ? Number(r.serial_number) : undefined,
-          customerName: r.customer_name || "زبون",
-          customerPhone: r.customer_phone || "",
-          customerAddress: r.customer_address || "",
-          items: (r.items as CartItem[]) || [],
-          total: Number(r.total) || 0,
-          deliveryFee: Number(r.delivery_fee) || 0,
-          deliveryDuration: r.delivery_duration || "",
-          status: (r.status as Order["status"]) || "pending",
-          notes: r.notes || "",
-          createdAt: r.created_at || new Date().toISOString(),
-        }));
-        setOrders(mapped);
-      }
-    } catch (err) {
-      console.error("Load orders exception:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    loadOrders();
-
     const channel = supabase
       .channel("public:orders_page")
       .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
@@ -219,7 +199,7 @@ export default function OrdersPage() {
     if (!confirm("هل أنت تأكد من رغبتك في حذف هذا الطلب نهائياً؟")) return;
     try {
       await supabase.from("orders").delete().eq("id", id);
-      setOrders((prev) => prev.filter((o) => o.id !== id));
+      await loadOrders();
       if (selectedOrder?.id === id) closeModal();
       await logActivity({
         user: "manager",
@@ -520,31 +500,9 @@ export default function OrdersPage() {
     window.open(`https://api.whatsapp.com/send?phone=${cleanNum}&text=${encodeURIComponent(msg)}`, "_blank");
   };
 
-  // Filtered Orders List
-  const filteredOrders = useMemo(() => {
-    return orders.filter((o) => {
-      const matchStatus = statusFilter === "all" || o.status === statusFilter;
-      const q = searchQuery.toLowerCase().trim();
-      const serialStr = formatInvoiceSerial(o).toLowerCase();
-      const matchSearch =
-        !q ||
-        serialStr.includes(q) ||
-        o.customerName.toLowerCase().includes(q) ||
-        o.customerPhone.includes(q) ||
-        o.customerAddress.toLowerCase().includes(q) ||
-        o.id.toLowerCase().includes(q);
-      return matchStatus && matchSearch;
-    });
-  }, [orders, statusFilter, searchQuery]);
 
-  // Analytics Stats Summary
-  const stats = useMemo(() => {
-    const totalCount = orders.length;
-    const pendingCount = orders.filter((o) => o.status === "pending").length;
-    const completedCount = orders.filter((o) => o.status === "delivered" || o.status === "confirmed").length;
-    const totalRevenue = orders.reduce((sum, o) => sum + o.total, 0);
-    return { totalCount, pendingCount, completedCount, totalRevenue };
-  }, [orders]);
+
+
 
   return (
     <PermissionGate permission="orders.view">
@@ -576,7 +534,7 @@ export default function OrdersPage() {
               <span>إجمالي الطلبات</span>
               <span className="text-xl">📊</span>
             </div>
-            <p className="text-2xl font-extrabold text-gray-900 dark:text-white">{stats.totalCount}</p>
+            <p className="text-2xl font-extrabold text-gray-900 dark:text-white">{totalCount}</p>
           </div>
 
           <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-amber-200 dark:border-amber-800/60 bg-amber-50/20 shadow-sm">
@@ -584,24 +542,24 @@ export default function OrdersPage() {
               <span>طلب قيد الانتظار</span>
               <span className="text-xl">⚠️</span>
             </div>
-            <p className="text-2xl font-extrabold text-amber-600 dark:text-amber-400">{stats.pendingCount}</p>
+            <p className="text-2xl font-extrabold text-amber-600 dark:text-amber-400">{metrics.pendingCount}</p>
           </div>
 
           <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/20 shadow-sm">
             <div className="flex items-center justify-between text-xs text-emerald-600 dark:text-emerald-400 mb-1">
-              <span>طلبات مكتملة / مؤكدة</span>
+              <span>طلبات مكتملة</span>
               <span className="text-xl">✅</span>
             </div>
-            <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{stats.completedCount}</p>
+            <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{metrics.deliveredCount}</p>
           </div>
 
           <div className="bg-white dark:bg-gray-900 rounded-2xl p-4 border border-blue-200 dark:border-blue-800/60 bg-blue-50/20 shadow-sm">
             <div className="flex items-center justify-between text-xs text-blue-600 dark:text-blue-400 mb-1">
-              <span>قيمة الطلبات الكلية</span>
+              <span>مبيعات المكتملة</span>
               <span className="text-xl">💰</span>
             </div>
             <p className="text-xl font-extrabold text-blue-600 dark:text-blue-400 truncate">
-              {stats.totalRevenue.toLocaleString()} د.ع
+              {metrics.totalRevenue.toLocaleString()} د.ع
             </p>
           </div>
         </div>
@@ -656,107 +614,136 @@ export default function OrdersPage() {
 
         {/* Orders Grid / List */}
         {loading ? (
-          <div className="p-16 text-center text-gray-400 animate-pulse">
-            <span className="text-4xl block mb-2">🔄</span>
-            <p>جاري تحميل قائمة الطلبات من قاعدة البيانات...</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={`order-skel-${i}`}
+                className="bg-white/80 dark:bg-gray-900/80 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 space-y-4 animate-pulse backdrop-blur-md"
+              >
+                <div className="flex justify-between items-center pb-3 border-b border-gray-100 dark:border-gray-800">
+                  <div className="w-24 h-5 bg-gray-200 dark:bg-gray-800 rounded-lg" />
+                  <div className="w-16 h-5 bg-gray-200 dark:bg-gray-800 rounded-lg" />
+                </div>
+                <div className="space-y-2">
+                  <div className="w-2/3 h-5 bg-gray-200 dark:bg-gray-800 rounded-lg" />
+                  <div className="w-1/2 h-4 bg-gray-200 dark:bg-gray-800 rounded-lg" />
+                </div>
+                <div className="h-16 bg-gray-100 dark:bg-gray-800/60 rounded-xl" />
+              </div>
+            ))}
           </div>
-        ) : filteredOrders.length === 0 ? (
+        ) : orders.length === 0 ? (
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-16 text-center text-gray-400 space-y-3">
             <span className="text-5xl block">🛒</span>
             <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200">لا توجد طلبات تطابق هذا البحث</h3>
             <p className="text-xs">عند إتمام الزبائن لعمليات الشراء، ستظهر طلباتهم وفواتيرهم هنا فوراً</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredOrders.map((order) => {
-              const platform = formatPlatformBadge(order.notes);
-              const statusStyle = STATUS_COLORS[order.status];
-              const serialStr = formatInvoiceSerial(order);
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {orders.map((order) => {
+                const platform = formatPlatformBadge(order.notes);
+                const statusStyle = STATUS_COLORS[order.status];
+                const serialStr = formatInvoiceSerial(order);
 
-              return (
-                <div
-                  key={order.id}
-                  onClick={() => openInvoiceModal(order)}
-                  className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 hover:shadow-xl transition-all cursor-pointer flex flex-col justify-between space-y-4 group relative overflow-hidden"
-                >
-                  <div className="space-y-3">
-                    {/* Header: Platform & Status */}
-                    <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
-                      <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-800 py-1 px-2.5 rounded-lg text-xs font-bold text-gray-700 dark:text-gray-300">
-                        <span>{platform.icon}</span>
-                        <span>{platform.label}</span>
-                        <span className="font-mono text-[10px] text-blue-600 dark:text-blue-400 border-r pr-1.5 border-gray-300 dark:border-gray-700">{serialStr}</span>
+                return (
+                  <div
+                    key={order.id}
+                    onClick={() => openInvoiceModal(order)}
+                    className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 hover:shadow-xl transition-all cursor-pointer flex flex-col justify-between space-y-4 group relative overflow-hidden"
+                  >
+                    <div className="space-y-3">
+                      {/* Header: Platform & Status */}
+                      <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
+                        <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-800 py-1 px-2.5 rounded-lg text-xs font-bold text-gray-700 dark:text-gray-300">
+                          <span>{platform.icon}</span>
+                          <span>{platform.label}</span>
+                          <span className="font-mono text-[10px] text-blue-600 dark:text-blue-400 border-r pr-1.5 border-gray-300 dark:border-gray-700">{serialStr}</span>
+                        </div>
+
+                        <span
+                          className={`px-2.5 py-1 rounded-lg text-xs font-extrabold border ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}
+                        >
+                          {STATUS_LABELS[order.status]}
+                        </span>
                       </div>
 
-                      <span
-                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold border ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}
-                      >
-                        {STATUS_LABELS[order.status]}
-                      </span>
-                    </div>
-
-                    {/* Customer Info */}
-                    <div className="space-y-1">
-                      <h3 className="font-bold text-gray-900 dark:text-white text-base group-hover:text-blue-600 transition-colors flex items-center gap-2">
-                        <span>👤</span>
-                        <span>{order.customerName}</span>
-                      </h3>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                        <span>📞</span>
-                        <span dir="ltr" className="font-mono">{order.customerPhone}</span>
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                        <span>📍</span>
-                        <span className="truncate">{order.customerAddress}</span>
-                      </p>
-                      {order.deliveryDuration && (
-                        <p className="text-[11px] text-blue-600 dark:text-blue-400 font-bold flex items-center gap-1">
-                          <span>🚚</span>
-                          <span>التوصيل: {order.deliveryDuration} ({order.deliveryFee ? `${order.deliveryFee.toLocaleString()} د.ع` : "مجاني"})</span>
+                      {/* Customer Info */}
+                      <div className="space-y-1">
+                        <h3 className="font-bold text-gray-900 dark:text-white text-base group-hover:text-blue-600 transition-colors flex items-center gap-2">
+                          <span>👤</span>
+                          <span>{order.customerName}</span>
+                        </h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                          <span>📞</span>
+                          <span dir="ltr" className="font-mono">{order.customerPhone}</span>
                         </p>
-                      )}
+                        <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                          <span>📍</span>
+                          <span className="truncate">{order.customerAddress}</span>
+                        </p>
+                        {order.deliveryDuration && (
+                          <p className="text-[11px] text-blue-600 dark:text-blue-400 font-bold flex items-center gap-1">
+                            <span>🚚</span>
+                            <span>التوصيل: {order.deliveryDuration} ({order.deliveryFee ? `${order.deliveryFee.toLocaleString()} د.ع` : "مجاني"})</span>
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Products Summary */}
+                      <div className="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-3 space-y-1 text-xs">
+                        <p className="font-bold text-gray-700 dark:text-gray-300 mb-1">📦 المنتجات ({order.items.length}):</p>
+                        {order.items.slice(0, 3).map((item, idx) => (
+                          <div key={idx} className="flex justify-between text-gray-600 dark:text-gray-400">
+                            <span className="truncate max-w-[180px]">• {item.name}</span>
+                            <span className="font-semibold">x{item.quantity}</span>
+                          </div>
+                        ))}
+                        {order.items.length > 3 && (
+                          <p className="text-[10px] text-blue-500 font-bold pt-0.5">+ {order.items.length - 3} منتجات أخرى...</p>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Products Summary */}
-                    <div className="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-3 space-y-1 text-xs">
-                      <p className="font-bold text-gray-700 dark:text-gray-300 mb-1">📦 المنتجات ({order.items.length}):</p>
-                      {order.items.slice(0, 3).map((item, idx) => (
-                        <div key={idx} className="flex justify-between text-gray-600 dark:text-gray-400">
-                          <span className="truncate max-w-[180px]">• {item.name}</span>
-                          <span className="font-semibold">x{item.quantity}</span>
-                        </div>
-                      ))}
-                      {order.items.length > 3 && (
-                        <p className="text-[10px] text-blue-500 font-bold pt-0.5">+ {order.items.length - 3} منتجات أخرى...</p>
-                      )}
+                    {/* Footer: Date & Total */}
+                    <div className="border-t border-gray-100 dark:border-gray-800 pt-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-[10px] text-gray-400">{timeAgo(order.createdAt)}</p>
+                        <p className="text-base font-extrabold text-blue-600 dark:text-blue-400">
+                          {order.total.toLocaleString()} د.ع
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => handleDeleteOrder(order.id, e)}
+                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors text-xs"
+                          title="حذف الطلب"
+                        >
+                          🗑️
+                        </button>
+                        <span className="px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-xs shadow-sm group-hover:bg-blue-700 transition-colors">
+                          👁️ التفاصيل والطباعة
+                        </span>
+                      </div>
                     </div>
                   </div>
+                );
+              })}
+            </div>
 
-                  {/* Footer: Date & Total */}
-                  <div className="border-t border-gray-100 dark:border-gray-800 pt-3 flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] text-gray-400">{timeAgo(order.createdAt)}</p>
-                      <p className="text-base font-extrabold text-blue-600 dark:text-blue-400">
-                        {order.total.toLocaleString()} د.ع
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={(e) => handleDeleteOrder(order.id, e)}
-                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors text-xs"
-                        title="حذف الطلب"
-                      >
-                        🗑️
-                      </button>
-                      <span className="px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-xs shadow-sm group-hover:bg-blue-700 transition-colors">
-                        👁️ التفاصيل والطباعة
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {/* Load More Button / Indicator */}
+            {hasMore && (
+              <div className="text-center pt-4">
+                <button
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md transition-all disabled:opacity-50"
+                >
+                  {loadingMore ? "⚡ جاري تحميل دفعة الفواتير التالية..." : "تحميل المزيد من الطلبات ⚡"}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
