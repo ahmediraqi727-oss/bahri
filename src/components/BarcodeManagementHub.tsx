@@ -581,7 +581,7 @@ export default function BarcodeManagementHub() {
       )}
 
       {/* ─── 5. Main Product Data View (Infinite Scroll Active) ──────────── */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm max-w-full">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm max-w-full">
 
         <div className="p-3 sm:p-4 bg-gray-50 dark:bg-gray-950 flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800">
           <button

@@ -89,7 +89,7 @@ export default function StickyHorizontalScrollContainer({
           ref={topScrollRef}
           onScroll={handleTopScroll}
           style={{ top: `${topOffset}px` }}
-          className="sticky z-20 overflow-x-auto overflow-y-hidden hidden [@media(pointer:fine)]:block bg-gray-100/90 dark:bg-gray-900/90 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 rounded-t-xl transition-all shadow-xs"
+          className="sticky top-0 z-30 overflow-x-auto overflow-y-hidden hidden [@media(pointer:fine)]:block bg-gray-100/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 rounded-t-xl transition-all shadow-sm sticky-top-scrollbar"
         >
           <div style={{ width: `${scrollWidth}px`, height: "12px" }} />
         </div>

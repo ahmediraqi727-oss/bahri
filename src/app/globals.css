@@ -199,13 +199,40 @@ table td img, table th img {
 }
 
 /* 7. Global Page Root Overflow Prevention */
-/* Prevent any direct child of <main> from causing horizontal overflow */
+/* Prevent any direct child of <main> from causing horizontal overflow without breaking position: sticky */
 main > div,
 main > section {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  overflow-x: hidden;
+  overflow-x: clip;
+}
+
+/* Sticky Synchronized Top Horizontal Scrollbar Styling */
+.sticky-top-scrollbar {
+  scrollbar-width: auto;
+  scrollbar-color: #2563eb #e2e8f0;
+}
+.dark .sticky-top-scrollbar {
+  scrollbar-color: #3b82f6 #1e293b;
+}
+.sticky-top-scrollbar::-webkit-scrollbar {
+  height: 12px;
+}
+.sticky-top-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 6px;
+}
+.dark .sticky-top-scrollbar::-webkit-scrollbar-track {
+  background: #0f172a;
+  border-radius: 6px;
+}
+.sticky-top-scrollbar::-webkit-scrollbar-thumb {
+  background: #2563eb;
+  border-radius: 6px;
+}
+.sticky-top-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #1d4ed8;
 }
 
 /* 8. Responsive Sidebar Layout Protection */
