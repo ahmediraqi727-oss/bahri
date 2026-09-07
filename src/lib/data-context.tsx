@@ -324,7 +324,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     async function loadData() {
       try {
         const [productsRes, suppliersRes, categoriesRes] = await Promise.all([
-          supabase.from("products").select("*").order("created_at", { ascending: false }).range(0, 49),
+          supabase.from("products").select("*").order("created_at", { ascending: false }),
           supabase.from("suppliers").select("*").order("created_at", { ascending: false }),
           supabase.from("categories").select("*").order("priority", { ascending: true }),
         ]);
