@@ -30,7 +30,7 @@ export default function ScannerDashboardPage() {
   if (loading || !user) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-6" dir="rtl">
+    <div className="w-full max-w-full" dir="rtl">
       {/* Page Header */}
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">

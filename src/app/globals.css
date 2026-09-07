@@ -121,6 +121,10 @@ html, body {
   overflow-x: hidden;
   touch-action: manipulation;
   -webkit-text-size-adjust: 100%;
+  /* Arabic text rendering smoothness */
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* 2. Global Card & Stat Isolation Rules */
@@ -128,6 +132,22 @@ html, body {
   box-sizing: border-box;
   min-width: 0;
   word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+/* 2b. Arabic text: prevent letter fragmentation on mobile */
+[dir="rtl"] *, [lang="ar"] * {
+  word-break: break-word;
+  overflow-wrap: break-word;
+  /* Ensure Arabic Unicode Bidi is respected */
+  unicode-bidi: plaintext;
+}
+
+/* 2c. Arabic heading and paragraph rendering safety */
+[dir="rtl"] h1, [dir="rtl"] h2, [dir="rtl"] h3,
+[dir="rtl"] h4, [dir="rtl"] p, [dir="rtl"] span {
+  line-break: auto;
+  text-align: right;
 }
 
 /* 3. Status Badges & Chips Non-wrapping Protection */
@@ -209,6 +229,30 @@ aside {
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+
+  /* Arabic text shaping safety for small screens */
+  .arabic-safe {
+    word-break: break-word;
+    overflow-wrap: break-word;
+    direction: rtl;
+    unicode-bidi: embed;
+    text-align: right;
+  }
+
+  /* Monospace codes (barcodes, serials) — keep LTR inside RTL containers */
+  .code-ltr {
+    direction: ltr;
+    unicode-bidi: embed;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.05em;
+  }
+
+  /* Prevent any fixed-min-width child from overflowing its container */
+  .overflow-safe {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
   }
 }
 
