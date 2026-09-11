@@ -398,7 +398,7 @@ export default function DualPaneFastScanner({
       const track = stream.getVideoTracks()[0];
       if (track && "getCapabilities" in track) {
         try {
-          const caps = track.getCapabilities();
+          const caps = track.getCapabilities() as MediaTrackCapabilities & { torch?: boolean };
           setTorchSupported(!!caps?.torch);
         } catch {
           setTorchSupported(false);
