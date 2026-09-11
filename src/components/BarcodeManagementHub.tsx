@@ -15,6 +15,7 @@ import {
 import BarcodeDisplay from "@/components/BarcodeDisplay";
 import BatchPrintModal from "@/components/BatchPrintModal";
 import ProductLinkModal from "@/components/ProductLinkModal";
+import DualPaneFastScanner from "@/components/DualPaneFastScanner";
 import SmartFloatingBar from "@/components/SmartFloatingBar";
 import StickyHorizontalScrollContainer from "@/components/StickyHorizontalScrollContainer";
 import type { Product } from "@/lib/types";
@@ -97,6 +98,7 @@ export default function BarcodeManagementHub() {
   const [editQR, setEditQR] = useState("");
   const [saving, setSaving] = useState(false);
   const [linkingCode, setLinkingCode] = useState<string | null>(null);
+  const [dualPaneScannerOpen, setDualPaneScannerOpen] = useState(false);
 
   const loadSummary = useCallback(async () => {
     const s = await getBarcodeSummary();
@@ -396,6 +398,13 @@ export default function BarcodeManagementHub() {
               className="flex-1 px-4 py-1.5 bg-gradient-to-l from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-extrabold transition-all disabled:opacity-40 shadow-xs text-center truncate"
             >
               {isSavingMaster ? "جاري الحفظ..." : "💾 حفظ الإعدادات"}
+            </button>
+            <button
+              onClick={() => setDualPaneScannerOpen(true)}
+              className="w-full mt-1 px-4 py-2 bg-gradient-to-l from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-extrabold transition-all shadow-md flex items-center justify-center gap-1.5"
+            >
+              <span>⚡</span>
+              <span>تشغيل الماسح السريع المزدوج (Dual-Pane)</span>
             </button>
           </div>
         </div>
@@ -770,6 +779,14 @@ export default function BarcodeManagementHub() {
       )}
 
       <ProductLinkModal isOpen={Boolean(linkingCode)} scannedCode={linkingCode} onClose={() => setLinkingCode(null)} onLinked={() => { setLinkingCode(null); reloadAllData(); loadSummary(); }} />
+      <DualPaneFastScanner
+        isOpen={dualPaneScannerOpen}
+        onClose={() => setDualPaneScannerOpen(false)}
+        onRequestLink={(code) => {
+          setDualPaneScannerOpen(false);
+          setLinkingCode(code);
+        }}
+      />
     </div>
   );
 }

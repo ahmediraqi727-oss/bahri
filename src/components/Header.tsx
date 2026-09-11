@@ -12,6 +12,7 @@ import ShareModal from "@/components/ShareModal";
 import ProductLinkModal from "@/components/ProductLinkModal";
 import BarcodeScanner from "@/components/BarcodeScanner";
 import ScannerProductModal from "@/components/ScannerProductModal";
+import DualPaneFastScanner from "@/components/DualPaneFastScanner";
 import { HardwareScannerService, subscribeToHardwareScan } from "@/lib/hardware-scanner";
 import { useEffect } from "react";
 
@@ -31,6 +32,7 @@ export default function Header() {
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [dualPaneScannerOpen, setDualPaneScannerOpen] = useState(false);
   const [scannedCode, setScannedCode] = useState<string | null>(null);
   const [linkingCode, setLinkingCode] = useState<string | null>(null);
 
@@ -111,6 +113,19 @@ export default function Header() {
           <GlobalSearch />
           <NotificationsBell />
 
+          {/* ⚡ Dual-Pane Fast Scanner Button (Dashboard) */}
+          {canViewScannerBtn && (
+            <button
+              id="dashboard-dual-pane-scanner-btn"
+              onClick={() => setDualPaneScannerOpen(true)}
+              className="relative px-2.5 py-1.5 rounded-xl bg-gradient-to-l from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-extrabold text-xs transition-all flex items-center gap-1.5 shadow-xs"
+              title="المسح السريع المزدوج — الشاشة المزدوجة والمستمرة"
+            >
+              <span className="text-sm">⚡</span>
+              <span className="hidden md:inline">مسح مزدوج</span>
+            </button>
+          )}
+
           {/* 📷 Barcode Scanner Button (Dashboard) */}
           {canViewScannerBtn && (
             <button
@@ -159,6 +174,17 @@ export default function Header() {
       <ShareModal isOpen={isShareModalOpen} onClose={() => setIsShareModalOpen(false)} />
 
       {/* Barcode Scanner Modals */}
+      <DualPaneFastScanner
+        isOpen={dualPaneScannerOpen}
+        onClose={() => setDualPaneScannerOpen(false)}
+        canUseCamera={canUseCamera}
+        canUseImageUpload={canUseImageUpload}
+        canUseManualEntry={canUseManualEntry}
+        onRequestLink={(code) => {
+          setDualPaneScannerOpen(false);
+          setLinkingCode(code);
+        }}
+      />
       <BarcodeScanner
         isOpen={scannerOpen}
         onClose={() => setScannerOpen(false)}
