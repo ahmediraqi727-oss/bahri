@@ -6,7 +6,7 @@ import { useData } from "@/lib/data-context";
 import { useCart } from "@/lib/cart-context";
 import { useSettings } from "@/lib/settings-context";
 import { lookupByBarcode } from "@/lib/barcode-service";
-import { decodeBarcodeFromCanvas } from "@/lib/barcode-decoder";
+import { decodeBarcodeFromCanvas, decodeBarcodeFromFile } from "@/lib/barcode-decoder";
 import {
   buildTierBadgeText,
   resolveTierForQty,
@@ -30,6 +30,7 @@ export interface DualPaneFastScannerProps {
   isOpen: boolean;
   onClose: () => void;
   canUseCamera?: boolean;
+  canUseImageUpload?: boolean;
   canUseManualEntry?: boolean;
   onProductAdded?: (product: Product, qty: number) => void;
   onRequestLink?: (code: string) => void;
@@ -115,6 +116,7 @@ export default function DualPaneFastScanner({
   isOpen,
   onClose,
   canUseCamera = true,
+  canUseImageUpload = true,
   canUseManualEntry = true,
   onProductAdded,
   onRequestLink,
@@ -133,17 +135,20 @@ export default function DualPaneFastScanner({
   const [torchOn, setTorchOn] = useState(false);
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   const [manualCode, setManualCode] = useState("");
+  const [activeTab, setActiveTab] = useState<"camera" | "upload" | "manual">("camera");
 
   const [currentProduct, setCurrentProduct] = useState<Product | null>(null);
   const [currentCode, setCurrentCode] = useState<string>("");
   const [currentQty, setCurrentQty] = useState<number>(1);
   const [scanLogs, setScanLogs] = useState<ScannedLogEntry[]>([]);
   const [flashMessage, setFlashMessage] = useState<{ text: string; type: "success" | "warning" | "error" } | null>(null);
+  const [imageDecoding, setImageDecoding] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const codeCooldownMapRef = useRef<Map<string, number>>(new Map());
   const flashTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -351,16 +356,31 @@ export default function DualPaneFastScanner({
     } catch (err) {}
   };
 
+  const handleImageFile = async (file: File) => {
+    setImageDecoding(true);
+    try {
+      const code = await decodeBarcodeFromFile(file);
+      if (code) {
+        handleDetectedCode(code);
+      } else {
+        showFlash("❌ لم يتم التعرف على أي باركود في الصورة", "error");
+      }
+    } catch {
+      showFlash("حدث خطأ أثناء فك تشفير الصورة", "error");
+    }
+    setImageDecoding(false);
+  };
+
   useEffect(() => {
     if (!isOpen) {
       stopCamera();
       return;
     }
-    if (canUseCamera) {
+    if (activeTab === "camera" && canUseCamera) {
       startCamera();
     }
     return () => stopCamera();
-  }, [isOpen, canUseCamera, facingMode, startCamera, stopCamera]);
+  }, [isOpen, activeTab, canUseCamera, facingMode, startCamera, stopCamera]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -430,68 +450,141 @@ export default function DualPaneFastScanner({
           </div>
         )}
 
-        {/* ── التخطيط ثنائي الجانب الدائم: الكاميرا في اليمين والمنتج في اليسار جنباً إلى جنب ── */}
+        {/* ── التخطيط ثنائي الجانب الدائم: الكاميرا يمين والمنتج يسار جنباً إلى جنب ── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 flex-1 min-h-0 divide-y lg:divide-y-0 lg:divide-x lg:divide-x-reverse divide-gray-200 dark:divide-gray-800 overflow-hidden bg-gray-50 dark:bg-gray-900">
 
           {/* ════════════════════════════════════════════════════════════════
-              الجانب الأيمن (PANEL A): الكاميرا الحية النشطة المستمرة
+              الجانب الأيمن (PANEL A): الكاميرا الحية والتبويبات الكاملة
              ════════════════════════════════════════════════════════════════ */}
           <div className="p-4 flex flex-col bg-gray-950 text-white min-h-0 overflow-y-auto">
-            <div className="flex items-center justify-between mb-2 shrink-0">
-              <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                كاميرا حية دائمة النشاط
-              </span>
+            {/* زر التبويبات الكاملة */}
+            <div className="flex items-center gap-2 mb-3 shrink-0">
+              {canUseCamera && (
+                <button
+                  onClick={() => setActiveTab("camera")}
+                  className={`flex-1 py-1.5 px-3 rounded-xl font-bold text-xs ${activeTab === "camera" ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-300"}`}
+                >
+                  📷 كاميرا حية
+                </button>
+              )}
+              {canUseImageUpload && (
+                <button
+                  onClick={() => { stopCamera(); setActiveTab("upload"); }}
+                  className={`flex-1 py-1.5 px-3 rounded-xl font-bold text-xs ${activeTab === "upload" ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-300"}`}
+                >
+                  🖼 رفع صورة
+                </button>
+              )}
               {canUseManualEntry && (
-                <div className="flex items-center gap-1 w-1/2">
+                <button
+                  onClick={() => { stopCamera(); setActiveTab("manual"); }}
+                  className={`flex-1 py-1.5 px-3 rounded-xl font-bold text-xs ${activeTab === "manual" ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-300"}`}
+                >
+                  ⌨ إدخال يدوي
+                </button>
+              )}
+            </div>
+
+            {activeTab === "camera" && (
+              <div className="flex-1 flex flex-col items-center justify-center relative min-h-[280px]">
+                {cameraError ? (
+                  <div className="bg-red-950/60 border border-red-800 rounded-2xl p-4 text-center">
+                    <p className="text-red-400 font-bold text-xs mb-2">{cameraError}</p>
+                    <button onClick={startCamera} className="px-3 py-1 bg-blue-600 rounded-xl text-xs font-bold">إعادة المحاولة</button>
+                  </div>
+                ) : (
+                  <div className="relative w-full h-full rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-gray-800 shadow-inner">
+                    <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
+                    <canvas ref={canvasRef} className="hidden" />
+
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="w-56 h-36 border-2 border-blue-400 rounded-2xl relative shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+                        <div className="absolute inset-x-2 h-0.5 bg-blue-400 animate-pulse" style={{ top: "50%" }} />
+                      </div>
+                    </div>
+
+                    <div className="absolute top-2 right-2 bg-black/60 text-emerald-400 text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                      <span>الكاميرا نشطة</span>
+                    </div>
+
+                    <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
+                      <button
+                        onClick={() => setFacingMode((prev) => (prev === "environment" ? "user" : "environment"))}
+                        className="bg-black/60 text-white text-[11px] font-bold px-2.5 py-1 rounded-xl border border-white/20"
+                      >
+                        🔄 {facingMode === "environment" ? "الخلفية" : "الأمامية"}
+                      </button>
+                      {torchSupported && (
+                        <button
+                          onClick={toggleTorch}
+                          className={`text-[11px] font-bold px-2.5 py-1 rounded-xl border ${torchOn ? "bg-yellow-400 text-yellow-950" : "bg-black/60 text-white"}`}
+                        >
+                          {torchOn ? "🔦 إيقاف الفلاش" : "💡 تشغيل الفلاش"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "upload" && (
+              <div className="flex-1 flex flex-col items-center justify-center p-5 text-center border-2 border-dashed border-gray-800 rounded-2xl bg-gray-900/50">
+                <span className="text-4xl mb-2">🖼</span>
+                <h4 className="font-bold text-xs text-gray-200 mb-1">رفع صورة باركود أو QR</h4>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all shadow-md mt-2"
+                >
+                  اختر ملف صورة
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleImageFile(file);
+                  }}
+                />
+                {imageDecoding && <p className="text-xs text-blue-400 animate-pulse mt-2">جاري فك شفرة الصورة...</p>}
+              </div>
+            )}
+
+            {activeTab === "manual" && (
+              <div className="flex-1 flex flex-col items-center justify-center p-5 bg-gray-900/50 rounded-2xl border border-gray-800">
+                <h4 className="font-bold text-xs text-gray-200 mb-3">أدخل الباركود يدوياً</h4>
+                <div className="w-full max-w-xs flex flex-col gap-2.5">
                   <input
                     type="text"
                     value={manualCode}
                     onChange={(e) => setManualCode(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && manualCode.trim()) { handleDetectedCode(manualCode); setManualCode(""); }}}
-                    placeholder="إدخال يدوي سريع..."
-                    className="w-full px-2.5 py-1 bg-gray-900 border border-gray-700 rounded-lg text-white font-mono text-xs"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && manualCode.trim()) {
+                        handleDetectedCode(manualCode);
+                        setManualCode("");
+                      }
+                    }}
+                    placeholder="رمز الباركود..."
+                    className="w-full px-3 py-2.5 bg-gray-950 border border-gray-700 rounded-xl text-white font-mono text-center text-xs"
+                    autoFocus
                   />
+                  <button
+                    onClick={() => {
+                      if (manualCode.trim()) {
+                        handleDetectedCode(manualCode);
+                        setManualCode("");
+                      }
+                    }}
+                    className="w-full py-2 bg-blue-600 text-white font-bold rounded-xl text-xs"
+                  >
+                    معالجة الكود 🔍
+                  </button>
                 </div>
-              )}
-            </div>
-
-            <div className="flex-1 flex flex-col items-center justify-center relative min-h-[280px]">
-              {cameraError ? (
-                <div className="bg-red-950/60 border border-red-800 rounded-2xl p-4 text-center">
-                  <p className="text-red-400 font-bold text-xs mb-2">{cameraError}</p>
-                  <button onClick={startCamera} className="px-3 py-1 bg-blue-600 rounded-xl text-xs font-bold">إعادة المحاولة</button>
-                </div>
-              ) : (
-                <div className="relative w-full h-full rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-gray-800 shadow-inner">
-                  <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
-                  <canvas ref={canvasRef} className="hidden" />
-
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-56 h-36 border-2 border-blue-400 rounded-2xl relative shadow-[0_0_15px_rgba(59,130,246,0.3)]">
-                      <div className="absolute inset-x-2 h-0.5 bg-blue-400 animate-pulse" style={{ top: "50%" }} />
-                    </div>
-                  </div>
-
-                  <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
-                    <button
-                      onClick={() => setFacingMode((prev) => (prev === "environment" ? "user" : "environment"))}
-                      className="bg-black/60 text-white text-[11px] font-bold px-2.5 py-1 rounded-xl border border-white/20"
-                    >
-                      🔄 {facingMode === "environment" ? "الخلفية" : "الأمامية"}
-                    </button>
-                    {torchSupported && (
-                      <button
-                        onClick={toggleTorch}
-                        className={`text-[11px] font-bold px-2.5 py-1 rounded-xl border ${torchOn ? "bg-yellow-400 text-yellow-950" : "bg-black/60 text-white"}`}
-                      >
-                        {torchOn ? "🔦 إيقاف الفلاش" : "💡 تشغيل الفلاش"}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* ════════════════════════════════════════════════════════════════
