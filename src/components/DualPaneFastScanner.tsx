@@ -69,16 +69,14 @@ function playScanBeep(type: "success" | "warning" | "error" = "success") {
     const now = ctx.currentTime;
 
     if (type === "success") {
-      // High-pitched double beep for success
       osc.type = "sine";
-      osc.frequency.setValueAtTime(880, now); // A5
+      osc.frequency.setValueAtTime(880, now);
       osc.frequency.exponentialRampToValueAtTime(1200, now + 0.08);
       gain.gain.setValueAtTime(0.3, now);
       gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
       osc.start(now);
       osc.stop(now + 0.12);
     } else if (type === "warning") {
-      // Medium dual tone for ignored URL / warning
       osc.type = "triangle";
       osc.frequency.setValueAtTime(440, now);
       osc.frequency.setValueAtTime(330, now + 0.08);
@@ -87,7 +85,6 @@ function playScanBeep(type: "success" | "warning" | "error" = "success") {
       osc.start(now);
       osc.stop(now + 0.16);
     } else {
-      // Low buzz for error / out of stock
       osc.type = "sawtooth";
       osc.frequency.setValueAtTime(220, now);
       gain.gain.setValueAtTime(0.25, now);
@@ -401,7 +398,6 @@ export default function DualPaneFastScanner({
       const track = stream.getVideoTracks()[0];
       if (track && "getCapabilities" in track) {
         try {
-          // @ts-expect-error - getCapabilities check
           const caps = track.getCapabilities();
           setTorchSupported(!!caps?.torch);
         } catch {
