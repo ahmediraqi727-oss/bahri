@@ -884,18 +884,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         (resolvedCatId ? categoryIdToName.get(resolvedCatId) : null) ||
         (catNameFromNotes !== "عام" ? catNameFromNotes : null);
 
-      const retailP = p.retailPrice ?? p.price ?? 0;
-      const costP = p.costPrice ?? 0;
-      const wholesaleP = p.wholesalePrice ?? 0;
-      const profitM = p.profitMargin ?? 0;
-      const stockVal = p.stock ?? p.stockQuantity ?? 0;
+      const retailP = Number(p.retailPrice ?? p.price) || 0;
+      const costP = Number(p.costPrice) || 0;
+      const wholesaleP = Number(p.wholesalePrice) || 0;
+      const profitM = Number(p.profitMargin) || 0;
+      const stockVal = Number(p.stock ?? p.stockQuantity) || 0;
       const qrVal = p.qrCodeData ?? p.qrCode ?? null;
       const barcodeVal = p.barcode ?? null;
-      const skuVal = p.sku ?? p.id ?? null;
+      const skuVal = p.sku ?? p.id ?? "";
 
       return {
         id: p.id,
-        name: p.name,
+        name: p.name || "",
         image: p.image || "",
         originalImageUrl: p.originalImageUrl || p.image || "",
         price: retailP,
@@ -913,8 +913,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         categoryName: resolvedCatName,
         supplierId: p.supplierId || "",
         notes: p.notes || "",
-        createdAt: p.createdAt,
-        updatedAt: p.updatedAt,
+        createdAt: p.createdAt || new Date().toISOString(),
+        updatedAt: p.updatedAt || new Date().toISOString(),
       };
     });
 
