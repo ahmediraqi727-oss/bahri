@@ -11,7 +11,8 @@ import DuplicateResolutionModal, { DuplicateActionChoice } from "./DuplicateReso
 import MissingDataModal, { IncompleteImportItem } from "./MissingDataModal";
 import { validateImportColumns } from "@/lib/import-validator";
 import { useToast } from "@/components/ToastProvider";
-import { isUUID } from "@/lib/data-context";
+import { isUUID, productToRow } from "@/lib/data-context";
+import { StoreBackupPackage } from "@/lib/types";
 import { deriveRetailFromCost, deriveWholesaleFromRetail } from "@/lib/pricing-engine";
 import { checkDuplicateOnImport } from "@/lib/barcode-service"; // Barcode dedup guard
 
@@ -502,15 +503,16 @@ export default function ImportExportBar() {
     });
   };
 
-  // Requirement 1: Full Backup Export (JSON Package)
+  // Requirement 1: Full Backup Export (JSON Package v2.0)
   const handleFullBackup = async () => {
     const rawData = exportAllData();
-    const backupPackage = {
+    const backupPackage: StoreBackupPackage = {
       version: "2.0",
       exportDate: new Date().toISOString(),
       storeName: settings.siteName || "موقع أحمد بحري",
       totalProducts: rawData.products.length,
       totalCategories: rawData.categories.length,
+      totalSuppliers: rawData.suppliers?.length || 0,
       products: rawData.products,
       categories: rawData.categories,
       suppliers: rawData.suppliers,
@@ -528,7 +530,7 @@ export default function ImportExportBar() {
       user: settings.currentRole,
       action: "export",
       entity: "نسخة احتياطية",
-      details: `تصدير نسخة احتياطية كاملة (${rawData.products.length} منتج شامل التكاليف والصور والمخزون، ${rawData.categories.length} قسم)`,
+      details: `تصدير نسخة احتياطية كاملة (${rawData.products.length} منتج شامل الأسعار والمخزون والبارشود والـ QR والـ SKU والتصنيفات، ${rawData.categories.length} قسم)`,
     });
   };
 
@@ -541,7 +543,7 @@ export default function ImportExportBar() {
     reader.onload = async (ev) => {
       try {
         const parsed = JSON.parse(ev.target?.result as string);
-        const backupProducts: Partial<Product>[] = parsed.products || parsed || [];
+        const backupProducts: Partial<Product>[] = parsed.products || (Array.isArray(parsed) ? parsed : []);
         const backupCategories: Partial<CategoryItem>[] = parsed.categories || [];
         const backupSuppliers: Partial<Supplier>[] = parsed.suppliers || [];
 
@@ -552,12 +554,13 @@ export default function ImportExportBar() {
 
         setIsRestoring(true);
 
-        // 1. Auto-create/upsert missing categories & suppliers in Supabase
+        // 1. Auto-create/upsert missing categories & suppliers in Supabase FIRST (Foreign Key constraint safety)
         if (backupCategories.length > 0) {
           const catRows = backupCategories.map((c) => ({
             name: c.name,
             image: c.image || "",
             priority: c.priority || 1,
+            is_active: c.isActive !== undefined ? Boolean(c.isActive) : true,
             keywords: c.keywords || "",
           }));
           await supabase.from("categories").upsert(catRows, { onConflict: "name" });
@@ -574,6 +577,13 @@ export default function ImportExportBar() {
           await supabase.from("suppliers").upsert(supRows, { onConflict: "name" });
         }
 
+        // Fetch fresh categories from DB to build a mapping from Category Name to UUID
+        const { data: freshCats } = await supabase.from("categories").select("id, name");
+        const categoryNameToIdMap = new Map<string, string>();
+        freshCats?.forEach((c) => {
+          if (c.name && c.id) categoryNameToIdMap.set(c.name.trim().toLowerCase(), c.id);
+        });
+
         // 2. Separate backup products into non-duplicates vs duplicates
         const existingProductsMap = new Map<string, Product>();
         products.forEach((p) => {
@@ -588,31 +598,34 @@ export default function ImportExportBar() {
           const key = item.name.trim().toLowerCase();
           const existing = existingProductsMap.get(key);
 
+          // Resolve Category ID
+          let catId = item.categoryId && isUUID(item.categoryId) ? item.categoryId : null;
+          if (!catId && item.categoryName) {
+            catId = categoryNameToIdMap.get(item.categoryName.trim().toLowerCase()) || null;
+          }
+          const itemWithCat = { ...item, categoryId: catId };
+
           if (existing) {
-            duplicates.push({ existing, incoming: item });
+            duplicates.push({ existing, incoming: itemWithCat });
           } else {
-            nonDuplicates.push(item);
+            nonDuplicates.push(itemWithCat);
           }
         }
 
-        // 3. Insert Non-duplicate products directly
+        // 3. Insert Non-duplicate products directly preserving all financial, inventory, barcode, QR, SKU, and category data
         let insertedCount = 0;
         if (nonDuplicates.length > 0) {
-          const rowsToInsert = nonDuplicates.map((p) => ({
-            name: p.name!.trim(),
-            image: p.image || "",
-            cost_price: p.costPrice || p.retailPrice || 0,
-            wholesale_price: p.wholesalePrice || p.retailPrice || 0,
-            profit_margin: p.profitMargin || 0,
-            retail_price: p.retailPrice || p.costPrice || 0,
-            stock: p.stock || 0,
-            notes: p.notes || "",
-            supplier_id: p.supplierId && isUUID(p.supplierId) ? p.supplierId : null,
-          }));
+          const rowsToInsert = nonDuplicates.map((p) => {
+            const row = productToRow(p as Record<string, unknown>);
+            if (!row.category_id && p.categoryId) row.category_id = p.categoryId;
+            return row;
+          });
 
-          const { error } = await supabase.from("products").insert(rowsToInsert);
+          const { error } = await supabase.from("products").upsert(rowsToInsert, { onConflict: "name" });
           if (!error) {
             insertedCount = nonDuplicates.length;
+          } else {
+            console.error("Error inserting backup products:", error.message);
           }
         }
 
@@ -662,23 +675,35 @@ export default function ImportExportBar() {
     if (choice === "update") {
       const updateRows = itemsToProcess.map((pair) => {
         const p = pair.incoming;
-        return {
-          id: pair.existing.id,
-          name: pair.existing.name,
-          image: p.image || pair.existing.image || "",
-          cost_price: p.costPrice !== undefined ? p.costPrice : pair.existing.costPrice,
-          profit_margin: p.profitMargin !== undefined ? p.profitMargin : pair.existing.profitMargin,
-          wholesale_price: p.wholesalePrice !== undefined ? p.wholesalePrice : pair.existing.wholesalePrice,
-          retail_price: p.retailPrice !== undefined ? p.retailPrice : pair.existing.retailPrice,
-          stock: p.stock !== undefined ? p.stock : pair.existing.stock,
-          notes: p.notes || pair.existing.notes || "",
-          updated_at: new Date().toISOString(),
-        };
+        const ex = pair.existing;
+
+        const updatedRow = productToRow({
+          ...ex,
+          ...p,
+          id: ex.id, // Preserve existing ID
+          name: ex.name, // Preserve existing name
+          image: p.image || ex.image || "",
+          costPrice: p.costPrice !== undefined ? p.costPrice : ex.costPrice,
+          profitMargin: p.profitMargin !== undefined ? p.profitMargin : ex.profitMargin,
+          wholesalePrice: p.wholesalePrice !== undefined ? p.wholesalePrice : ex.wholesalePrice,
+          retailPrice: (p.price ?? p.retailPrice) !== undefined ? (p.price ?? p.retailPrice) : ex.retailPrice,
+          stock: (p.stockQuantity ?? p.stock) !== undefined ? (p.stockQuantity ?? p.stock) : ex.stock,
+          barcode: p.barcode !== undefined ? p.barcode : ex.barcode,
+          qrCode: (p.qrCodeData ?? p.qrCode) !== undefined ? (p.qrCodeData ?? p.qrCode) : ex.qrCode,
+          sku: p.sku !== undefined ? p.sku : ex.sku,
+          categoryId: p.categoryId || ex.categoryId,
+          notes: p.notes || ex.notes || "",
+          updatedAt: new Date().toISOString(),
+        } as Record<string, unknown>);
+
+        return updatedRow;
       });
 
-      const { error } = await supabase.from("products").upsert(updateRows);
+      const { error } = await supabase.from("products").upsert(updateRows, { onConflict: "id" });
       if (!error) {
         updated += itemsToProcess.length;
+      } else {
+        console.error("Error updating duplicate products:", error.message);
       }
     } else if (choice === "skip") {
       skipped += itemsToProcess.length;

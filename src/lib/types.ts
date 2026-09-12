@@ -335,6 +335,13 @@ export interface Product {
   notes: string;
   createdAt: string;
   updatedAt: string;
+  // Dual-naming compatibility & enhanced fields for comprehensive backup/restore
+  price?: number;
+  stockQuantity?: number;
+  qrCodeData?: string | null;
+  sku?: string | null;
+  categoryId?: string | null;
+  categoryName?: string | null;
   // Barcode & QR Code fields (1-to-1 strict mapping enforced at DB level)
   barcode?: string | null;
   qrCode?: string | null;
@@ -343,6 +350,43 @@ export interface Product {
   isBarcodeActive?: boolean;
   // Optional per-product pricing override (loaded from product_pricing_overrides table)
   pricingOverride?: import("./pricing-engine").ProductPricingOverride | null;
+}
+
+// ─── Comprehensive Backup & Restore Interfaces ──────────────────────────────────
+export interface BackupProductItem {
+  id?: string;
+  name: string;
+  image?: string;
+  originalImageUrl?: string;
+  price?: number;
+  retailPrice?: number;
+  costPrice?: number;
+  wholesalePrice?: number;
+  profitMargin?: number;
+  stockQuantity?: number;
+  stock?: number;
+  barcode?: string | null;
+  qrCodeData?: string | null;
+  qrCode?: string | null;
+  sku?: string | null;
+  categoryId?: string | null;
+  categoryName?: string | null;
+  supplierId?: string | null;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface StoreBackupPackage {
+  version: string;
+  exportDate: string;
+  storeName: string;
+  totalProducts: number;
+  totalCategories: number;
+  totalSuppliers?: number;
+  products: BackupProductItem[];
+  categories: CategoryItem[];
+  suppliers?: Supplier[];
 }
 
 // ─── Scanner RBAC Permissions Configuration ──────────────────────────────────

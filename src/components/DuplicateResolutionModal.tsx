@@ -95,13 +95,25 @@ export default function DuplicateResolutionModal({
                 <span className="font-bold text-gray-900 dark:text-white">{(existingProduct.wholesalePrice || 0).toLocaleString()} د.ع</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">سعر المفرد:</span>
-                <span className="font-extrabold text-blue-600 dark:text-blue-400">{(existingProduct.retailPrice || 0).toLocaleString()} د.ع</span>
+                <span className="text-gray-500">سعر المفرد (الأساسي):</span>
+                <span className="font-extrabold text-blue-600 dark:text-blue-400">{((existingProduct.price ?? existingProduct.retailPrice) || 0).toLocaleString()} د.ع</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">المخزون الحالي:</span>
-                <span className="font-extrabold text-purple-600 dark:text-purple-400">{existingProduct.stock || 0} قطعة</span>
+                <span className="font-extrabold text-purple-600 dark:text-purple-400">{(existingProduct.stockQuantity ?? existingProduct.stock) || 0} قطعة</span>
               </div>
+              {existingProduct.barcode && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">الباركود:</span>
+                  <span className="font-mono text-[11px] text-gray-700 dark:text-gray-300">{existingProduct.barcode}</span>
+                </div>
+              )}
+              {(existingProduct.qrCodeData || existingProduct.qrCode) && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">رمز QR:</span>
+                  <span className="font-mono text-[11px] text-gray-700 dark:text-gray-300">{existingProduct.qrCodeData || existingProduct.qrCode}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -140,13 +152,25 @@ export default function DuplicateResolutionModal({
                 <span className="font-bold text-gray-900 dark:text-white">{(incomingProduct.wholesalePrice || 0).toLocaleString()} د.ع</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">سعر المفرد:</span>
-                <span className="font-extrabold text-blue-600 dark:text-blue-400">{(incomingProduct.retailPrice || 0).toLocaleString()} د.ع</span>
+                <span className="text-gray-500">سعر المفرد (الأساسي):</span>
+                <span className="font-extrabold text-blue-600 dark:text-blue-400">{((incomingProduct.price ?? incomingProduct.retailPrice) || 0).toLocaleString()} د.ع</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">المخزون الوارد:</span>
-                <span className="font-extrabold text-purple-600 dark:text-purple-400">{incomingProduct.stock || 0} قطعة</span>
+                <span className="font-extrabold text-purple-600 dark:text-purple-400">{(incomingProduct.stockQuantity ?? incomingProduct.stock) || 0} قطعة</span>
               </div>
+              {incomingProduct.barcode && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">الباركود:</span>
+                  <span className="font-mono text-[11px] text-blue-800 dark:text-blue-300">{incomingProduct.barcode}</span>
+                </div>
+              )}
+              {(incomingProduct.qrCodeData || incomingProduct.qrCode) && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">رمز QR:</span>
+                  <span className="font-mono text-[11px] text-blue-800 dark:text-blue-300">{incomingProduct.qrCodeData || incomingProduct.qrCode}</span>
+                </div>
+              )}
             </div>
           </div>
 

@@ -86,7 +86,18 @@ interface DataContextType {
   persistAllCategoriesAndProducts: (catsToSave: CategoryItem[], prodsToSave: Product[]) => Promise<boolean>;
   reloadAllData: () => Promise<void>;
   importProducts: (items: Omit<Product, "id" | "createdAt" | "updatedAt">[], onProgress?: (processed: number, total: number) => void) => Promise<number>;
-  exportAllData: () => { products: Product[]; suppliers: Supplier[]; categories: CategoryItem[]; exportedAt: string };
+  exportAllData: () => {
+    version: string;
+    exportDate: string;
+    storeName: string;
+    totalProducts: number;
+    totalCategories: number;
+    totalSuppliers: number;
+    products: Product[];
+    categories: CategoryItem[];
+    suppliers: Supplier[];
+    exportedAt: string;
+  };
   importAllData: (data: { products?: Product[]; suppliers?: Supplier[]; categories?: CategoryItem[] }) => Promise<void>;
   // ─ Pricing overrides ──────────────────────────────────────────
   productPricingOverrides: Record<string, ProductPricingOverride>;
@@ -106,23 +117,41 @@ export function isUUID(str: string): boolean {
 export function rowToProduct(row: Record<string, unknown>): Product {
   const image = (row.image as string) || "";
   const origImage = (row.original_image_url as string) || image || "";
+  const costP = Number(row.cost_price ?? row.costPrice) || 0;
+  const retailP = Number(row.retail_price ?? row.retailPrice ?? row.price) || 0;
+  const wholesaleP = Number(row.wholesale_price ?? row.wholesalePrice) || 0;
+  const profitM = Number(row.profit_margin ?? row.profitMargin) || 0;
+  const stockVal = Number(row.stock ?? row.stockQuantity ?? row.stock_quantity) || 0;
+  const qrVal = (row.qr_code as string | null) ?? (row.qrCodeData as string | null) ?? (row.qr_code_data as string | null) ?? (row.qrCode as string | null) ?? null;
+  const barcodeVal = (row.barcode as string | null) ?? null;
+  const skuVal = (row.sku as string | null) ?? (row.id as string | null) ?? null;
+  const catId = (row.category_id as string | null) ?? (row.categoryId as string | null) ?? null;
+  const catName = (row.category_name as string | null) ?? (row.categoryName as string | null) ?? null;
+
   return {
     id: row.id as string,
     name: (row.name as string) || "",
     image,
     originalImageUrl: origImage,
-    costPrice: Number(row.cost_price) || 0,
-    wholesalePrice: Number(row.wholesale_price) || 0,
-    profitMargin: Number(row.profit_margin) || 0,
-    retailPrice: Number(row.retail_price) || 0,
-    stock: Number(row.stock) || 0,
+    costPrice: costP,
+    wholesalePrice: wholesaleP,
+    profitMargin: profitM,
+    retailPrice: retailP,
+    stock: stockVal,
     supplierId: (row.supplier_id as string) || "",
     notes: (row.notes as string) || "",
     createdAt: (row.created_at as string) || new Date().toISOString(),
     updatedAt: (row.updated_at as string) || new Date().toISOString(),
-    // Barcode & QR Code — 1-to-1 mapping & usage tracking fields
-    barcode: (row.barcode as string | null) ?? null,
-    qrCode: (row.qr_code as string | null) ?? null,
+    // Comprehensive dual-naming & alias fields
+    price: retailP,
+    stockQuantity: stockVal,
+    qrCodeData: qrVal,
+    sku: skuVal,
+    categoryId: catId,
+    categoryName: catName,
+    // Barcode & QR Code fields
+    barcode: barcodeVal,
+    qrCode: qrVal,
     scanCount: Number(row.scan_count) || 0,
     lastScannedAt: (row.last_scanned_at as string | null) ?? null,
     isBarcodeActive: row.is_barcode_active !== undefined ? Boolean(row.is_barcode_active) : true,
@@ -132,6 +161,9 @@ export function rowToProduct(row: Record<string, unknown>): Product {
 export function productToRow(product: Record<string, unknown>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
 
+  if ("id" in product && product.id && isUUID(String(product.id))) {
+    row.id = product.id;
+  }
   if ("name" in product) row.name = product.name;
   if ("image" in product) row.image = product.image || "";
 
@@ -143,34 +175,41 @@ export function productToRow(product: Record<string, unknown>): Record<string, u
     row.original_image_url = product.image;
   }
 
-  if ("costPrice" in product || "cost_price" in product) {
-    row.cost_price = Number(product.costPrice ?? product.cost_price) || 0;
-  }
-  if ("wholesalePrice" in product || "wholesale_price" in product) {
-    row.wholesale_price = Number(product.wholesalePrice ?? product.wholesale_price) || 0;
-  }
-  if ("profitMargin" in product || "profit_margin" in product) {
-    row.profit_margin = Number(product.profitMargin ?? product.profit_margin) || 0;
-  }
-  if ("retailPrice" in product || "retail_price" in product) {
-    row.retail_price = Number(product.retailPrice ?? product.retail_price) || 0;
-  }
-  if ("stock" in product) row.stock = Number(product.stock) || 0;
+  // Cost, Wholesale, Retail, Profit Margin
+  const costPrice = Number(product.costPrice ?? product.cost_price) || 0;
+  const retailPrice = Number(product.price ?? product.retailPrice ?? product.retail_price) || 0;
+  const wholesalePrice = Number(product.wholesalePrice ?? product.wholesale_price) || 0;
+  const profitMargin = Number(product.profitMargin ?? product.profit_margin) || 0;
+
+  row.cost_price = costPrice;
+  row.retail_price = retailPrice;
+  row.wholesale_price = wholesalePrice;
+  row.profit_margin = profitMargin;
+
+  // Stock Quantity
+  const stockVal = Number(product.stockQuantity ?? product.stock_quantity ?? product.stock) || 0;
+  row.stock = stockVal;
 
   if ("supplierId" in product || "supplier_id" in product) {
     const sid = String(product.supplierId ?? product.supplier_id ?? "").trim();
     row.supplier_id = isUUID(sid) ? sid : null;
   }
-  if ("category_id" in product && product.category_id) {
-    const cid = String(product.category_id).trim();
+
+  if (("categoryId" in product && product.categoryId) || ("category_id" in product && product.category_id)) {
+    const cid = String(product.categoryId ?? product.category_id ?? "").trim();
     if (isUUID(cid)) row.category_id = cid;
   }
+
   if ("notes" in product) row.notes = product.notes || "";
 
-  // Barcode & QR Code columns & tracking
+  // Barcode & QR Code columns & tracking & SKU
   if ("barcode" in product) row.barcode = product.barcode ?? null;
-  if ("qrCode" in product) row.qr_code = (product.qrCode as string | null) ?? null;
-  if ("qr_code" in product) row.qr_code = product.qr_code ?? null;
+  
+  const qrVal = product.qrCodeData ?? product.qrCode ?? product.qr_code ?? product.qr_code_data;
+  if (qrVal !== undefined) row.qr_code = qrVal ?? null;
+
+  if ("sku" in product) row.sku = (product.sku as string | null) ?? null;
+
   if ("scanCount" in product || "scan_count" in product) {
     row.scan_count = Number(product.scanCount ?? product.scan_count) || 0;
   }
@@ -832,24 +871,103 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   );
 
   const exportAllData = useCallback(() => {
-    return { products, suppliers, categories, exportedAt: new Date().toISOString() };
+    const categoryIdToName = new Map<string, string>();
+    categories.forEach((c) => {
+      if (c.id && c.name) categoryIdToName.set(c.id, c.name);
+    });
+
+    const enrichedProducts = products.map((p) => {
+      const catNameFromNotes = extractCategoryFromNotes(p.notes || "");
+      const resolvedCatId = p.categoryId || null;
+      const resolvedCatName =
+        p.categoryName ||
+        (resolvedCatId ? categoryIdToName.get(resolvedCatId) : null) ||
+        (catNameFromNotes !== "عام" ? catNameFromNotes : null);
+
+      const retailP = p.retailPrice ?? p.price ?? 0;
+      const costP = p.costPrice ?? 0;
+      const wholesaleP = p.wholesalePrice ?? 0;
+      const profitM = p.profitMargin ?? 0;
+      const stockVal = p.stock ?? p.stockQuantity ?? 0;
+      const qrVal = p.qrCodeData ?? p.qrCode ?? null;
+      const barcodeVal = p.barcode ?? null;
+      const skuVal = p.sku ?? p.id ?? null;
+
+      return {
+        id: p.id,
+        name: p.name,
+        image: p.image || "",
+        originalImageUrl: p.originalImageUrl || p.image || "",
+        price: retailP,
+        costPrice: costP,
+        wholesalePrice: wholesaleP,
+        profitMargin: profitM,
+        retailPrice: retailP,
+        stockQuantity: stockVal,
+        stock: stockVal,
+        barcode: barcodeVal,
+        qrCodeData: qrVal,
+        qrCode: qrVal,
+        sku: skuVal,
+        categoryId: resolvedCatId,
+        categoryName: resolvedCatName,
+        supplierId: p.supplierId || "",
+        notes: p.notes || "",
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+      };
+    });
+
+    return {
+      version: "2.0",
+      exportDate: new Date().toISOString(),
+      storeName: "موقع أحمد بحري",
+      totalProducts: enrichedProducts.length,
+      totalCategories: categories.length,
+      totalSuppliers: suppliers.length,
+      products: enrichedProducts as Product[],
+      categories,
+      suppliers,
+      exportedAt: new Date().toISOString(),
+    };
   }, [products, suppliers, categories]);
 
-  const importAllData = useCallback(async (data: { products?: Product[]; suppliers?: Supplier[]; categories?: CategoryItem[] }) => {
-    if (data.suppliers && data.suppliers.length > 0) {
-      const rows = data.suppliers.map((s) => supplierToRow(s as unknown as Record<string, unknown>));
-      await supabase.from("suppliers").upsert(rows);
-    }
-    if (data.products && data.products.length > 0) {
-      const rows = data.products.map((p) => productToRow(p as unknown as Record<string, unknown>));
-      await supabase.from("products").upsert(rows);
-    }
-    if (data.categories && data.categories.length > 0) {
-      const rows = data.categories.map((c) => categoryToRow(c as unknown as Record<string, unknown>));
-      await supabase.from("categories").upsert(rows);
-    }
-    await reloadAllData();
-  }, [reloadAllData]);
+  const importAllData = useCallback(
+    async (data: { products?: any[]; suppliers?: Supplier[]; categories?: CategoryItem[] }) => {
+      // 1. Foreign Key constraint protection: Upsert categories and suppliers BEFORE products
+      if (data.categories && data.categories.length > 0) {
+        const catRows = data.categories.map((c) => categoryToRow(c as unknown as Record<string, unknown>));
+        await supabase.from("categories").upsert(catRows, { onConflict: "name" });
+      }
+      if (data.suppliers && data.suppliers.length > 0) {
+        const supRows = data.suppliers.map((s) => supplierToRow(s as unknown as Record<string, unknown>));
+        await supabase.from("suppliers").upsert(supRows, { onConflict: "name" });
+      }
+
+      // Fetch fresh category ID mapping for relational integrity
+      const { data: freshCats } = await supabase.from("categories").select("id, name");
+      const categoryNameToId = new Map<string, string>();
+      freshCats?.forEach((c) => {
+        if (c.name && c.id) categoryNameToId.set(c.name.trim().toLowerCase(), c.id);
+      });
+
+      // 2. Upsert products with resolved category_id
+      if (data.products && data.products.length > 0) {
+        const rows = data.products.map((p) => {
+          const row = productToRow(p as Record<string, unknown>);
+          if (!row.category_id && (p.categoryName || p.category_name)) {
+            const cName = String(p.categoryName || p.category_name).trim().toLowerCase();
+            const mappedId = categoryNameToId.get(cName);
+            if (mappedId) row.category_id = mappedId;
+          }
+          return row;
+        });
+        await supabase.from("products").upsert(rows, { onConflict: "name" });
+      }
+      await reloadAllData();
+    },
+    [reloadAllData]
+  );
 
   // ─ Pricing override operations ──────────────────────────────────────────
 
