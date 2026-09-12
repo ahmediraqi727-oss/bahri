@@ -11,7 +11,7 @@ import DuplicateResolutionModal, { DuplicateActionChoice } from "./DuplicateReso
 import MissingDataModal, { IncompleteImportItem } from "./MissingDataModal";
 import { validateImportColumns } from "@/lib/import-validator";
 import { useToast } from "@/components/ToastProvider";
-import { isUUID, productToRow } from "@/lib/data-context";
+import { isUUID, productToRow, extractCategoryFromNotes } from "@/lib/data-context";
 import { StoreBackupPackage } from "@/lib/types";
 import { deriveRetailFromCost, deriveWholesaleFromRetail } from "@/lib/pricing-engine";
 import { checkDuplicateOnImport } from "@/lib/barcode-service"; // Barcode dedup guard
@@ -551,14 +551,39 @@ export default function ImportExportBar() {
         setIsRestoring(true);
 
         // 1. Auto-create/upsert missing categories & suppliers in Supabase FIRST (Foreign Key constraint safety)
+        const catMapToUpsert = new Map<string, { name: string; priority: number; is_active: boolean }>();
+
         if (backupCategories.length > 0) {
-          const catRows = backupCategories.map((c) => ({
-            name: c.name,
-            image: c.image || "",
-            priority: c.priority || 1,
-            is_active: c.isActive !== undefined ? Boolean(c.isActive) : true,
-            keywords: c.keywords || "",
-          }));
+          backupCategories.forEach((c) => {
+            if (c.name && c.name.trim()) {
+              catMapToUpsert.set(c.name.trim().toLowerCase(), {
+                name: c.name.trim(),
+                priority: c.priority || 1,
+                is_active: c.isActive !== undefined ? Boolean(c.isActive) : true,
+              });
+            }
+          });
+        }
+
+        // Implicit category discovery from product categoryName or notes
+        backupProducts.forEach((p) => {
+          const rawCatName = p.categoryName || (p as any).category_name;
+          const notesCatName = extractCategoryFromNotes(p.notes || "");
+          const candidateCat = (rawCatName || (notesCatName !== "عام" ? notesCatName : null)) as string | null;
+          if (candidateCat && candidateCat.trim()) {
+            const key = candidateCat.trim().toLowerCase();
+            if (!catMapToUpsert.has(key)) {
+              catMapToUpsert.set(key, {
+                name: candidateCat.trim(),
+                priority: 1,
+                is_active: true,
+              });
+            }
+          }
+        });
+
+        if (catMapToUpsert.size > 0) {
+          const catRows = Array.from(catMapToUpsert.values());
           await supabase.from("categories").upsert(catRows, { onConflict: "name" });
         }
 
@@ -594,10 +619,15 @@ export default function ImportExportBar() {
           const key = item.name.trim().toLowerCase();
           const existing = existingProductsMap.get(key);
 
-          // Resolve Category ID
+          // Resolve Category ID (UUID -> explicit categoryName -> notes extraction)
           let catId = item.categoryId && isUUID(item.categoryId) ? item.categoryId : null;
-          if (!catId && item.categoryName) {
-            catId = categoryNameToIdMap.get(item.categoryName.trim().toLowerCase()) || null;
+          if (!catId) {
+            const rawCatName = item.categoryName || (item as any).category_name;
+            const notesCatName = extractCategoryFromNotes(item.notes || "");
+            const candidateCat = rawCatName || (notesCatName !== "عام" ? notesCatName : "");
+            if (candidateCat) {
+              catId = categoryNameToIdMap.get(String(candidateCat).trim().toLowerCase()) || null;
+            }
           }
           const itemWithCat = { ...item, categoryId: catId };
 

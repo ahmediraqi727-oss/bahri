@@ -873,8 +873,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const exportAllData = useCallback(() => {
     const categoryIdToName = new Map<string, string>();
+    const categoryNameToId = new Map<string, string>();
     categories.forEach((c) => {
-      if (c.id && c.name) categoryIdToName.set(c.id, c.name);
+      if (c.id && c.name) {
+        categoryIdToName.set(c.id, c.name);
+        categoryNameToId.set(c.name.trim().toLowerCase(), c.id);
+      }
     });
 
     // جلب إعدادات المتجر ومعلومات التواصل والسوشيال ميديا من الكاش المحلي إن وجدت
@@ -888,11 +892,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const enrichedProducts = products.map((p) => {
       const catNameFromNotes = extractCategoryFromNotes(p.notes || "");
-      const resolvedCatId = p.categoryId || null;
       const resolvedCatName =
         p.categoryName ||
-        (resolvedCatId ? categoryIdToName.get(resolvedCatId) : null) ||
+        (p.categoryId ? categoryIdToName.get(p.categoryId) : null) ||
         (catNameFromNotes !== "عام" ? catNameFromNotes : null);
+
+      const resolvedCatId =
+        p.categoryId ||
+        (resolvedCatName ? categoryNameToId.get(resolvedCatName.trim().toLowerCase()) : null) ||
+        null;
 
       const rawP = p as Record<string, any>;
       const retailP = Number(rawP.retailPrice ?? rawP.price ?? rawP.retail_price) || 0;
@@ -945,7 +953,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, [products, suppliers, categories]);
 
   const importAllData = useCallback(
-    async (data: { products?: any[]; suppliers?: Supplier[]; categories?: CategoryItem[]; settings?: any }) => {
+    async (
+      data: { products?: any[]; suppliers?: Supplier[]; categories?: CategoryItem[]; settings?: any },
+      onProgress?: (info: { stage: string; current: number; total: number; percentage: number }) => void
+    ) => {
       // 1. استعادة إعدادات المتجر ومعلومات التواصل والسوشيال ميديا إن وجدت في النسخة
       if (data.settings) {
         try {
@@ -956,35 +967,95 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // 2. استعادة التصنيفات والموردين أولاً لسلامة المفتاح الأجنبي (Foreign Key Safety)
+      // 2. تجميع واستكمال التصنيفات الضمنية (من أسماء التصنيفات والملاحظات) أولاً
+      const catMapToUpsert = new Map<string, { name: string; priority: number; is_active: boolean }>();
+
       if (data.categories && data.categories.length > 0) {
-        const catRows = data.categories.map((c) => categoryToRow(c as unknown as Record<string, unknown>));
+        data.categories.forEach((c) => {
+          if (c.name && c.name.trim()) {
+            catMapToUpsert.set(c.name.trim().toLowerCase(), {
+              name: c.name.trim(),
+              priority: c.priority || 1,
+              is_active: c.isActive !== undefined ? Boolean(c.isActive) : true,
+            });
+          }
+        });
+      }
+
+      if (data.products && data.products.length > 0) {
+        data.products.forEach((p) => {
+          const rawCatName = p.categoryName || p.category_name;
+          const notesCatName = extractCategoryFromNotes(p.notes || "");
+          const candidateCat = (rawCatName || (notesCatName !== "عام" ? notesCatName : null)) as string | null;
+          if (candidateCat && candidateCat.trim()) {
+            const key = candidateCat.trim().toLowerCase();
+            if (!catMapToUpsert.has(key)) {
+              catMapToUpsert.set(key, {
+                name: candidateCat.trim(),
+                priority: 1,
+                is_active: true,
+              });
+            }
+          }
+        });
+      }
+
+      if (catMapToUpsert.size > 0) {
+        onProgress?.({ stage: "جاري رفع واستعادة التصنيفات الأقسام...", current: 1, total: 3, percentage: 10 });
+        const catRows = Array.from(catMapToUpsert.values());
         await supabase.from("categories").upsert(catRows, { onConflict: "name" });
       }
+
       if (data.suppliers && data.suppliers.length > 0) {
+        onProgress?.({ stage: "جاري استعادة الموردين...", current: 2, total: 3, percentage: 20 });
         const supRows = data.suppliers.map((s) => supplierToRow(s as unknown as Record<string, unknown>));
         await supabase.from("suppliers").upsert(supRows, { onConflict: "name" });
       }
 
+      // جلب التصنيفات المحدثة من Supabase لمطابقة الـ UUIDs
       const { data: freshCats } = await supabase.from("categories").select("id, name");
       const categoryNameToId = new Map<string, string>();
       freshCats?.forEach((c) => {
         if (c.name && c.id) categoryNameToId.set(c.name.trim().toLowerCase(), c.id);
       });
 
-      // 3. استعادة المنتجات بكافة حقولها المالية والمخزنية والأكواد والباروكود
+      // 3. استعادة المنتجات بكافة حقولها وتوزيعها على دفعات لضمان عدم ثقل المتصفح
       if (data.products && data.products.length > 0) {
+        const totalProds = data.products.length;
         const rows = data.products.map((p) => {
           const row = productToRow(p as Record<string, unknown>);
-          if (!row.category_id && (p.categoryName || p.category_name)) {
-            const cName = String(p.categoryName || p.category_name).trim().toLowerCase();
-            const mappedId = categoryNameToId.get(cName);
-            if (mappedId) row.category_id = mappedId;
+          if (!row.category_id) {
+            const rawCatName = p.categoryName || p.category_name;
+            const notesCatName = extractCategoryFromNotes(p.notes || "");
+            const candidateCat = rawCatName || (notesCatName !== "عام" ? notesCatName : "");
+            if (candidateCat) {
+              const mappedId = categoryNameToId.get(String(candidateCat).trim().toLowerCase());
+              if (mappedId) row.category_id = mappedId;
+            }
           }
           return row;
         });
-        await supabase.from("products").upsert(rows, { onConflict: "name" });
+
+        const CHUNK_SIZE = 50;
+        for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+          const chunk = rows.slice(i, i + CHUNK_SIZE);
+          const currentCount = Math.min(i + CHUNK_SIZE, totalProds);
+          const percentage = Math.round(20 + (currentCount / totalProds) * 80);
+
+          onProgress?.({
+            stage: `جاري استعادة المنتجات (الدفعة ${Math.floor(i / CHUNK_SIZE) + 1} من ${Math.ceil(totalProds / CHUNK_SIZE)})...`,
+            current: currentCount,
+            total: totalProds,
+            percentage,
+          });
+
+          const { error: upsertErr } = await supabase.from("products").upsert(chunk, { onConflict: "name" });
+          if (upsertErr) {
+            console.error("Batch upsert error during backup restore:", upsertErr.message);
+          }
+        }
       }
+
       await reloadAllData();
     },
     [reloadAllData]

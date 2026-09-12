@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { useData, isUUID, productToRow, categoryToRow, supplierToRow } from "@/lib/data-context";
+import { useData, isUUID, productToRow, categoryToRow, supplierToRow, extractCategoryFromNotes } from "@/lib/data-context";
 import { useSettings } from "@/lib/settings-context";
 import { useActivityLog } from "@/lib/activity-log";
 import { useToast } from "@/components/ToastProvider";
@@ -25,7 +25,7 @@ export default function BackupSettingsSection() {
   const { products, categories, suppliers, exportAllData, reloadAllData } = useData();
   const { settings, updateSettings } = useSettings();
   const { logActivity } = useActivityLog();
-  const { success, error: toastError, warning, loading: toastLoading, resolve: resolveToast } = useToast();
+  const { success, error: toastError, warning, loading: toastLoading, resolve: resolveToast, update: updateToast } = useToast();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -34,9 +34,15 @@ export default function BackupSettingsSection() {
   const [isRestoring, setIsRestoring] = useState(false);
   const [lastExportTime, setLastExportTime] = useState<string | null>(null);
 
-  // Pre-restore modal state
+  // Pre-restore modal state & Progress Indicator
   const [preRestoreData, setPreRestoreData] = useState<PreRestoreSummary | null>(null);
   const [restoreSettingsAlso, setRestoreSettingsAlso] = useState(true);
+  const [restoreProgress, setRestoreProgress] = useState<{
+    stage: string;
+    current: number;
+    total: number;
+    percentage: number;
+  } | null>(null);
 
   // ─── 1. Export Comprehensive Backup Handler ───────────────────────────────
   const handleExportComprehensiveBackup = async () => {
@@ -145,11 +151,43 @@ export default function BackupSettingsSection() {
 
     const toastId = toastLoading("جارٍ استعادة وتنظيم كافة بيانات المتجر بحظر التعارضات...");
     setIsRestoring(true);
+    setRestoreProgress({ stage: "جاري استعادة الأقسام والموردين وتأمين المعرفات...", current: 0, total: preRestoreData.productsCount, percentage: 5 });
 
     try {
-      // ── Step A: Foreign Key Safety — Upsert Categories & Suppliers FIRST ──
+      // ── Step A: Foreign Key Safety — Collect Explicit & Implicit Categories ──
+      const catMapToUpsert = new Map<string, { name: string; priority: number; is_active: boolean }>();
+
       if (preRestoreData.rawCategories.length > 0) {
-        const catRows = preRestoreData.rawCategories.map((c) => categoryToRow(c as Record<string, unknown>));
+        preRestoreData.rawCategories.forEach((c) => {
+          if (c.name && c.name.trim()) {
+            catMapToUpsert.set(c.name.trim().toLowerCase(), {
+              name: c.name.trim(),
+              priority: c.priority || 1,
+              is_active: c.isActive !== undefined ? Boolean(c.isActive) : true,
+            });
+          }
+        });
+      }
+
+      // Check products for implicit categories (from categoryName, category_name, or notes via extractCategoryFromNotes)
+      preRestoreData.rawProducts.forEach((p) => {
+        const rawCatName = p.categoryName || p.category_name;
+        const notesCatName = extractCategoryFromNotes(p.notes || "");
+        const candidateCat = (rawCatName || (notesCatName !== "عام" ? notesCatName : null)) as string | null;
+        if (candidateCat && candidateCat.trim()) {
+          const key = candidateCat.trim().toLowerCase();
+          if (!catMapToUpsert.has(key)) {
+            catMapToUpsert.set(key, {
+              name: candidateCat.trim(),
+              priority: 1,
+              is_active: true,
+            });
+          }
+        }
+      });
+
+      if (catMapToUpsert.size > 0) {
+        const catRows = Array.from(catMapToUpsert.values());
         const { error: catErr } = await supabase.from("categories").upsert(catRows, { onConflict: "name" });
         if (catErr) console.warn("تحذير عند حفظ التصنيفات:", catErr.message);
       }
@@ -167,22 +205,28 @@ export default function BackupSettingsSection() {
         if (c.name && c.id) categoryNameToIdMap.set(c.name.trim().toLowerCase(), c.id);
       });
 
+      setRestoreProgress({ stage: "جاري تجهيز ورصف حقول المنتجات المالية والمخزنية...", current: 0, total: preRestoreData.productsCount, percentage: 15 });
+
       // ── Step B: Map Products with Fallbacks & Foreign Key Links ───────────
       const productRowsToUpsert = preRestoreData.rawProducts.map((p) => {
-        // Fallbacks for dual-naming fields (v1.0 & v2.0 backward compatibility)
         const costPrice = Number(p.costPrice ?? p.cost_price) || 0;
         const retailPrice = Number(p.price ?? p.retailPrice ?? p.retail_price) || 0;
         const wholesalePrice = Number(p.wholesalePrice ?? p.wholesale_price) || 0;
         const stockVal = Number(p.stockQuantity ?? p.stock_quantity ?? p.stock) || 0;
         const barcodeVal = (p.barcode as string | null) ?? null;
-        const qrVal = (p.qrCodeData ?? p.qrCode ?? p.qr_code) as string | null ?? null;
+        const qrVal = ((p.qrCodeData ?? p.qrCode ?? p.qr_code) as string | null) ?? null;
         const skuVal = (p.sku as string | null) ?? null;
 
-        // Category ID resolution
+        // Category ID resolution (UUID -> explicit name -> extracted from notes)
         let catId = p.categoryId && isUUID(p.categoryId) ? p.categoryId : null;
-        if (!catId && (p.categoryName || p.category_name)) {
-          const catNameClean = String(p.categoryName || p.category_name).trim().toLowerCase();
-          catId = categoryNameToIdMap.get(catNameClean) || null;
+        if (!catId) {
+          const rawCatName = p.categoryName || p.category_name;
+          const notesCatName = extractCategoryFromNotes(p.notes || "");
+          const candidateCat = rawCatName || (notesCatName !== "عام" ? notesCatName : "");
+          if (candidateCat) {
+            const catNameClean = String(candidateCat).trim().toLowerCase();
+            catId = categoryNameToIdMap.get(catNameClean) || null;
+          }
         }
 
         const row = productToRow({
@@ -200,10 +244,27 @@ export default function BackupSettingsSection() {
         return row;
       });
 
-      // ── Step C: Chunked Upsert Products into Supabase ─────────────────────
+      // ── Step C: Chunked Upsert Products into Supabase with Live Progress Indicator ──
       const CHUNK_SIZE = 50;
-      for (let i = 0; i < productRowsToUpsert.length; i += CHUNK_SIZE) {
+      const totalCount = productRowsToUpsert.length;
+      const totalChunks = Math.ceil(totalCount / CHUNK_SIZE);
+
+      for (let i = 0; i < totalCount; i += CHUNK_SIZE) {
         const chunk = productRowsToUpsert.slice(i, i + CHUNK_SIZE);
+        const chunkIndex = Math.floor(i / CHUNK_SIZE) + 1;
+        const processedCount = Math.min(i + CHUNK_SIZE, totalCount);
+        const percent = Math.round(15 + (processedCount / totalCount) * 80);
+
+        const stageText = `جاري استعادة الدفعة ${chunkIndex} من ${totalChunks} (${processedCount}/${totalCount} منتج)...`;
+        setRestoreProgress({
+          stage: stageText,
+          current: processedCount,
+          total: totalCount,
+          percentage: percent,
+        });
+
+        updateToast(toastId, { title: `🔄 ${stageText} (${percent}%)` });
+
         const { error: prodErr } = await supabase.from("products").upsert(chunk, { onConflict: "name" });
         if (prodErr) {
           throw new Error(`فشل إدخال دفعة المنتجات: ${prodErr.message}`);
@@ -220,6 +281,7 @@ export default function BackupSettingsSection() {
       }
 
       // ── Step E: Final Synchronization ──────────────────────────────────────
+      setRestoreProgress({ stage: "جاري مزامنة قاعدة البيانات والواجهة...", current: totalCount, total: totalCount, percentage: 100 });
       await reloadAllData();
 
       await logActivity({
@@ -235,9 +297,11 @@ export default function BackupSettingsSection() {
         `🎉 اكتملت الاستعادة بنجاح!\n• المنتجات: ${preRestoreData.productsCount}\n• الأقسام: ${preRestoreData.categoriesCount}\n• الموردين: ${preRestoreData.suppliersCount}`
       );
       setPreRestoreData(null);
+      setRestoreProgress(null);
     } catch (err: any) {
       console.error("Restore pipeline failure:", err);
       toastError(`❌ فشل أثناء تطبيق عملية الاستعادة: ${err?.message || err}`);
+      setRestoreProgress(null);
     } finally {
       setIsRestoring(false);
     }
@@ -477,11 +541,33 @@ export default function BackupSettingsSection() {
                 <input
                   type="checkbox"
                   checked={restoreSettingsAlso}
+                  disabled={isRestoring}
                   onChange={(e) => setRestoreSettingsAlso(e.target.checked)}
                   className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                 />
                 <span>استعادة إعدادات وتصاميم المتجر المرفقة مع النسخة أيضاً</span>
               </label>
+            )}
+
+            {/* Live Progress Bar Indicator */}
+            {isRestoring && restoreProgress && (
+              <div className="space-y-2 bg-emerald-50 dark:bg-emerald-950/50 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800 animate-pulse">
+                <div className="flex justify-between items-center text-xs font-extrabold text-emerald-900 dark:text-emerald-300">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                    {restoreProgress.stage}
+                  </span>
+                  <span className="font-mono text-emerald-700 dark:text-emerald-400 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-700">
+                    {restoreProgress.percentage}%
+                  </span>
+                </div>
+                <div className="w-full bg-emerald-200 dark:bg-emerald-900/60 rounded-full h-3 overflow-hidden shadow-inner">
+                  <div
+                    className="bg-gradient-to-r from-emerald-500 to-teal-500 h-full transition-all duration-300 rounded-full"
+                    style={{ width: `${restoreProgress.percentage}%` }}
+                  />
+                </div>
+              </div>
             )}
 
             {/* Modal Actions */}
@@ -494,7 +580,7 @@ export default function BackupSettingsSection() {
                 {isRestoring ? (
                   <>
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>جارٍ تطبيق الاستعادة الشاملة...</span>
+                    <span>جارٍ تطبيق الاستعادة الشاملة ({restoreProgress?.percentage || 0}%)...</span>
                   </>
                 ) : (
                   <>
