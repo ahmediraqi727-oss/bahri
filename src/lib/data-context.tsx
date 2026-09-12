@@ -90,6 +90,7 @@ interface DataContextType {
     version: string;
     exportDate: string;
     storeName: string;
+    settings?: any;
     totalProducts: number;
     totalCategories: number;
     totalSuppliers: number;
@@ -98,7 +99,7 @@ interface DataContextType {
     suppliers: Supplier[];
     exportedAt: string;
   };
-  importAllData: (data: { products?: Product[]; suppliers?: Supplier[]; categories?: CategoryItem[] }) => Promise<void>;
+  importAllData: (data: { products?: any[]; suppliers?: Supplier[]; categories?: CategoryItem[]; settings?: any }) => Promise<void>;
   // ─ Pricing overrides ──────────────────────────────────────────
   productPricingOverrides: Record<string, ProductPricingOverride>;
   getEffectiveTiers: (productId: string, globalConfig?: GlobalPricingConfig) => PricingTier[];
@@ -876,6 +877,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (c.id && c.name) categoryIdToName.set(c.id, c.name);
     });
 
+    // جلب إعدادات المتجر ومعلومات التواصل والسوشيال ميديا من الكاش المحلي إن وجدت
+    let siteSettings = {};
+    try {
+      const cached = localStorage.getItem("app_site_settings_cache");
+      if (cached) siteSettings = JSON.parse(cached);
+    } catch (e) {
+      console.warn("Could not load settings cache for backup", e);
+    }
+
     const enrichedProducts = products.map((p) => {
       const catNameFromNotes = extractCategoryFromNotes(p.notes || "");
       const resolvedCatId = p.categoryId || null;
@@ -884,14 +894,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         (resolvedCatId ? categoryIdToName.get(resolvedCatId) : null) ||
         (catNameFromNotes !== "عام" ? catNameFromNotes : null);
 
-      const retailP = Number(p.retailPrice ?? p.price) || 0;
-      const costP = Number(p.costPrice) || 0;
-      const wholesaleP = Number(p.wholesalePrice) || 0;
-      const profitM = Number(p.profitMargin) || 0;
-      const stockVal = Number(p.stock ?? p.stockQuantity) || 0;
-      const qrVal = p.qrCodeData ?? p.qrCode ?? null;
-      const barcodeVal = p.barcode ?? null;
-      const skuVal = p.sku ?? p.id ?? "";
+      const rawP = p as Record<string, any>;
+      const retailP = Number(rawP.retailPrice ?? rawP.price ?? rawP.retail_price) || 0;
+      const costP = Number(rawP.costPrice ?? rawP.cost_price) || 0;
+      const wholesaleP = Number(rawP.wholesalePrice ?? rawP.wholesale_price) || 0;
+      const profitM = Number(rawP.profitMargin ?? rawP.profit_margin) || 0;
+      const stockVal = Number(rawP.stock ?? rawP.stockQuantity ?? rawP.stock_quantity) || 0;
+      const qrVal = (rawP.qrCodeData ?? rawP.qrCode ?? rawP.qr_code ?? null) as string | null;
+      const barcodeVal = (rawP.barcode ?? null) as string | null;
+      const skuVal = (rawP.sku ?? rawP.id ? String(rawP.sku ?? rawP.id) : "") as string;
 
       return {
         id: p.id,
@@ -922,6 +933,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       version: "2.0",
       exportDate: new Date().toISOString(),
       storeName: "موقع أحمد بحري",
+      settings: siteSettings, // تضمين إعدادات الموقع، التواصل، والسوشيال ميديا بالكامل
       totalProducts: enrichedProducts.length,
       totalCategories: categories.length,
       totalSuppliers: suppliers.length,
@@ -933,8 +945,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, [products, suppliers, categories]);
 
   const importAllData = useCallback(
-    async (data: { products?: any[]; suppliers?: Supplier[]; categories?: CategoryItem[] }) => {
-      // 1. Foreign Key constraint protection: Upsert categories and suppliers BEFORE products
+    async (data: { products?: any[]; suppliers?: Supplier[]; categories?: CategoryItem[]; settings?: any }) => {
+      // 1. استعادة إعدادات المتجر ومعلومات التواصل والسوشيال ميديا إن وجدت في النسخة
+      if (data.settings) {
+        try {
+          localStorage.setItem("app_site_settings_cache", JSON.stringify(data.settings));
+          window.dispatchEvent(new Event("storage"));
+        } catch (e) {
+          console.error("Failed to restore settings cache", e);
+        }
+      }
+
+      // 2. استعادة التصنيفات والموردين أولاً لسلامة المفتاح الأجنبي (Foreign Key Safety)
       if (data.categories && data.categories.length > 0) {
         const catRows = data.categories.map((c) => categoryToRow(c as unknown as Record<string, unknown>));
         await supabase.from("categories").upsert(catRows, { onConflict: "name" });
@@ -944,14 +966,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         await supabase.from("suppliers").upsert(supRows, { onConflict: "name" });
       }
 
-      // Fetch fresh category ID mapping for relational integrity
       const { data: freshCats } = await supabase.from("categories").select("id, name");
       const categoryNameToId = new Map<string, string>();
       freshCats?.forEach((c) => {
         if (c.name && c.id) categoryNameToId.set(c.name.trim().toLowerCase(), c.id);
       });
 
-      // 2. Upsert products with resolved category_id
+      // 3. استعادة المنتجات بكافة حقولها المالية والمخزنية والأكواد والباروكود
       if (data.products && data.products.length > 0) {
         const rows = data.products.map((p) => {
           const row = productToRow(p as Record<string, unknown>);

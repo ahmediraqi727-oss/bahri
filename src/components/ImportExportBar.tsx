@@ -506,10 +506,11 @@ export default function ImportExportBar() {
   // Requirement 1: Full Backup Export (JSON Package v2.0)
   const handleFullBackup = async () => {
     const rawData = exportAllData();
-    const backupPackage: StoreBackupPackage = {
+    const backupPackage = {
       version: "2.0",
       exportDate: new Date().toISOString(),
       storeName: settings.siteName || "موقع أحمد بحري",
+      settings: (rawData as any).settings || settings, // حفظ الإعدادات ومعلومات التواصل
       totalProducts: rawData.products.length,
       totalCategories: rawData.categories.length,
       totalSuppliers: rawData.suppliers?.length || 0,
@@ -522,16 +523,11 @@ export default function ImportExportBar() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `store_full_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `store_full_comprehensive_backup_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
 
-    await logActivity({
-      user: settings.currentRole,
-      action: "export",
-      entity: "نسخة احتياطية",
-      details: `تصدير نسخة احتياطية كاملة (${rawData.products.length} منتج شامل الأسعار والمخزون والبارشود والـ QR والـ SKU والتصنيفات، ${rawData.categories.length} قسم)`,
-    });
+    success("✅ تم تصدير النسخة الاحتياطية الشاملة (المنتجات، الأقسام، الموردين، وإعدادات المتجر) بنجاح!");
   };
 
   // Requirement 2: Restore Backup & Duplicate Resolution
