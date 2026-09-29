@@ -8,6 +8,7 @@ import { useNotifications } from "@/lib/notifications";
 import DataTableWrapper from "@/components/DataTableWrapper";
 import SupplierContactModal from "@/components/SupplierContactModal";
 import { Product, Supplier } from "@/lib/types";
+import { exportInventoryToCSV } from "@/lib/csv-export";
 
 interface StockThresholds {
   excellent: number;
@@ -57,6 +58,67 @@ export default function InventoryPage() {
   const [contactModal, setContactModal] = useState<{ supplier: Supplier; product: Product } | null>(null);
   const [filterLevel, setFilterLevel] = useState<string>("all");
   const notifiedRef = useRef<Set<string>>(new Set());
+
+  // Bulk Selection & CSV Export State
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
+
+  const handleToggleSelectProduct = (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSelectedProductIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedProductIds.size === filtered.length && filtered.length > 0) {
+      setSelectedProductIds(new Set());
+    } else {
+      setSelectedProductIds(new Set(filtered.map((p) => p.id)));
+    }
+  };
+
+  const handleExportInventory = async (scope: "selected" | "filtered" | "all") => {
+    setIsExporting(true);
+    setExportDropdownOpen(false);
+    try {
+      let itemsToExport: Product[] = [];
+      if (scope === "selected") {
+        itemsToExport = products.filter((p) => selectedProductIds.has(p.id));
+        if (itemsToExport.length === 0) {
+          alert("الرجاء تحديد منتج واحد على الأقل للتصدير");
+          setIsExporting(false);
+          return;
+        }
+      } else if (scope === "filtered") {
+        itemsToExport = filtered;
+      } else {
+        itemsToExport = products;
+      }
+
+      const today = new Date().toISOString().split("T")[0];
+      const scopeLabel = scope === "selected" ? "محددة-" : scope === "filtered" ? `مستوى-${filterLevel}-` : "كامل-المخزون-";
+      const filename = `مخزون-متجر-أحمد-بحري-${scopeLabel}${today}.csv`;
+
+      exportInventoryToCSV(itemsToExport, suppliers, thresholds, filename);
+
+      await logActivity({
+        user: settings.currentRole,
+        action: "export",
+        entity: "مخزون",
+        details: `تصدير ${itemsToExport.length} منتج من المخزون إلى ملف CSV (${filename})`,
+      });
+    } catch (err) {
+      console.error("Inventory CSV export error:", err);
+      alert("حدث خطأ أثناء تصدير المخزون.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   useEffect(() => {
     setThresholds(loadThresholds());
@@ -120,14 +182,94 @@ export default function InventoryPage() {
     <div className="space-y-6 w-full max-w-full" dir="rtl">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">إدارة المخزون الذكية</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">{products.length} منتج في المخزون</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <span>📦</span>
+            <span>إدارة المخزون الذكية</span>
+          </h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">{products.length} منتج مسجل في المخزون</p>
         </div>
-        {settings.currentRole === "manager" && (
-          <button onClick={() => setShowSettings(true)} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-            ⚙️ عتبات التنبيه
-          </button>
-        )}
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* CSV Export Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
+              disabled={isExporting}
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl font-bold text-xs shadow-sm transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              title="تصدير بيانات المخزون كملف CSV"
+            >
+              <span>📥</span>
+              <span>{isExporting ? "جاري التصدير..." : "تصدير المخزون (CSV)"}</span>
+              <span className="text-[10px]">▼</span>
+            </button>
+
+            {exportDropdownOpen && (
+              <div
+                className="absolute left-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 py-2 z-40 animate-fadeIn"
+                dir="rtl"
+              >
+                <div className="px-3 py-1.5 border-b border-gray-100 dark:border-gray-700/60 mb-1">
+                  <p className="text-[11px] font-bold text-gray-400">خيارات تصدير المخزون (CSV/Excel)</p>
+                </div>
+
+                {selectedProductIds.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleExportInventory("selected")}
+                    className="w-full text-right px-4 py-2.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/40 flex items-center justify-between transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span>✓</span>
+                      <span>تصدير المنتجات المحددة</span>
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900 text-[10px] font-extrabold">
+                      {selectedProductIds.size}
+                    </span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => handleExportInventory("filtered")}
+                  className="w-full text-right px-4 py-2.5 text-xs font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/60 flex items-center justify-between transition-colors"
+                >
+                  <span className="flex items-center gap-2">
+                    <span>🔍</span>
+                    <span>تصدير المعروضة حالياً ({filterLevel === "all" ? "الكل" : LEVEL_STYLES[filterLevel as keyof typeof LEVEL_STYLES]?.label || filterLevel})</span>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-[10px] font-extrabold">
+                    {filtered.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleExportInventory("all")}
+                  className="w-full text-right px-4 py-2.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center justify-between border-t border-gray-100 dark:border-gray-700/60 mt-1 pt-2 transition-colors"
+                >
+                  <span className="flex items-center gap-2">
+                    <span>📊</span>
+                    <span>تصدير كامل المخزون (جميع المواد)</span>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-[10px] font-extrabold">
+                    {products.length}
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {settings.currentRole === "manager" && (
+            <button
+              onClick={() => setShowSettings(true)}
+              className="px-4 py-2.5 text-xs font-bold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              <span>⚙️</span>
+              <span>عتبات التنبيه</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Level Stats */}
@@ -152,6 +294,63 @@ export default function InventoryPage() {
         })}
       </div>
 
+      {/* Bulk Selection Toolbar */}
+      {filtered.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-gray-900 px-4 py-3 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm text-sm">
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-gray-700 dark:text-gray-300 select-none">
+              <input
+                type="checkbox"
+                checked={filtered.length > 0 && selectedProductIds.size === filtered.length}
+                onChange={handleToggleSelectAll}
+                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-700 cursor-pointer"
+              />
+              <span>تحديد كل المعروض ({filtered.length})</span>
+            </label>
+
+            {selectedProductIds.size > 0 && (
+              <>
+                <span className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800/40">
+                  تم تحديد {selectedProductIds.size} من {filtered.length}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedProductIds(new Set())}
+                  className="text-xs text-gray-500 hover:text-red-500 transition-colors cursor-pointer"
+                >
+                  إلغاء التحديد
+                </button>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {selectedProductIds.size > 0 && (
+              <button
+                type="button"
+                onClick={() => handleExportInventory("selected")}
+                disabled={isExporting}
+                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <span>📥</span>
+                <span>تصدير المحددة ({selectedProductIds.size}) CSV</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => handleExportInventory("filtered")}
+              disabled={isExporting}
+              className="px-3.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <span>📄</span>
+              <span>تصدير المعروضة ({filtered.length}) CSV</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Inventory Table */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
         {filtered.length === 0 ? (
@@ -167,6 +366,15 @@ export default function InventoryPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                      <th className="w-10 px-3 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={filtered.length > 0 && selectedProductIds.size === filtered.length}
+                          onChange={handleToggleSelectAll}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-700 cursor-pointer"
+                          aria-label="تحديد كل المعروض"
+                        />
+                      </th>
                       <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المنتج</th>
                       <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">التكاليف</th>
                       <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الجملة</th>
@@ -183,9 +391,24 @@ export default function InventoryPage() {
                       const style = LEVEL_STYLES[level];
                       const supplier = getSupplier(product.supplierId);
                       const pct = maxStock > 0 ? Math.round((product.stock / maxStock) * 100) : 0;
+                      const isSelected = selectedProductIds.has(product.id);
 
                       return (
-                        <tr key={product.id} className={`${style.bg} border-l-4 ${style.border} transition-colors`}>
+                        <tr
+                          key={product.id}
+                          className={`${style.bg} border-l-4 ${style.border} ${
+                            isSelected ? "ring-2 ring-blue-500/30 bg-blue-50/50 dark:bg-blue-950/40" : ""
+                          } transition-colors`}
+                        >
+                          <td className="px-3 py-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelectProduct(product.id)}
+                              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-700 cursor-pointer"
+                              aria-label={`تحديد ${product.name}`}
+                            />
+                          </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
                               {product.image ? (
@@ -243,17 +466,29 @@ export default function InventoryPage() {
                 const style = LEVEL_STYLES[level];
                 const supplier = getSupplier(product.supplierId);
                 const pct = maxStock > 0 ? Math.round((product.stock / maxStock) * 100) : 0;
+                const isSelected = selectedProductIds.has(product.id);
 
                 return (
                   <div
                     key={product.id}
-                    className={`bg-white dark:bg-gray-900 rounded-2xl border ${style.border} p-4 shadow-sm space-y-3 transition-all`}
+                    className={`bg-white dark:bg-gray-900 rounded-2xl border ${style.border} ${
+                      isSelected ? "ring-2 ring-blue-500/40 border-blue-500" : ""
+                    } p-4 shadow-sm space-y-3 transition-all`}
                   >
-                    {/* Header: Title & Status */}
+                    {/* Header: Checkbox, Title & Status */}
                     <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
-                      <h3 className="font-extrabold text-gray-900 dark:text-white text-sm truncate" title={product.name}>
-                        {product.name}
-                      </h3>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelectProduct(product.id)}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-700 cursor-pointer flex-shrink-0"
+                          aria-label={`تحديد ${product.name}`}
+                        />
+                        <h3 className="font-extrabold text-gray-900 dark:text-white text-sm truncate" title={product.name}>
+                          {product.name}
+                        </h3>
+                      </div>
 
                       <span className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap flex-shrink-0 ${style.badge}`}>
                         {style.label}

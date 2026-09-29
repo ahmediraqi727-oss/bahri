@@ -92,6 +92,21 @@ export default function HomeClient() {
   const [cartOpen, setCartOpen] = useState(false);
   const [addedId, setAddedId] = useState<string | null>(null);
   const [imageResults, setImageResults] = useState<{ id: string; score: number }[] | null>(null);
+  const [visualSearch, setVisualSearch] = useState<{
+    isActive: boolean;
+    previewUrl: string | null;
+    identifiedPart: string | null;
+    keywords: string[];
+    results: Array<{ id: string; score: number; reason?: string }>;
+    matchingProducts: Product[];
+  }>({
+    isActive: false,
+    previewUrl: null,
+    identifiedPart: null,
+    keywords: [],
+    results: [],
+    matchingProducts: [],
+  });
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchSubmitted, setSearchSubmitted] = useState(false);
   const [suggestions, setSuggestions] = useState<typeof products>([]);
@@ -274,13 +289,79 @@ export default function HomeClient() {
     setSearchSubmitted(true);
   };
 
-  const handleImageResults = useCallback((results: { id: string; score: number }[]) => {
-    setImageResults(results);
-    setSearch("");
-  }, []);
+  const handleImageResults = useCallback(
+    (data: {
+      results: { id: string; score: number; reason?: string }[];
+      identifiedPart?: string | null;
+      keywords?: string[];
+      previewUrl?: string | null;
+    }) => {
+      setImageResults(data.results);
+      setSearch("");
+
+      // Find matching products from catalog
+      const matched: Product[] = [];
+      for (const r of data.results) {
+        const prod = allAvailableProducts.find((p) => p.id === r.id);
+        if (prod && !matched.some((m) => m.id === prod.id)) {
+          matched.push(prod);
+        }
+      }
+
+      // If direct ID match didn't yield all items, match by part name and keywords
+      if (data.identifiedPart || (data.keywords && data.keywords.length > 0)) {
+        const words = [
+          ...(data.identifiedPart || "").replace(/[()]/g, "").split(/\s+/),
+          ...(data.keywords || []),
+        ]
+          .map((w) => w.trim().toLowerCase())
+          .filter((w) => w.length > 2 && !["دراجة", "قطع", "غيار"].includes(w));
+
+        for (const prod of allAvailableProducts) {
+          if (matched.length >= 8) break;
+          const pName = prod.name.toLowerCase();
+          const pNotes = (prod.notes || "").toLowerCase();
+          if (words.some((w) => pName.includes(w) || pNotes.includes(w))) {
+            if (!matched.some((m) => m.id === prod.id)) {
+              matched.push(prod);
+            }
+          }
+        }
+      }
+
+      // If still empty but we have products, provide top relevant suggestions so user isn't stuck
+      if (matched.length === 0 && allAvailableProducts.length > 0) {
+        matched.push(...allAvailableProducts.slice(0, 4));
+      }
+
+      setVisualSearch({
+        isActive: true,
+        previewUrl: data.previewUrl || null,
+        identifiedPart: data.identifiedPart || null,
+        keywords: data.keywords || [],
+        results: data.results,
+        matchingProducts: matched,
+      });
+
+      // Smooth scroll to the results section
+      setTimeout(() => {
+        const el = document.getElementById("visual-search-results-anchor");
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 120);
+    },
+    [allAvailableProducts]
+  );
 
   const handleClearImage = useCallback(() => {
     setImageResults(null);
+    setVisualSearch({
+      isActive: false,
+      previewUrl: null,
+      identifiedPart: null,
+      keywords: [],
+      results: [],
+      matchingProducts: [],
+    });
   }, []);
 
   useEffect(() => {
@@ -936,10 +1017,131 @@ export default function HomeClient() {
                   {t.search}
                 </button>
               </div>
-              <ImageSearch onResults={handleImageResults} onClear={handleClearImage} isSearching={false} />
+              <ImageSearch
+                onResults={handleImageResults}
+                onClear={handleClearImage}
+                isSearching={false}
+                candidateProducts={allAvailableProducts}
+              />
             </div>
           </div>
         </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────
+          Visual Search Results Section — يظهر تلقائياً أسفل شريط البحث فور توفر النتائج
+          ───────────────────────────────────────────────────────── */}
+      {visualSearch.isActive && (
+        <section
+          id="visual-search-results-anchor"
+          className="bg-gradient-to-b from-[#180e35] via-[#120926] to-[#0a0515] border-y border-purple-500/30 py-6 sm:py-8 px-4 sm:px-6 lg:px-8 animate-slideDown shadow-2xl relative z-30"
+          dir="rtl"
+          aria-label="نتائج البحث بالصورة"
+        >
+          <div className="max-w-7xl mx-auto space-y-5">
+            {/* Header with thumbnail, identified part, match count, and close button */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#1e113b]/90 p-3.5 sm:p-4 rounded-2xl border border-purple-500/30 shadow-md">
+              <div className="flex items-center gap-3">
+                {visualSearch.previewUrl && (
+                  <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden border-2 border-purple-400 shadow-md flex-shrink-0">
+                    <img
+                      src={visualSearch.previewUrl}
+                      alt="الصورة المرفوعة"
+                      className="w-full h-full object-cover"
+                    />
+                    <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[9px] text-white text-center py-0.5 font-bold">
+                      صورتك
+                    </span>
+                  </div>
+                )}
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-purple-600 text-white shadow-xs">
+                      🔍 نتائج البحث بالصورة
+                    </span>
+                    {visualSearch.identifiedPart && (
+                      <span className="text-xs sm:text-sm font-black text-emerald-400">
+                        ✨ تم التعرف على: {visualSearch.identifiedPart}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-purple-200/80 mt-1">
+                    {visualSearch.matchingProducts.length > 0
+                      ? `تم العثور على (${visualSearch.matchingProducts.length}) قطع غيار مطابقة ومتوفرة في المتجر:`
+                      : "تم فحص الصورة والبحث في قاعدة بيانات المتجر"}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleClearImage}
+                className="self-end sm:self-center px-3.5 py-1.5 rounded-xl bg-purple-900/60 hover:bg-rose-900/60 text-purple-200 hover:text-white border border-purple-500/30 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+              >
+                <span>✕</span>
+                <span>إغلاق نتائج الصورة</span>
+              </button>
+            </div>
+
+            {/* Results Grid or Friendly Empty State */}
+            {visualSearch.matchingProducts.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 animate-fadeIn">
+                {visualSearch.matchingProducts.map((product) => {
+                  const scoreObj = visualSearch.results.find((r) => r.id === product.id);
+                  const score = scoreObj?.score || 85;
+
+                  return (
+                    <div key={product.id} className="relative group">
+                      {/* Match percentage badge floating above the card */}
+                      <div className="absolute top-2 left-2 z-10 pointer-events-none">
+                        <span className="px-2.5 py-1 rounded-xl text-[11px] font-black bg-emerald-600 text-white shadow-lg border border-emerald-400/40 backdrop-blur-xs">
+                          تطابق {Math.round(score)}%
+                        </span>
+                      </div>
+                      <ProductCard
+                        product={product}
+                        selectedCategory={selectedCategory}
+                        cardQty={cardQty[product.id] ?? 1}
+                        onQtyChange={(newQty) =>
+                          setCardQty((prev) => ({ ...prev, [product.id]: newQty }))
+                        }
+                        isAdded={addedId === product.id}
+                        isFavorite={favoriteIds.includes(product.id)}
+                        onSelectProduct={(p) => setDetailProduct(p)}
+                        onEditProduct={(p) => setEditingProduct(p)}
+                        onAddToCart={(p, q) => handleAdd(p, q)}
+                        onToggleFavorite={(p) => handleToggleFavorite(p.id, p.name)}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Friendly Arabic Empty State */
+              <div className="bg-[#1a0e33]/90 border border-purple-500/30 rounded-3xl p-6 sm:p-10 text-center max-w-lg mx-auto space-y-3 shadow-xl animate-fadeIn">
+                <div className="w-16 h-16 mx-auto rounded-2xl bg-purple-900/50 border border-purple-500/30 flex items-center justify-center text-3xl shadow-md">
+                  🔍
+                </div>
+                <h4 className="text-base sm:text-lg font-black text-white">
+                  عذراً، لم نجد تطابقاً دقيقاً لهذه القطعة!
+                </h4>
+                <p className="text-xs sm:text-sm text-purple-200/80 leading-relaxed">
+                  لم نتمكن من مطابقة صورة القطعة مع المنتجات المسجلة حالياً في المتجر.
+                  حاول رفع صورة واضحة أخرى أو ابحث باسم القطعة مباشرة في خانة البحث.
+                </p>
+                <div className="pt-2 flex justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleClearImage}
+                    className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer"
+                  >
+                    عرض كافة المنتجات
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
       )}
 
       {/* ─────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import { Order, CartItem, formatInvoiceSerial } from "@/lib/order-types";
 import { useAdaptiveOrders } from "@/lib/useAdaptiveOrders";
 import PermissionGate from "@/components/PermissionGate";
 import jsPDF from "jspdf";
+import { exportOrdersToCSV } from "@/lib/csv-export";
 
 const STATUS_LABELS: Record<Order["status"], string> = {
   pending: "قيد الانتظار",
@@ -84,6 +85,93 @@ export default function OrdersPage() {
   const [addingProductId, setAddingProductId] = useState("");
   const [savingOrder, setSavingOrder] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Bulk Selection & CSV Export State
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
+
+  const toggleSelectOrder = (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedIds.size === orders.length && orders.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(orders.map((o) => o.id)));
+    }
+  };
+
+  const handleExportOrders = async (scope: "selected" | "filtered" | "all") => {
+    setIsExporting(true);
+    setExportDropdownOpen(false);
+    try {
+      let ordersToExport: Order[] = [];
+
+      if (scope === "selected") {
+        ordersToExport = orders.filter((o) => selectedIds.has(o.id));
+        if (ordersToExport.length === 0) {
+          alert("الرجاء تحديد طلب واحد على الأقل للتصدير");
+          setIsExporting(false);
+          return;
+        }
+      } else if (scope === "filtered") {
+        ordersToExport = orders;
+      } else {
+        // scope === "all" -> fetch all records from supabase
+        const { data, error } = await supabase
+          .from("orders")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (error || !data) {
+          ordersToExport = orders;
+        } else {
+          ordersToExport = data.map((row: any) => ({
+            id: row.id,
+            invoiceSerial: row.invoice_serial,
+            customerName: row.customer_name,
+            customerPhone: row.customer_phone,
+            customerAddress: row.customer_address,
+            status: row.status,
+            total: row.total,
+            items: Array.isArray(row.items) ? row.items : [],
+            deliveryFee: row.delivery_fee,
+            deliveryDuration: row.delivery_duration,
+            notes: row.notes,
+            createdAt: row.created_at,
+          }));
+        }
+      }
+
+      const today = new Date().toISOString().split("T")[0];
+      const filename = `طلبات-متجر-أحمد-بحري-${scope === "selected" ? "محددة-" : scope === "filtered" ? "مفلترة-" : "كافة-الطلبات-"}${today}.csv`;
+
+      exportOrdersToCSV(ordersToExport, filename);
+
+      await logActivity({
+        user: settings.currentRole,
+        action: "export",
+        entity: "طلبات",
+        details: `تصدير ${ordersToExport.length} طلب إلى ملف CSV (${filename})`,
+      });
+    } catch (err) {
+      console.error("Orders export error:", err);
+      alert("حدث خطأ أثناء تصدير الطلبات، يرجى المحاولة مرة أخرى.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   useEffect(() => {
     const channel = supabase
@@ -519,12 +607,84 @@ export default function OrdersPage() {
             </p>
           </div>
 
-          <button
-            onClick={loadOrders}
-            className="px-4 py-2.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl font-bold text-xs hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors flex items-center gap-2 w-fit border border-blue-200 dark:border-blue-800"
-          >
-            <span>🔄 تحديث البيانات</span>
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Export to CSV Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
+                disabled={isExporting}
+                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl font-bold text-xs shadow-sm transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                title="تصدير بيانات الطلبات كملف CSV"
+              >
+                <span>📥</span>
+                <span>{isExporting ? "جاري التصدير..." : "تصدير إلى CSV"}</span>
+                <span className="text-[10px]">▼</span>
+              </button>
+
+              {exportDropdownOpen && (
+                <div
+                  className="absolute left-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 py-2 z-40 animate-fadeIn"
+                  dir="rtl"
+                >
+                  <div className="px-3 py-1.5 border-b border-gray-100 dark:border-gray-700/60 mb-1">
+                    <p className="text-[11px] font-bold text-gray-400">خيارات التصدير الجماعي (Excel/CSV)</p>
+                  </div>
+
+                  {selectedIds.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleExportOrders("selected")}
+                      className="w-full text-right px-4 py-2.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/40 flex items-center justify-between transition-colors"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span>✓</span>
+                        <span>تصدير الطلبات المحددة</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900 text-[10px] font-extrabold">
+                        {selectedIds.size}
+                      </span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleExportOrders("filtered")}
+                    className="w-full text-right px-4 py-2.5 text-xs font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/60 flex items-center justify-between transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span>🔍</span>
+                      <span>تصدير المعروضة حالياً</span>
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-[10px] font-extrabold">
+                      {orders.length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleExportOrders("all")}
+                    className="w-full text-right px-4 py-2.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center justify-between border-t border-gray-100 dark:border-gray-700/60 mt-1 pt-2 transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span>📊</span>
+                      <span>تصدير كافة الطلبات (قاعدة البيانات)</span>
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-[10px] font-extrabold">
+                      {totalCount || orders.length}
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={loadOrders}
+              className="px-4 py-2.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl font-bold text-xs hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors flex items-center gap-2 w-fit border border-blue-200 dark:border-blue-800 cursor-pointer"
+            >
+              <span>🔄 تحديث البيانات</span>
+            </button>
+          </div>
         </div>
 
         {/* Analytics Summary Cards */}
@@ -612,6 +772,63 @@ export default function OrdersPage() {
           </div>
         </div>
 
+        {/* Bulk Action & Export Toolbar */}
+        {!loading && orders.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-gray-900 px-4 py-3 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm text-sm">
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-gray-700 dark:text-gray-300 select-none">
+                <input
+                  type="checkbox"
+                  checked={orders.length > 0 && selectedIds.size === orders.length}
+                  onChange={handleToggleSelectAll}
+                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-700 cursor-pointer"
+                />
+                <span>تحديد الكل ({orders.length})</span>
+              </label>
+
+              {selectedIds.size > 0 && (
+                <>
+                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800/40">
+                    تم تحديد {selectedIds.size} من {orders.length}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedIds(new Set())}
+                    className="text-xs text-gray-500 hover:text-red-500 transition-colors cursor-pointer"
+                  >
+                    إلغاء التحديد
+                  </button>
+                </>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {selectedIds.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => handleExportOrders("selected")}
+                  disabled={isExporting}
+                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <span>📥</span>
+                  <span>تصدير المحددة ({selectedIds.size}) كـ CSV</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => handleExportOrders("filtered")}
+                disabled={isExporting}
+                className="px-3.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <span>📄</span>
+                <span>تصدير المعروضة ({orders.length}) كـ CSV</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Orders Grid / List */}
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -650,15 +867,29 @@ export default function OrdersPage() {
                   <div
                     key={order.id}
                     onClick={() => openInvoiceModal(order)}
-                    className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 hover:shadow-xl transition-all cursor-pointer flex flex-col justify-between space-y-4 group relative overflow-hidden"
+                    className={`bg-white dark:bg-gray-900 rounded-2xl border ${
+                      selectedIds.has(order.id)
+                        ? "border-blue-500 ring-2 ring-blue-500/30 shadow-lg dark:border-blue-500"
+                        : "border-gray-200 dark:border-gray-800"
+                    } p-5 hover:shadow-xl transition-all cursor-pointer flex flex-col justify-between space-y-4 group relative overflow-hidden`}
                   >
                     <div className="space-y-3">
-                      {/* Header: Platform & Status */}
+                      {/* Header: Checkbox, Platform & Status */}
                       <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
-                        <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-800 py-1 px-2.5 rounded-lg text-xs font-bold text-gray-700 dark:text-gray-300">
-                          <span>{platform.icon}</span>
-                          <span>{platform.label}</span>
-                          <span className="font-mono text-[10px] text-blue-600 dark:text-blue-400 border-r pr-1.5 border-gray-300 dark:border-gray-700">{serialStr}</span>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(order.id)}
+                            onChange={() => toggleSelectOrder(order.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-700 cursor-pointer"
+                            aria-label={`تحديد الطلب ${serialStr}`}
+                          />
+                          <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-800 py-1 px-2.5 rounded-lg text-xs font-bold text-gray-700 dark:text-gray-300">
+                            <span>{platform.icon}</span>
+                            <span>{platform.label}</span>
+                            <span className="font-mono text-[10px] text-blue-600 dark:text-blue-400 border-r pr-1.5 border-gray-300 dark:border-gray-700">{serialStr}</span>
+                          </div>
                         </div>
 
                         <span
