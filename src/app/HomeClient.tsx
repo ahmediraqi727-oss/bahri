@@ -96,13 +96,27 @@ export default function HomeClient() {
     isActive: boolean;
     previewUrl: string | null;
     identifiedPart: string | null;
+    attributes: {
+      primaryPartName?: string;
+      subCategory?: string;
+      color?: string;
+      shapeGeometry?: string;
+      visibleBrandOrText?: string;
+      keywords?: string[];
+    } | null;
     keywords: string[];
-    results: Array<{ id: string; score: number; reason?: string }>;
+    results: Array<{
+      id: string;
+      score: number;
+      reason?: string;
+      breakdown?: { namePts: number; categoryPts: number; attributesPts: number };
+    }>;
     matchingProducts: Product[];
   }>({
     isActive: false,
     previewUrl: null,
     identifiedPart: null,
+    attributes: null,
     keywords: [],
     results: [],
     matchingProducts: [],
@@ -291,15 +305,21 @@ export default function HomeClient() {
 
   const handleImageResults = useCallback(
     (data: {
-      results: { id: string; score: number; reason?: string }[];
+      results: Array<{
+        id: string;
+        score: number;
+        reason?: string;
+        breakdown?: { namePts: number; categoryPts: number; attributesPts: number };
+      }>;
       identifiedPart?: string | null;
+      attributes?: any;
       keywords?: string[];
       previewUrl?: string | null;
     }) => {
-      setImageResults(data.results);
+      setImageResults(data.results.map((r) => ({ id: r.id, score: r.score })));
       setSearch("");
 
-      // Find matching products from catalog
+      // Map the smart scored products in strict descending order without random fillers
       const matched: Product[] = [];
       for (const r of data.results) {
         const prod = allAvailableProducts.find((p) => p.id === r.id);
@@ -308,36 +328,11 @@ export default function HomeClient() {
         }
       }
 
-      // If direct ID match didn't yield all items, match by part name and keywords
-      if (data.identifiedPart || (data.keywords && data.keywords.length > 0)) {
-        const words = [
-          ...(data.identifiedPart || "").replace(/[()]/g, "").split(/\s+/),
-          ...(data.keywords || []),
-        ]
-          .map((w) => w.trim().toLowerCase())
-          .filter((w) => w.length > 2 && !["دراجة", "قطع", "غيار"].includes(w));
-
-        for (const prod of allAvailableProducts) {
-          if (matched.length >= 8) break;
-          const pName = prod.name.toLowerCase();
-          const pNotes = (prod.notes || "").toLowerCase();
-          if (words.some((w) => pName.includes(w) || pNotes.includes(w))) {
-            if (!matched.some((m) => m.id === prod.id)) {
-              matched.push(prod);
-            }
-          }
-        }
-      }
-
-      // If still empty but we have products, provide top relevant suggestions so user isn't stuck
-      if (matched.length === 0 && allAvailableProducts.length > 0) {
-        matched.push(...allAvailableProducts.slice(0, 4));
-      }
-
       setVisualSearch({
         isActive: true,
         previewUrl: data.previewUrl || null,
         identifiedPart: data.identifiedPart || null,
+        attributes: data.attributes || null,
         keywords: data.keywords || [],
         results: data.results,
         matchingProducts: matched,
@@ -358,6 +353,7 @@ export default function HomeClient() {
       isActive: false,
       previewUrl: null,
       identifiedPart: null,
+      attributes: null,
       keywords: [],
       results: [],
       matchingProducts: [],
@@ -1029,7 +1025,7 @@ export default function HomeClient() {
       )}
 
       {/* ─────────────────────────────────────────────────────────
-          Visual Search Results Section — يظهر تلقائياً أسفل شريط البحث فور توفر النتائج
+          Visual Search Results Section — AliExpress Style UI & Smart Matching Grid
           ───────────────────────────────────────────────────────── */}
       {visualSearch.isActive && (
         <section
@@ -1039,48 +1035,81 @@ export default function HomeClient() {
           aria-label="نتائج البحث بالصورة"
         >
           <div className="max-w-7xl mx-auto space-y-5">
-            {/* Header with thumbnail, identified part, match count, and close button */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#1e113b]/90 p-3.5 sm:p-4 rounded-2xl border border-purple-500/30 shadow-md">
-              <div className="flex items-center gap-3">
+            {/* Header with thumbnail, identified part, extracted attributes chips, and close button */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#1e113b]/95 p-4 sm:p-5 rounded-3xl border border-purple-500/40 shadow-xl backdrop-blur-md">
+              <div className="flex items-start sm:items-center gap-3.5">
                 {visualSearch.previewUrl && (
-                  <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden border-2 border-purple-400 shadow-md flex-shrink-0">
+                  <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-2 border-purple-400 shadow-xl flex-shrink-0 group">
                     <img
                       src={visualSearch.previewUrl}
                       alt="الصورة المرفوعة"
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                     />
-                    <span className="absolute bottom-0 inset-x-0 bg-black/70 text-[9px] text-white text-center py-0.5 font-bold">
+                    <span className="absolute bottom-0 inset-x-0 bg-black/75 text-[10px] text-white text-center py-0.5 font-bold">
                       صورتك
                     </span>
                   </div>
                 )}
-                <div>
+                <div className="space-y-1.5">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-purple-600 text-white shadow-xs">
-                      🔍 نتائج البحث بالصورة
+                    <span className="px-3 py-1 rounded-xl text-xs font-black bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-sm flex items-center gap-1.5">
+                      <span>📸</span>
+                      <span>البحث البصري الذكي</span>
                     </span>
+
                     {visualSearch.identifiedPart && (
-                      <span className="text-xs sm:text-sm font-black text-emerald-400">
-                        ✨ تم التعرف على: {visualSearch.identifiedPart}
+                      <span className="text-sm sm:text-base font-black text-emerald-400 flex items-center gap-1">
+                        <span>✨</span>
+                        <span>تم التعرف على: {visualSearch.identifiedPart}</span>
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-purple-200/80 mt-1">
+
+                  {/* Extracted AI Attributes Chips Bar (AliExpress Style) */}
+                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                    {visualSearch.attributes?.subCategory && (
+                      <span className="px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-purple-900/60 text-purple-200 border border-purple-700/50">
+                        ⚡ الفئة: {visualSearch.attributes.subCategory}
+                      </span>
+                    )}
+
+                    {visualSearch.attributes?.visibleBrandOrText && (
+                      <span className="px-2.5 py-0.5 rounded-lg text-[11px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        🏷️ الماركة: {visualSearch.attributes.visibleBrandOrText.toUpperCase()}
+                      </span>
+                    )}
+
+                    {visualSearch.attributes?.color && visualSearch.attributes.color !== "غير محدد" && (
+                      <span className="px-2.5 py-0.5 rounded-lg text-[11px] font-medium bg-purple-900/40 text-purple-300 border border-purple-800/40">
+                        🎨 اللون: {visualSearch.attributes.color}
+                      </span>
+                    )}
+
+                    {visualSearch.attributes?.shapeGeometry && (
+                      <span className="px-2.5 py-0.5 rounded-lg text-[11px] font-medium bg-purple-900/40 text-purple-300 border border-purple-800/40 hidden sm:inline-block">
+                        📐 الهيكل: {visualSearch.attributes.shapeGeometry}
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-purple-200/80">
                     {visualSearch.matchingProducts.length > 0
-                      ? `تم العثور على (${visualSearch.matchingProducts.length}) قطع غيار مطابقة ومتوفرة في المتجر:`
-                      : "تم فحص الصورة والبحث في قاعدة بيانات المتجر"}
+                      ? `تم العثور على (${visualSearch.matchingProducts.length}) قطع غيار مطابقة، مرتبة تنازلياً حسب دقة التطابق:`
+                      : "تم تحليل الصورة بدقة عبر Gemini Vision ومقارنتها بمخزون المتجر"}
                   </p>
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleClearImage}
-                className="self-end sm:self-center px-3.5 py-1.5 rounded-xl bg-purple-900/60 hover:bg-rose-900/60 text-purple-200 hover:text-white border border-purple-500/30 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
-              >
-                <span>✕</span>
-                <span>إغلاق نتائج الصورة</span>
-              </button>
+              <div className="flex items-center gap-2 self-end md:self-center">
+                <button
+                  type="button"
+                  onClick={handleClearImage}
+                  className="px-4 py-2 rounded-2xl bg-purple-900/70 hover:bg-rose-900/70 text-purple-200 hover:text-white border border-purple-500/40 text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 shadow-md active:scale-95"
+                >
+                  <span>✕</span>
+                  <span>إغلاق نتائج الصورة</span>
+                </button>
+              </div>
             </div>
 
             {/* Results Grid or Friendly Empty State */}
@@ -1091,13 +1120,36 @@ export default function HomeClient() {
                   const score = scoreObj?.score || 85;
 
                   return (
-                    <div key={product.id} className="relative group">
-                      {/* Match percentage badge floating above the card */}
-                      <div className="absolute top-2 left-2 z-10 pointer-events-none">
-                        <span className="px-2.5 py-1 rounded-xl text-[11px] font-black bg-emerald-600 text-white shadow-lg border border-emerald-400/40 backdrop-blur-xs">
-                          تطابق {Math.round(score)}%
-                        </span>
+                    <div key={product.id} className="relative group flex flex-col">
+                      {/* AliExpress Style Floating Match Percentage Badge */}
+                      <div className="absolute top-2.5 right-2.5 z-20 pointer-events-none animate-fadeIn">
+                        {score >= 90 ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white shadow-xl border border-emerald-300/40 backdrop-blur-md">
+                            <span className="animate-pulse">🎯</span>
+                            <span>تطابق {Math.round(score)}%</span>
+                            <span className="text-[10px] text-emerald-200 border-r border-emerald-400/40 pr-1.5 font-bold">
+                              تطابق فائق
+                            </span>
+                          </span>
+                        ) : score >= 75 ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-black bg-gradient-to-r from-teal-600 to-cyan-600 text-white shadow-lg border border-teal-300/30 backdrop-blur-md">
+                            <span>✨</span>
+                            <span>تطابق {Math.round(score)}%</span>
+                            <span className="text-[10px] text-teal-200 border-r border-teal-400/40 pr-1.5 font-bold">
+                              مطابق جداً
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md border border-blue-300/30 backdrop-blur-md">
+                            <span>🔍</span>
+                            <span>تطابق {Math.round(score)}%</span>
+                            <span className="text-[10px] text-blue-200 border-r border-blue-400/40 pr-1.5 font-medium">
+                              بديل مقترح
+                            </span>
+                          </span>
+                        )}
                       </div>
+
                       <ProductCard
                         product={product}
                         selectedCategory={selectedCategory}
@@ -1112,30 +1164,38 @@ export default function HomeClient() {
                         onAddToCart={(p, q) => handleAdd(p, q)}
                         onToggleFavorite={(p) => handleToggleFavorite(p.id, p.name)}
                       />
+
+                      {/* Matching reason tag */}
+                      {scoreObj?.reason && (
+                        <div className="mt-1.5 px-3 py-1 bg-[#170e2c] border border-purple-500/20 rounded-xl text-[11px] text-purple-200/90 font-medium truncate flex items-center gap-1.5 shadow-2xs">
+                          <span>💡</span>
+                          <span className="truncate">{scoreObj.reason}</span>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
             ) : (
-              /* Friendly Arabic Empty State */
-              <div className="bg-[#1a0e33]/90 border border-purple-500/30 rounded-3xl p-6 sm:p-10 text-center max-w-lg mx-auto space-y-3 shadow-xl animate-fadeIn">
-                <div className="w-16 h-16 mx-auto rounded-2xl bg-purple-900/50 border border-purple-500/30 flex items-center justify-center text-3xl shadow-md">
+              /* Friendly Arabic Empty State for Unmatched Items */
+              <div className="bg-[#1a0e33]/95 border border-purple-500/40 rounded-3xl p-8 sm:p-12 text-center max-w-lg mx-auto space-y-4 shadow-2xl animate-fadeIn">
+                <div className="w-16 h-16 mx-auto rounded-2xl bg-purple-900/60 border border-purple-500/40 flex items-center justify-center text-3xl shadow-lg">
                   🔍
                 </div>
-                <h4 className="text-base sm:text-lg font-black text-white">
+                <h4 className="text-lg font-black text-white">
                   عذراً، لم نجد تطابقاً دقيقاً لهذه القطعة!
                 </h4>
                 <p className="text-xs sm:text-sm text-purple-200/80 leading-relaxed">
-                  لم نتمكن من مطابقة صورة القطعة مع المنتجات المسجلة حالياً في المتجر.
-                  حاول رفع صورة واضحة أخرى أو ابحث باسم القطعة مباشرة في خانة البحث.
+                  تم فحص وتحليل الصورة بنجاح، لكن لم تتجاوز أي قطعة متوفرة في المتجر نسبة التطابق المعتمدة (50%).
+                  نوصي بالتقاط صورة أخرى بزاوية إضاءة أوضح أو البحث باسم القطعة مباشرة في شريط البحث.
                 </p>
-                <div className="pt-2 flex justify-center gap-2">
+                <div className="pt-2 flex justify-center gap-3 flex-wrap">
                   <button
                     type="button"
                     onClick={handleClearImage}
-                    className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer"
+                    className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer active:scale-95"
                   >
-                    عرض كافة المنتجات
+                    تصفح كافة قطع الغيار المتوفرة
                   </button>
                 </div>
               </div>

@@ -9,11 +9,22 @@ export interface VisualSearchResultItem {
   name?: string;
   retailPrice?: number;
   image?: string;
+  breakdown?: { namePts: number; categoryPts: number; attributesPts: number };
+}
+
+export interface ExtractedVisualAttributes {
+  primaryPartName: string;
+  subCategory: string;
+  color: string;
+  shapeGeometry: string;
+  visibleBrandOrText?: string;
+  keywords: string[];
 }
 
 export interface VisualSearchResultPayload {
   results: VisualSearchResultItem[];
   identifiedPart?: string | null;
+  attributes?: ExtractedVisualAttributes | null;
   keywords?: string[];
   previewUrl?: string | null;
 }
@@ -49,7 +60,7 @@ export default function ImageSearch({
       reader.onload = async (e) => {
         const dataUrl = e.target?.result as string;
         setPreview(dataUrl);
-        setStatusMessage("جاري فحص القطعة بالذكاء الاصطناعي (Gemini Vision)...");
+        setStatusMessage("جاري التحليل واستخراج الخصائص بـ Gemini Vision...");
 
         try {
           const res = await fetch("/api/visual-search", {
@@ -57,7 +68,7 @@ export default function ImageSearch({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               image: dataUrl,
-              candidateProducts: candidateProducts.slice(0, 50).map((p) => ({
+              candidateProducts: candidateProducts.slice(0, 80).map((p) => ({
                 id: p.id,
                 name: p.name,
                 notes: p.notes,
@@ -75,6 +86,7 @@ export default function ImageSearch({
               identifiedPart: partName,
               category,
               keywords = [],
+              attributes = null,
               matches = [],
             } = json.data;
 
@@ -86,57 +98,41 @@ export default function ImageSearch({
               setIdentifiedPart(partLabel);
             }
 
-            // Immediately send results to parent to render the products grid
+            // إرسال نتائج الخوارزمية الذكية مباشرة لواجهة العرض
             onResults({
               results: matches,
               identifiedPart: partLabel,
+              attributes: attributes,
               keywords,
               previewUrl: dataUrl,
             });
 
             if (matches.length > 0) {
-              setStatusMessage(`تم العثور على ${matches.length} تطابق`);
+              const topScore = Math.round(matches[0].score);
+              setStatusMessage(`تم العثور على ${matches.length} نتائج مطابقة (أعلى دقة ${topScore}%)`);
             } else {
-              setStatusMessage("لم يتم العثور على تطابق دقيق");
+              setStatusMessage("لم نجد تطابقاً بنسبة مقبولة في المخزون");
             }
           } else {
-            // Fallback matching using candidateProducts
-            const fallbackMatches = (candidateProducts || []).slice(0, 4).map((p, idx) => ({
-              id: p.id,
-              score: 85 - idx * 5,
-              name: p.name,
-              retailPrice: p.retailPrice,
-              image: p.image,
-              reason: "تطابق ذكي مقترح",
-            }));
-
             onResults({
-              results: fallbackMatches,
-              identifiedPart: "قطعة غيار دراجة",
-              keywords: ["قطع غيار"],
+              results: [],
+              identifiedPart: "قطعة غيار غير معروفة",
+              attributes: null,
+              keywords: [],
               previewUrl: dataUrl,
             });
-            setStatusMessage("تم الفحص وتجهيز النتائج");
+            setStatusMessage("لم يتم العثور على تطابق");
           }
         } catch (err) {
           console.error("Visual search error:", err);
-          // Still provide fallback matches so user sees results
-          const fallbackMatches = (candidateProducts || []).slice(0, 4).map((p, idx) => ({
-            id: p.id,
-            score: 80 - idx * 5,
-            name: p.name,
-            retailPrice: p.retailPrice,
-            image: p.image,
-            reason: "اقتراح فحص بصري",
-          }));
-
           onResults({
-            results: fallbackMatches,
-            identifiedPart: "قطعة غيار",
+            results: [],
+            identifiedPart: null,
+            attributes: null,
             keywords: [],
             previewUrl: dataUrl,
           });
-          setStatusMessage("تم عرض المنتجات المقترحة");
+          setStatusMessage("تعذر استكمال الفحص، يرجى المحاولة بصورة أوضح");
         } finally {
           setAnalyzing(false);
         }
@@ -215,7 +211,7 @@ export default function ImageSearch({
                   ) : (
                     <span className="text-emerald-400 font-extrabold flex items-center gap-1">
                       <span>✓</span>
-                      <span>{statusMessage || "تم الفحص بنجاح"}</span>
+                      <span>{statusMessage || "تم الفحص والتحليل بنجاح"}</span>
                     </span>
                   )}
                 </span>

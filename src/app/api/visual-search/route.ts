@@ -15,6 +15,192 @@ interface CandidateProduct {
   image?: string;
 }
 
+interface ExtractedImageAttributes {
+  primaryPartName: string;
+  subCategory: string;
+  color: string;
+  shapeGeometry: string;
+  visibleBrandOrText: string;
+  keywords: string[];
+  reasoning: string;
+}
+
+/**
+ * دالة خوارزمية ذكية لحساب نسبة التطابق الفعلي (AliExpress / Amazon Lens Style)
+ * تزن خصائص Gemini المستخرجة مقابل اسم ووصف وتصنيف كل منتج:
+ * 1. مطابقة اسم القطعة الأساسي (وزن 50%)
+ * 2. مطابقة الفئة والمنظومة الفرعية (وزن 30%)
+ * 3. مطابقة الكلمات المفتاحية والماركة واللون والسمات الفيزيائية (وزن 20%)
+ * 4. خصم نقاط للقطع المتنافرة (مثل عرض شخاطة سلف عند فحص كتف شحن)
+ */
+function computeSmartMatchScore(
+  product: CandidateProduct,
+  attr: ExtractedImageAttributes
+): { score: number; reason: string; breakdown: { namePts: number; categoryPts: number; attributesPts: number } } {
+  const pName = (product.name || "").trim().toLowerCase();
+  const pNotes = (product.notes || "").trim().toLowerCase();
+  const pCombined = `${pName} ${pNotes}`;
+
+  const queryPart = (attr.primaryPartName || "").trim().toLowerCase();
+  const queryCategory = (attr.subCategory || "").trim().toLowerCase();
+  const queryBrand = (attr.visibleBrandOrText || "").trim().toLowerCase();
+  const queryColor = (attr.color || "").trim().toLowerCase();
+  const queryShape = (attr.shapeGeometry || "").trim().toLowerCase();
+  const queryKeywords = (attr.keywords || []).map((k) => k.trim().toLowerCase()).filter((k) => k.length > 1);
+
+  let namePts = 0;
+  let categoryPts = 0;
+  let attributesPts = 0;
+  const matchReasons: string[] = [];
+
+  // ==========================================
+  // 1. مطابقة اسم القطعة الأساسي (الحد الأقصى: 50 نقطة)
+  // ==========================================
+  if (queryPart) {
+    if (pName === queryPart) {
+      namePts = 50;
+      matchReasons.push(`تطابق تام لاسم القطعة "${queryPart}"`);
+    } else if (pName.includes(queryPart)) {
+      namePts = 46;
+      matchReasons.push(`اسم المنتج يحتوي على "${queryPart}"`);
+    } else if (queryPart.includes(pName)) {
+      namePts = 42;
+      matchReasons.push(`تطابق مباشر مع "${pName}"`);
+    } else {
+      // تفكيك الكلمات الأساسية لاسم القطعة
+      const partWords = queryPart
+        .split(/\s+/)
+        .filter((w) => w.length > 2 && !["قطعة", "غيار", "دراجة", "نارية", "شحن"].includes(w));
+
+      let matchedCount = 0;
+      for (const w of partWords) {
+        if (pName.includes(w)) matchedCount++;
+      }
+
+      if (partWords.length > 0 && matchedCount > 0) {
+        const ratio = matchedCount / partWords.length;
+        namePts = Math.round(ratio * 40);
+        matchReasons.push(`تطابق جذري في تسمية القطعة (${matchedCount}/${partWords.length})`);
+      }
+    }
+  }
+
+  // فحص المرادفات القوية في الاسم
+  for (const kw of queryKeywords) {
+    if (kw.length > 2 && pName.includes(kw) && namePts < 38) {
+      namePts = Math.max(namePts, 35);
+      matchReasons.push(`تطابق مع مرادف رئيسي (${kw})`);
+    }
+  }
+
+  // ==========================================
+  // 2. مطابقة الفئة الفرعية والمنظومة (الحد الأقصى: 30 نقطة)
+  // ==========================================
+  if (queryCategory) {
+    const catWords = queryCategory
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !["قطع", "غيار", "عام"].includes(w));
+
+    let catMatched = 0;
+    for (const cw of catWords) {
+      if (pNotes.includes(cw) || pName.includes(cw)) catMatched++;
+    }
+
+    if (catWords.length > 0 && catMatched > 0) {
+      categoryPts = Math.min(30, Math.round((catMatched / catWords.length) * 30));
+      matchReasons.push(`تطابق تصنيف المنظومة (${queryCategory})`);
+    }
+  }
+
+  // توافقات تخصصية مبنية على معرفة قطع الدراجات (Domain Specific Knowledge)
+  const isRectifierQuery = ["كتف", "ريكتفاير", "منظم", "شحن", "دينمو"].some((t) => queryPart.includes(t) || queryCategory.includes(t));
+  const isRectifierProd = ["كتف", "ريكتفاير", "منظم", "شحن"].some((t) => pName.includes(t));
+  if (isRectifierQuery && isRectifierProd && categoryPts < 22) {
+    categoryPts = 26;
+    matchReasons.push("تطابق وظيفة تنظيم وتوليد الشحن الكهربائي");
+  }
+
+  const isStarterQuery = ["سلف", "شخاطة", "مارش", "إشعال"].some((t) => queryPart.includes(t) || queryCategory.includes(t));
+  const isStarterProd = ["سلف", "شخاطة", "مارش", "إشعال"].some((t) => pName.includes(t));
+  if (isStarterQuery && isStarterProd && categoryPts < 22) {
+    categoryPts = 26;
+    matchReasons.push("تطابق منظومة التشغيل الكهربائي (سلف)");
+  }
+
+  const isLightingQuery = ["إشارة", "اشاره", "ضوء", "فانوس", "بكلايت", "لايت"].some((t) => queryPart.includes(t) || queryCategory.includes(t));
+  const isLightingProd = ["إشارة", "اشاره", "ضوء", "فانوس", "بكلايت", "لايت"].some((t) => pName.includes(t));
+  if (isLightingQuery && isLightingProd && categoryPts < 22) {
+    categoryPts = 26;
+    matchReasons.push("تطابق منظومة الإنارة والإشارات الضوئية");
+  }
+
+  // ==========================================
+  // 3. مطابقة الكلمات المفتاحية والماركة واللون (الحد الأقصى: 20 نقطة)
+  // ==========================================
+  // فحص الماركة الظاهرة (مثل SAVINY, KOCT, 12V)
+  if (queryBrand && queryBrand.length > 1) {
+    if (pCombined.includes(queryBrand)) {
+      attributesPts += 12;
+      matchReasons.push(`تطابق الماركة التجارية (${queryBrand.toUpperCase()})`);
+    }
+  }
+
+  // فحص الكلمات المفتاحية في الوصف
+  let matchedKwCount = 0;
+  for (const kw of queryKeywords) {
+    if (kw.length > 2 && pCombined.includes(kw)) {
+      matchedKwCount++;
+    }
+  }
+  if (matchedKwCount > 0) {
+    attributesPts += Math.min(8, matchedKwCount * 2);
+  }
+
+  // فحص اللون أو الشكل
+  if (queryColor && queryColor.length > 2 && pCombined.includes(queryColor)) {
+    attributesPts += 2;
+  }
+  if (queryShape && queryShape.length > 2 && pCombined.includes(queryShape)) {
+    attributesPts += 2;
+  }
+  attributesPts = Math.min(20, attributesPts);
+
+  // ==========================================
+  // 4. نظام خصم التنافر (Strict Conflicting Item Penalty)
+  // لمنع ظهور شخاطة سلف عند فحص كتف شحن أو العكس!
+  // ==========================================
+  let penalty = 0;
+
+  // إذا كانت القطعة المفحوصة كتف شحن، والمنتج إشارة أو شخاطة سلف
+  if (isRectifierQuery && !isStarterQuery && isStarterProd && !isRectifierProd) {
+    penalty += 45; // خصم قوي لمنع خلط السلف مع الشحن
+  }
+  if (isRectifierQuery && !isLightingQuery && isLightingProd && !isRectifierProd) {
+    penalty += 45; // خصم قوي لمنع خلط الإضاءة مع الشحن
+  }
+  if (isStarterQuery && !isLightingQuery && isLightingProd && !isStarterProd) {
+    penalty += 45;
+  }
+  if (isLightingQuery && !isRectifierQuery && isRectifierProd && !isLightingProd) {
+    penalty += 45;
+  }
+
+  // حساب النتيجة النهائية
+  let calculatedScore = namePts + categoryPts + attributesPts - penalty;
+  calculatedScore = Math.max(0, Math.min(98, calculatedScore));
+
+  // إذا كان هناك تطابق تام للاسم والتصنيف، نضمن نسبة امتياز 90%-98%
+  if (namePts >= 44 && categoryPts >= 20) {
+    calculatedScore = Math.max(calculatedScore, Math.min(98, 88 + Math.round(attributesPts / 2)));
+  }
+
+  return {
+    score: calculatedScore,
+    reason: matchReasons.join(" • ") || "مطابقة عامة في المواصفات",
+    breakdown: { namePts, categoryPts, attributesPts },
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -50,7 +236,7 @@ export async function POST(req: NextRequest) {
         const { data } = await supabase
           .from("products")
           .select("id, name, notes, retail_price, stock, image")
-          .limit(100);
+          .limit(120);
 
         if (data && data.length > 0) {
           productsList = data.map((p) => ({
@@ -67,12 +253,17 @@ export async function POST(req: NextRequest) {
       console.warn("Could not load products for visual search from Supabase:", dbErr);
     }
 
-    let identifiedPart = "قطعة غيار دراجة";
-    let category = "قطع غيار";
-    let keywords: string[] = ["قطع غيار", "دراجة", "صيانة"];
-    let matches: Array<{ id: string; score: number; reason?: string; name?: string; image?: string; retailPrice?: number }> = [];
+    let extractedAttributes: ExtractedImageAttributes = {
+      primaryPartName: "قطعة غيار دراجة",
+      subCategory: "قطع غيار",
+      color: "غير محدد",
+      shapeGeometry: "قطعة ميكانيكية/كهربائية",
+      visibleBrandOrText: "",
+      keywords: ["قطع غيار", "دراجة"],
+      reasoning: "فحص أولي للمظهر البصري للقطعة",
+    };
 
-    // Attempt Gemini Vision if key exists
+    // Call Gemini 3.8 Flash Vision with 15 seconds timeout
     const apiKey = await getGeminiApiKey();
 
     if (apiKey && apiKey.length > 5) {
@@ -80,33 +271,28 @@ export async function POST(req: NextRequest) {
         const ai = new GoogleGenAI({
           apiKey: apiKey,
           httpOptions: {
-            timeout: 3500,
+            timeout: 15000,
             headers: {
               "User-Agent": "aistudio-build",
             },
           },
         });
 
-        const productsCatalogText = productsList.slice(0, 80).map((p, idx) =>
-          `${idx + 1}. [ID: ${p.id}] ${p.name} | ملاحظات/تصنيف: ${p.notes || "عام"}`
-        ).join("\n");
-
         const promptText = `
-أنت خبير محترف في فحص وتصنيف قطع غيار الدراجات النارية والدراجات الكهربائية والشواحن والبطاريات لـ "متجر أحمد بحري" في العراق.
-افحص الصورة المرفقة بعناية فائقة وتعرف على قطعة الغيار الظاهرة فيها بدقة (مثل: إشارة خلفية أو أمامية، شخاطة سلف، كابريتر، بطارية شحن، مساعدين، ضوء أمامي، مكابح، إطارات، دراجة كهربائية FASHION E-PIKE، Skins Jabali، وغيرها).
+أنت خبير ذكاء اصطناعي فائق الدقة متخصص في فحص وتصنيف قطع غيار الدراجات النارية والكهربائية (شحن، إشعال، محرك، إنارة، بطاريات، أسلاك، مكابح) لمتجر "أحمد بحري" في العراق، تماماً مثل محرك البحث البصري المتقدم في AliExpress و Amazon Lens.
 
-قارن هذه القطعة بقائمة منتجات المتجر التالية:
-${productsCatalogText || "لا توجد قائمة منتجات، حدد اسم القطعة وتصنيفها والكلمات المفتاحية بدقة"}
-
-المطلوب بدقة:
-1. identifiedPart: الاسم الواضح لقطعة الغيار الظاهرة باللغة العربية الفصحى.
-2. category: تصنيف القطعة.
-3. keywords: قائمة بالكلمات المفتاحية للبحث عن هذه القطعة.
-4. matches: قائمة بالمعرفات (ID) المطابقة من القائمة المرفقة مع نسبة التطابق (score من 50 إلى 100) وسبب التطابق.
+افحص الصورة المرفقة واستخرج الخصائص الدقيقة للقطعة:
+1. primaryPartName: الاسم الفعلي الدقيق للقطعة باللغة العربية (أمثلة شائعة: "كتف شحن", "ريكتفاير", "منظم شحن دينمو", "شخاطة سلف", "بكلايت خلفي", "إشارة جانبية", "كابريتر", "بلك شرارة", "بطارية جافة", "مساعدين هيدروليك", "سفايف بريك", إلخ).
+2. subCategory: الفئة الفرعية الدقيقة للمنظومة (أمثلة: "شحن وكهربائيات", "منظومة إشعال وسلف", "إضاءة وفوانيس", "محرك ووقود", "فرامل ومكابح", "شاحن وبطارية").
+3. color: اللون الغالب للقطعة والعلبة (مثال: "أسود مع أسلاك ملونة", "فضي معدني").
+4. shapeGeometry: الشكل الهندسي والمظهر المادي (مثال: "مربع مزعنف للتبريد مع فيشة وأسلاك", "أسطواني مدمج مع سلكين").
+5. visibleBrandOrText: أي كتابة أو ماركة واضحة تظهر على القطعة أو الغلاف (مثال: SAVINY, KOCT, 12V, 150CC, إلخ).
+6. keywords: قائمة كلمات مفتاحية ومرادفات عربية وإنجليزية للمنتج (مثال: ["كتف شحن", "ريكتفاير", "منظم شحن", "rectifier", "regulator", "دباب", "SAVINY"]).
+7. reasoning: شرح موجز لما تم التعرف عليه بصرياً ولماذا هو هذه القطعة.
 `;
 
         const callVisionWithTimeout = async (): Promise<any> => {
-          const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3500));
+          const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000));
           const run = async () => {
             try {
               const res = await ai.models.generateContent({
@@ -125,28 +311,21 @@ ${productsCatalogText || "لا توجد قائمة منتجات، حدد اسم 
                   responseSchema: {
                     type: Type.OBJECT,
                     properties: {
-                      identifiedPart: { type: Type.STRING },
-                      category: { type: Type.STRING },
+                      primaryPartName: { type: Type.STRING },
+                      subCategory: { type: Type.STRING },
+                      color: { type: Type.STRING },
+                      shapeGeometry: { type: Type.STRING },
+                      visibleBrandOrText: { type: Type.STRING },
                       keywords: { type: Type.ARRAY, items: { type: Type.STRING } },
-                      matches: {
-                        type: Type.ARRAY,
-                        items: {
-                          type: Type.OBJECT,
-                          properties: {
-                            id: { type: Type.STRING },
-                            score: { type: Type.NUMBER },
-                            reason: { type: Type.STRING },
-                          },
-                          required: ["id", "score"],
-                        },
-                      },
+                      reasoning: { type: Type.STRING },
                     },
-                    required: ["identifiedPart", "category", "keywords"],
+                    required: ["primaryPartName", "subCategory", "keywords"],
                   },
                 },
               });
               return res.text ? JSON.parse(res.text) : null;
-            } catch {
+            } catch (err) {
+              console.warn("Gemini Vision generateContent error:", err);
               return null;
             }
           };
@@ -155,102 +334,83 @@ ${productsCatalogText || "لا توجد قائمة منتجات، حدد اسم 
 
         const visionResult = await callVisionWithTimeout();
         if (visionResult) {
-          if (visionResult.identifiedPart) identifiedPart = visionResult.identifiedPart;
-          if (visionResult.category) category = visionResult.category;
-          if (Array.isArray(visionResult.keywords) && visionResult.keywords.length > 0) {
-            keywords = visionResult.keywords;
-          }
-          if (Array.isArray(visionResult.matches) && visionResult.matches.length > 0) {
-            matches = visionResult.matches;
-          }
+          extractedAttributes = {
+            primaryPartName: visionResult.primaryPartName || extractedAttributes.primaryPartName,
+            subCategory: visionResult.subCategory || extractedAttributes.subCategory,
+            color: visionResult.color || extractedAttributes.color,
+            shapeGeometry: visionResult.shapeGeometry || extractedAttributes.shapeGeometry,
+            visibleBrandOrText: visionResult.visibleBrandOrText || "",
+            keywords: Array.isArray(visionResult.keywords) && visionResult.keywords.length > 0 ? visionResult.keywords : extractedAttributes.keywords,
+            reasoning: visionResult.reasoning || "تم التعرف البصري بنجاح",
+          };
         }
       } catch (geminiErr) {
-        console.warn("Gemini vision call failed:", geminiErr);
+        console.warn("Gemini vision call exception:", geminiErr);
       }
     }
 
-    // If Gemini didn't find direct ID matches, search keywords across productsList
-    if (matches.length === 0 && productsList.length > 0) {
-      const searchTerms = [
-        identifiedPart,
-        ...keywords,
-      ].filter(Boolean).map((t) => t.toLowerCase().trim());
+    // =========================================================================
+    // تطبيق خوارزمية حساب نسبة التطابق (Smart Matching Scoring Algorithm)
+    // =========================================================================
+    const scoredProducts: Array<{
+      id: string;
+      score: number;
+      reason: string;
+      breakdown: { namePts: number; categoryPts: number; attributesPts: number };
+      name?: string;
+      retailPrice?: number;
+      image?: string;
+      stock?: number;
+    }> = [];
 
-      const scoredCandidates: Array<{ id: string; score: number; reason: string }> = [];
-
-      for (const p of productsList) {
-        const pName = (p.name || "").toLowerCase();
-        const pNotes = (p.notes || "").toLowerCase();
-        let matchScore = 0;
-        let matchedReason = "";
-
-        for (const term of searchTerms) {
-          const words = term.split(/\s+/).filter((w) => w.length > 2);
-          for (const word of words) {
-            if (pName.includes(word)) {
-              matchScore += 45;
-              matchedReason = `تطابق الاسم مع كلمة (${word})`;
-            }
-            if (pNotes.includes(word)) {
-              matchScore += 25;
-              if (!matchedReason) matchedReason = `تطابق التصنيف مع (${word})`;
-            }
-          }
-        }
-
-        if (matchScore > 0) {
-          scoredCandidates.push({
-            id: p.id,
-            score: Math.min(98, Math.max(65, matchScore)),
-            reason: matchedReason || "تطابق بصري وموضوعي",
-          });
-        }
-      }
-
-      scoredCandidates.sort((a, b) => b.score - a.score);
-      matches = scoredCandidates.slice(0, 8);
-
-      // If still empty, supply the top available products so the user can browse relevant inventory
-      if (matches.length === 0 && productsList.length > 0) {
-        matches = productsList.slice(0, 4).map((p, idx) => ({
-          id: p.id,
-          score: 80 - idx * 5,
-          reason: "مقترح بناءً على فحص الصورة وتوفر المخزون",
-        }));
+    for (const prod of productsList) {
+      const matchResult = computeSmartMatchScore(prod, extractedAttributes);
+      // استبعاد أي منتج تقل نسبة تطابقه عن 50% لضمان نتائج ذات صلة وثيقة فقط (AliExpress Style)
+      if (matchResult.score >= 50) {
+        scoredProducts.push({
+          id: prod.id,
+          score: matchResult.score,
+          reason: matchResult.reason,
+          breakdown: matchResult.breakdown,
+          name: prod.name,
+          retailPrice: prod.retailPrice,
+          image: prod.image,
+          stock: prod.stock,
+        });
       }
     }
 
-    // Attach full product details to matches for instant frontend rendering
-    const enrichedMatches = matches.map((m) => {
-      const p = productsList.find((prod) => prod.id === m.id);
-      return {
-        ...m,
-        name: p?.name,
-        retailPrice: p?.retailPrice,
-        image: p?.image,
-        stock: p?.stock,
-      };
-    });
+    // ترتيب المنتجات تلقائياً تنازلياً (Descending) بناءً على نسبة التطابق الأعلى
+    scoredProducts.sort((a, b) => b.score - a.score);
+
+    // الحد الأقصى لأعلى 12 نتيجة متطابقة
+    const topMatches = scoredProducts.slice(0, 12);
 
     return NextResponse.json({
       success: true,
       data: {
-        identifiedPart,
-        category,
-        keywords,
-        matches: enrichedMatches,
+        identifiedPart: extractedAttributes.primaryPartName,
+        category: extractedAttributes.subCategory,
+        color: extractedAttributes.color,
+        shapeGeometry: extractedAttributes.shapeGeometry,
+        visibleBrandOrText: extractedAttributes.visibleBrandOrText,
+        keywords: extractedAttributes.keywords,
+        attributes: extractedAttributes,
+        matches: topMatches,
+        totalFound: topMatches.length,
       },
     });
   } catch (err: unknown) {
-    console.error("Visual search route exception:", err);
+    console.error("Visual search route general exception:", err);
     return NextResponse.json({
-      success: true,
+      success: false,
+      error: "حدث خطأ أثناء فحص الصورة",
       data: {
         identifiedPart: "قطعة غيار دراجة",
         category: "قطع غيار",
-        keywords: ["قطع غيار", "دراجة"],
+        keywords: [],
         matches: [],
       },
-    });
+    }, { status: 500 });
   }
 }
