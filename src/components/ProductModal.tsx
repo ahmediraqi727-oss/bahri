@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { Product, Supplier, calculateRetailPrice, CategoryItem } from "@/lib/types";
 import { useData } from "@/lib/data-context";
 import BarcodeDisplay from "@/components/BarcodeDisplay";
@@ -13,6 +14,8 @@ interface ProductModalProps {
   product?: Product | null;
   initialBarcode?: string | null;
   initialQrCode?: string | null;
+  returnUrl?: string | null;
+  onSaved?: (product: Product) => void;
 }
 
 function extractCategoryFromNotes(notes: string | undefined): string {
@@ -42,7 +45,10 @@ export default function ProductModal({
   product,
   initialBarcode,
   initialQrCode,
+  returnUrl,
+  onSaved,
 }: ProductModalProps) {
+  const router = useRouter();
   const { suppliers, categories, products, addProduct, updateProduct, addSupplier, addCategory } = useData();
   const galleryRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -262,10 +268,17 @@ export default function ProductModal({
 
       if (product) {
         await updateProduct(product.id, data);
+        if (onSaved) onSaved({ ...product, ...data });
       } else {
-        await addProduct(data);
+        const created = await addProduct(data);
+        if (onSaved && created) onSaved(created);
       }
-      onClose();
+
+      if (returnUrl) {
+        router.replace(returnUrl);
+      } else {
+        onClose();
+      }
     } catch (err: unknown) {
       console.error("Error saving product:", err);
       const msg = err instanceof Error ? err.message : "حدث خطأ أثناء حفظ المنتج، يرجى المحاولة مرة أخرى.";
@@ -290,6 +303,28 @@ export default function ProductModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-5">
+          {/* Smart Return Navigation Banner */}
+          {returnUrl && (
+            <div className="bg-gradient-to-r from-purple-900/30 to-indigo-900/30 border border-purple-500/40 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🏷️</span>
+                <div>
+                  <span className="font-extrabold text-purple-800 dark:text-purple-200">سياق نشط: استوديو الملصقات الحرارية</span>
+                  <p className="text-[11px] text-purple-700 dark:text-purple-300">
+                    عند الضغط على "حفظ"، سيتم إرجاعك تلقائياً وبشكل فوري إلى استوديو الملصقات مع تحديث سعر المفرد والبيانات.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => router.replace(returnUrl)}
+                className="px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-xs font-bold transition-all whitespace-nowrap"
+              >
+                العودة للاستوديو ↩
+              </button>
+            </div>
+          )}
+
           {error && (
             <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm font-medium">
               ⚠️ {error}
@@ -688,17 +723,34 @@ export default function ProductModal({
             <button
               type="submit"
               disabled={submitting}
-              className="flex-1 py-2.5 text-sm font-bold text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+              className="flex-1 py-2.5 text-sm font-bold text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-md"
               style={{ backgroundColor: "var(--primary)" }}
             >
-              {submitting ? "جاري الحفظ..." : product ? "حفظ التعديلات" : "حفظ المنتج"}
+              {submitting ? (
+                "جاري الحفظ..."
+              ) : returnUrl ? (
+                <>
+                  <span>💾</span>
+                  <span>حفظ والعودة إلى استوديو الملصقات</span>
+                </>
+              ) : product ? (
+                "حفظ التعديلات"
+              ) : (
+                "حفظ المنتج"
+              )}
             </button>
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => {
+                if (returnUrl) {
+                  router.replace(returnUrl);
+                } else {
+                  onClose();
+                }
+              }}
               className="px-6 py-2.5 text-sm font-bold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
-              إلغاء
+              {returnUrl ? "إلغاء والعودة" : "إلغاء"}
             </button>
           </div>
         </form>

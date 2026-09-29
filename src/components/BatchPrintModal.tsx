@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { useData } from "@/lib/data-context";
 import type { Product } from "@/lib/types";
 import {
   LabelCustomizationOptions,
@@ -37,6 +39,8 @@ export interface BatchPrintModalProps {
   isOpen: boolean;
   onClose: () => void;
   selectedProducts: Product[];
+  allProducts?: Product[];
+  initialActiveProductId?: string;
 }
 
 const ELEMENT_LABELS: Record<LabelElementId, { title: string; icon: string }> = {
@@ -50,8 +54,102 @@ export default function BatchPrintModal({
   isOpen,
   onClose,
   selectedProducts,
+  allProducts,
+  initialActiveProductId,
 }: BatchPrintModalProps) {
+  const router = useRouter();
+  const { products: contextProducts } = useData();
   const { success, error: toastError, loading: toastLoading, dismiss } = useToast();
+
+  // Products available in the studio (selected or fallback to catalog)
+  const availableProducts = useMemo(() => {
+    if (selectedProducts && selectedProducts.length > 0) return selectedProducts;
+    if (allProducts && allProducts.length > 0) return allProducts;
+    return contextProducts || [];
+  }, [selectedProducts, allProducts, contextProducts]);
+
+  // Active product being previewed & configured
+  const [activeProductId, setActiveProductId] = useState<string>(
+    initialActiveProductId || selectedProducts[0]?.id || availableProducts[0]?.id || ""
+  );
+
+  useEffect(() => {
+    if (initialActiveProductId) {
+      setActiveProductId(initialActiveProductId);
+    } else if (!activeProductId && availableProducts.length > 0) {
+      setActiveProductId(availableProducts[0].id);
+    }
+  }, [initialActiveProductId, availableProducts]);
+
+  // Map of customized retail prices per product ID (allows modifying price on sticker without altering DB)
+  const [customPrices, setCustomPrices] = useState<Record<string, number>>({});
+
+  const activeProduct = useMemo(() => {
+    return (
+      availableProducts.find((p) => p.id === activeProductId) ||
+      availableProducts[0] ||
+      null
+    );
+  }, [availableProducts, activeProductId]);
+
+  // Price auto-default:
+  // When any product is chosen, the sticker price automatically defaults to its retailPrice!
+  const activeProductRetailPrice = activeProduct?.retailPrice ?? 0;
+  const currentStickerPrice =
+    activeProduct && customPrices[activeProduct.id] !== undefined
+      ? customPrices[activeProduct.id]
+      : activeProductRetailPrice;
+
+  const isPriceCustomized =
+    activeProduct &&
+    customPrices[activeProduct.id] !== undefined &&
+    customPrices[activeProduct.id] !== activeProductRetailPrice;
+
+  const handlePriceChange = (val: number) => {
+    if (!activeProduct) return;
+    setCustomPrices((prev) => ({
+      ...prev,
+      [activeProduct.id]: Math.max(0, val),
+    }));
+  };
+
+  const handleResetPriceToDefault = () => {
+    if (!activeProduct) return;
+    setCustomPrices((prev) => {
+      const next = { ...prev };
+      delete next[activeProduct.id];
+      return next;
+    });
+    success(`↺ تم استعادة سعر المفرد الأصلي: ${activeProductRetailPrice.toLocaleString()} IQD`);
+  };
+
+  const handlePriceAdjustStep = (step: number) => {
+    if (!activeProduct) return;
+    const newPrice = Math.max(0, currentStickerPrice + step);
+    handlePriceChange(newPrice);
+  };
+
+  // Smart Return Navigation / Context Preservation
+  const handleQuickEditProduct = (prod: Product | null) => {
+    if (!prod) return;
+    try {
+      sessionStorage.setItem(
+        "ahmed_bahri_thermal_suite_context",
+        JSON.stringify({
+          productId: prod.id,
+          customPrices,
+          customization,
+          timestamp: Date.now(),
+        })
+      );
+    } catch (e) {
+      console.warn("Could not save thermal context to sessionStorage", e);
+    }
+    const returnTarget = `/dashboard/scanner?openThermal=true&productId=${encodeURIComponent(prod.id)}`;
+    router.push(
+      `/dashboard/products?editProductId=${encodeURIComponent(prod.id)}&returnUrl=${encodeURIComponent(returnTarget)}`
+    );
+  };
 
   const [customization, setCustomization] = useState<LabelCustomizationOptions>({
     ...DEFAULT_LABEL_CUSTOMIZATION,
@@ -77,8 +175,15 @@ export default function BatchPrintModal({
     name: null,
   });
 
-  // Pre-generate sample URLs for live preview
-  const sampleProduct = selectedProducts[0] || null;
+  // Effective product for live preview with current sticker price
+  const sampleProduct = useMemo(() => {
+    if (!activeProduct) return null;
+    return {
+      ...activeProduct,
+      retailPrice: currentStickerPrice,
+    };
+  }, [activeProduct, currentStickerPrice]);
+
   const [previewBarcodeUrl, setPreviewBarcodeUrl] = useState<string>("");
   const [previewQrUrl, setPreviewQrUrl] = useState<string>("");
 
@@ -115,13 +220,25 @@ export default function BatchPrintModal({
     customization.storeUrl,
   ]);
 
-  // Compute print items list with quantities
+  // Compute print items list with quantities and customized prices
   const printItems = useMemo(() => {
-    return selectedProducts.map((product) => ({
-      product,
+    const targetList =
+      availableProducts.length > 0
+        ? availableProducts
+        : activeProduct
+        ? [activeProduct]
+        : [];
+    return targetList.map((product) => ({
+      product: {
+        ...product,
+        retailPrice:
+          customPrices[product.id] !== undefined
+            ? customPrices[product.id]
+            : (product.retailPrice ?? 0),
+      },
       quantity: qtyMode === "unified" ? unifiedQty : customQuantities[product.id] || 1,
     }));
-  }, [selectedProducts, qtyMode, unifiedQty, customQuantities]);
+  }, [availableProducts, activeProduct, qtyMode, unifiedQty, customQuantities, customPrices]);
 
   const totalLabelsCount = useMemo(() => {
     return printItems.reduce((acc, item) => acc + item.quantity, 0);
@@ -418,6 +535,162 @@ export default function BatchPrintModal({
 
           {/* Left Column: Presets, Colors, Logo & Controls (7 Cols) */}
           <div className="lg:col-span-7 flex flex-col gap-5">
+
+            {/* ── 0. Active Product Selector & Quick Edit Bar ── */}
+            <div className="bg-[#15102a]/95 p-4 rounded-2xl border border-purple-500/40 flex flex-col gap-3 shadow-lg">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-900/60 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">🏷️</span>
+                  <span className="text-xs font-black text-purple-200">المنتج النشط للمعاينة والملصق:</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] bg-purple-900/70 text-purple-300 font-bold border border-purple-500/30">
+                    {availableProducts.length} منتج متاح
+                  </span>
+                </div>
+                {/* Quick Edit Product Button */}
+                {activeProduct && (
+                  <button
+                    type="button"
+                    onClick={() => handleQuickEditProduct(activeProduct)}
+                    title="تعديل تفاصيل المنتج وسعره والانتقال السريع مع العودة التلقائية"
+                    className="px-3.5 py-1.5 rounded-xl bg-gradient-to-l from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-md border border-purple-400/40 transition-all hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap"
+                  >
+                    <span>✏️</span>
+                    <span>تعديل المنتج</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Product Picker Dropdown */}
+              <div className="flex flex-col sm:flex-row items-center gap-2">
+                <div className="relative w-full flex-1">
+                  <select
+                    value={activeProduct?.id || ""}
+                    onChange={(e) => {
+                      setActiveProductId(e.target.value);
+                    }}
+                    className="w-full px-3 py-2.5 bg-purple-950 border border-purple-500/50 rounded-xl text-xs sm:text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                  >
+                    {availableProducts.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} — (سعر المفرد: {(p.retailPrice ?? 0).toLocaleString()} IQD) {p.barcode ? `[${p.barcode}]` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Active Product Details Quick Pill */}
+              {activeProduct && (
+                <div className="bg-purple-950/60 p-2.5 rounded-xl border border-purple-500/20 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    {activeProduct.image && (
+                      <img src={activeProduct.image} alt={activeProduct.name} className="w-7 h-7 rounded-lg object-cover border border-purple-500/30 flex-shrink-0" />
+                    )}
+                    <span className="font-extrabold text-white truncate max-w-[200px] sm:max-w-[260px]">
+                      {activeProduct.name}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <span className="text-purple-300">سعر المفرد المسجل:</span>
+                    <span className="font-mono font-bold text-emerald-400">
+                      {(activeProduct.retailPrice ?? 0).toLocaleString()} IQD
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── 0.5 Retail Price Auto-Default & Live Modification Suite ── */}
+            <div className="bg-[#15102a]/95 p-4 rounded-2xl border border-purple-500/40 flex flex-col gap-3 shadow-lg">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-900/60 pb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">💰</span>
+                  <span className="text-xs font-black text-purple-200">سعر المفرد على الملصق (Retail Price Auto-Default):</span>
+                </div>
+                {isPriceCustomized && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold">
+                    مُعدّل يدوياً للملصق
+                  </span>
+                )}
+              </div>
+
+              <p className="text-[11px] text-purple-300 leading-tight">
+                يتم جلب <strong>سعر المفرد (Retail Price)</strong> تلقائياً من بيانات المنتج. يمكنك تعديل السعر المطبوع على الملصق يدوياً، أو استعادة السعر الأصلي بضغطة زر:
+              </p>
+
+              {/* Price Input & Reset Bar */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="number"
+                    min={0}
+                    step={250}
+                    value={currentStickerPrice}
+                    onChange={(e) => handlePriceChange(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 bg-purple-950 border border-purple-500/50 rounded-xl text-sm font-black font-mono text-emerald-300 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="سعر المفرد للملصق..."
+                  />
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-purple-400 font-mono pointer-events-none">
+                    IQD
+                  </span>
+                </div>
+
+                {isPriceCustomized && (
+                  <button
+                    type="button"
+                    onClick={handleResetPriceToDefault}
+                    className="px-3 py-2 bg-purple-900/80 hover:bg-purple-800 text-purple-200 hover:text-white rounded-xl text-xs font-bold transition-all border border-purple-400/40 flex items-center justify-center gap-1.5 whitespace-nowrap shadow-xs"
+                    title="استعادة سعر المفرد الأصلي المسجل للمنتج"
+                  >
+                    <span>↺</span>
+                    <span>استعادة الأصل ({activeProductRetailPrice.toLocaleString()} IQD)</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Quick Step Increment/Decrement Buttons */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[11px] text-purple-300 font-bold ml-1">تعديل سريع:</span>
+                {[-5000, -1000, -500, +500, +1000, +5000].map((step) => (
+                  <button
+                    key={step}
+                    type="button"
+                    onClick={() => handlePriceAdjustStep(step)}
+                    className="px-2 py-0.5 rounded-lg bg-purple-950/70 hover:bg-purple-800 border border-purple-500/30 text-[11px] font-mono font-bold text-purple-200 hover:text-white transition-all"
+                  >
+                    {step > 0 ? `+${step.toLocaleString()}` : step.toLocaleString()}
+                  </button>
+                ))}
+              </div>
+
+              {/* Price Display Toggle & Font Size */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-purple-900/50 text-xs">
+                <label className="flex items-center gap-2 bg-purple-950/50 p-2 rounded-xl border border-purple-500/30 cursor-pointer hover:bg-purple-900/40">
+                  <input
+                    type="checkbox"
+                    checked={customization.showProductPrice}
+                    onChange={(e) => setCustomization((prev) => ({ ...prev, showProductPrice: e.target.checked }))}
+                    className="w-4 h-4 rounded accent-purple-600 cursor-pointer"
+                  />
+                  <span className="font-bold text-purple-200">إظهار السعر على الملصق</span>
+                </label>
+
+                <div className="flex items-center justify-between bg-purple-950/50 p-2 rounded-xl border border-purple-500/30">
+                  <span className="font-bold text-purple-200">حجم خط السعر:</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min={9}
+                      max={28}
+                      value={customization.priceFontSize}
+                      onChange={(e) => setCustomization((prev) => ({ ...prev, priceFontSize: Number(e.target.value) }))}
+                      className="w-20 h-1.5 bg-purple-900 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                    />
+                    <span className="font-mono font-bold text-white text-xs w-6 text-center">{customization.priceFontSize}px</span>
+                  </div>
+                </div>
+              </div>
+            </div>
             
             {/* ── 1. Expanded Global Thermal Presets & Dropdown Selector ── */}
             <div className="bg-[#15102a]/90 p-4 rounded-2xl border border-purple-500/40 flex flex-col gap-3">
@@ -1056,16 +1329,41 @@ export default function BatchPrintModal({
             {/* Live Interactive Preview Box */}
             <div className="bg-[#15102a]/90 rounded-3xl p-5 border border-purple-500/40 flex flex-col items-center justify-between min-h-[380px] shadow-inner">
               
-              <div className="flex items-center justify-between w-full mb-3">
-                <span className="text-xs font-extrabold text-purple-300 flex items-center gap-1.5">
-                  <span>🔍 معاينة الألوان والشعار</span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] bg-purple-950 border border-purple-500/30 text-purple-300 font-mono">
-                    {customization.labelShape === "circle" ? "⭕ دائري" : customization.labelShape === "square" ? "🔲 مربع" : "▭ مستطيل"}
+              <div className="flex flex-col gap-2 w-full mb-3">
+                <div className="flex items-center justify-between w-full">
+                  <span className="text-xs font-extrabold text-purple-300 flex items-center gap-1.5">
+                    <span>🔍 معاينة الملصق المباشرة</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-purple-950 border border-purple-500/30 text-purple-300 font-mono">
+                      {customization.labelShape === "circle" ? "⭕ دائري" : customization.labelShape === "square" ? "🔲 مربع" : "▭ مستطيل"}
+                    </span>
                   </span>
-                </span>
-                <span className="text-[11px] font-mono text-purple-400 bg-purple-950 px-2 py-0.5 rounded-full border border-purple-500/30">
-                  {customization.rollWidthMM}×{customization.labelShape === "square" || customization.labelShape === "circle" ? customization.rollWidthMM : customization.rollHeightMM} mm
-                </span>
+                  <span className="text-[11px] font-mono text-purple-400 bg-purple-950 px-2 py-0.5 rounded-full border border-purple-500/30">
+                    {customization.rollWidthMM}×{customization.labelShape === "square" || customization.labelShape === "circle" ? customization.rollWidthMM : customization.rollHeightMM} mm
+                  </span>
+                </div>
+
+                {/* Quick Edit Banner on Preview */}
+                {activeProduct && (
+                  <div className="flex items-center justify-between w-full bg-purple-950/70 p-2 rounded-xl border border-purple-500/30">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <span className="text-xs font-bold text-white truncate max-w-[150px] sm:max-w-[190px]">
+                        {activeProduct.name}
+                      </span>
+                      <span className="text-[11px] font-bold font-mono text-emerald-400 whitespace-nowrap bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-500/40">
+                        {currentStickerPrice.toLocaleString()} IQD
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickEditProduct(activeProduct)}
+                      className="px-2.5 py-1 bg-purple-900 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition-all border border-purple-400/40 flex items-center gap-1 shadow-xs whitespace-nowrap"
+                      title="تعديل هذا المنتج في صفحة المنتجات مع العودة التلقائية"
+                    >
+                      <span>✏️</span>
+                      <span className="text-[11px]">تعديل</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {sampleProduct ? (
@@ -1129,7 +1427,7 @@ export default function BatchPrintModal({
                       );
                     }
 
-                    if (elemId === "price" && customization.showProductPrice && sampleProduct.retailPrice) {
+                    if (elemId === "price" && customization.showProductPrice && typeof sampleProduct.retailPrice === "number") {
                       return (
                         <div
                           key="price"

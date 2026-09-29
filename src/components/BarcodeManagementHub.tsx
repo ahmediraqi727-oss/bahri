@@ -112,6 +112,19 @@ export default function BarcodeManagementHub() {
     const params = new URLSearchParams(window.location.search);
     const editCode = params.get("edit");
     const assignCode = params.get("assign") || params.get("link");
+    const openThermal = params.get("openThermal") === "true";
+    const thermalProductId = params.get("productId");
+
+    if (openThermal) {
+      reloadAllData();
+      if (thermalProductId) {
+        setSelectedIds(new Set([thermalProductId]));
+      }
+      setBatchPrintOpen(true);
+      try {
+        window.history.replaceState({}, "", "/dashboard/scanner");
+      } catch (e) {}
+    }
 
     if (editCode) {
       lookupByQROrId(editCode).then((p) => {
@@ -126,7 +139,7 @@ export default function BarcodeManagementHub() {
     } else if (assignCode) {
       setLinkingCode(assignCode);
     }
-  }, [products]);
+  }, [products, reloadAllData]);
 
   const isWithinDateRange = useCallback((dateStr?: string | null) => {
     if (datePreset === "all") return true;
@@ -466,6 +479,14 @@ export default function BarcodeManagementHub() {
             <span className="text-gray-500 font-bold">المحددة حالياً:</span>
             <span className="font-extrabold text-blue-600 dark:text-blue-400">{selectedIds.size} منتج</span>
           </div>
+
+          <button
+            onClick={() => setBatchPrintOpen(true)}
+            className="w-full mt-2 px-3 py-2 bg-gradient-to-l from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
+          >
+            <span>🎨</span>
+            <span>استوديو الملصقات الحرارية (Ahmed Bahri)</span>
+          </button>
         </div>
 
       </div>
@@ -729,7 +750,8 @@ export default function BarcodeManagementHub() {
 
                     <div className="flex items-center gap-2 flex-wrap">
                       <button onClick={() => handleGenerateSingle(product)} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm">⚡ توليد باركود</button>
-                      <button onClick={() => { setEditingProduct(product); setEditBarcode(product.barcode || ""); setEditQR(product.qrCode || ""); }} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-xl text-xs font-bold transition-all border border-gray-200">✏ تعديل</button>
+                      <button onClick={() => { setEditingProduct(product); setEditBarcode(product.barcode || ""); setEditQR(product.qrCode || ""); }} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-xl text-xs font-bold transition-all border border-gray-200">✏ تعديل كود</button>
+                      <button onClick={() => { setSelectedIds(new Set([product.id])); setBatchPrintOpen(true); }} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-l from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm" title="طباعة ملصق حراري فوري لهذا المنتج">🖨️ طباعة ملصق</button>
                     </div>
                   </div>
                 );
@@ -753,7 +775,13 @@ export default function BarcodeManagementHub() {
       </div>
 
       {/* Modals */}
-      <BatchPrintModal isOpen={batchPrintOpen} onClose={() => setBatchPrintOpen(false)} selectedProducts={selectedProductsList} />
+      <BatchPrintModal
+        isOpen={batchPrintOpen}
+        onClose={() => setBatchPrintOpen(false)}
+        selectedProducts={selectedProductsList.length > 0 ? selectedProductsList : products}
+        allProducts={products}
+        initialActiveProductId={Array.from(selectedIds)[0]}
+      />
 
       {editingProduct && (
         <div className="fixed inset-0 z-[95] flex items-center justify-center p-4" dir="rtl">

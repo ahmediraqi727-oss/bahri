@@ -24,8 +24,26 @@ export default function ProductsPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [returnUrl, setReturnUrl] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  // Automatic edit modal trigger from URL query params (e.g. from Thermal Suite)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const editId = params.get("editProductId") || params.get("edit");
+    const ret = params.get("returnUrl");
+    if (ret) setReturnUrl(ret);
+
+    if (editId && products.length > 0) {
+      const match = products.find((p) => p.id === editId);
+      if (match) {
+        setEditingProduct(match);
+        setModalOpen(true);
+      }
+    }
+  }, [products]);
 
   // Unsaved Changes & Persistence State
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -1066,7 +1084,16 @@ export default function ProductsPage() {
       </div>
 
       {/* Add / Edit Product Modal */}
-      <ProductModal isOpen={modalOpen} onClose={() => { setModalOpen(false); setEditingProduct(null); }} product={editingProduct} />
+      <ProductModal
+        isOpen={modalOpen}
+        onClose={() => {
+          setModalOpen(false);
+          setEditingProduct(null);
+          setReturnUrl(null);
+        }}
+        product={editingProduct}
+        returnUrl={returnUrl}
+      />
 
       {/* Single Delete Confirmation Modal */}
       {deleteConfirm && (
