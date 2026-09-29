@@ -156,12 +156,12 @@ export default function CustomerProductsModal({ isOpen, onClose }: CustomerProdu
                 return (
                   <div
                     key={product.id}
-                    className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/60 rounded-2xl border border-gray-200 dark:border-gray-700/60 hover:shadow-md transition-shadow relative"
+                    className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/60 rounded-2xl border border-gray-200 dark:border-gray-700/60 hover:-translate-y-0.5 hover:shadow-md hover:border-violet-300 dark:hover:border-violet-700/70 transition-all duration-200 relative group"
                   >
                     {/* Image */}
                     <div className="w-16 h-16 rounded-xl bg-gray-200 dark:bg-gray-700 overflow-hidden flex-shrink-0">
                       {product.image ? (
-                        <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                        <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 ease-out" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-xl">📦</div>
                       )}

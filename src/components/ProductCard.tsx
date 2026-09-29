@@ -102,7 +102,7 @@ export default function ProductCard({
 
   return (
     <article
-      className="group bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col justify-between relative max-w-full"
+      className="group bg-white dark:bg-gray-900 rounded-2xl border border-gray-200/90 dark:border-gray-800/90 overflow-hidden hover:-translate-y-2 hover:shadow-2xl hover:shadow-violet-500/10 hover:border-violet-400/60 dark:hover:border-violet-600/60 transition-all duration-300 ease-out flex flex-col justify-between relative max-w-full transform-gpu will-change-transform"
       dir="rtl"
       aria-label={`منتج: ${product.name}`}
     >
@@ -117,29 +117,29 @@ export default function ProductCard({
             alt={productAlt}
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-            className="object-cover group-hover:scale-105 transition-transform duration-500"
+            className="object-cover group-hover:scale-110 transition-transform duration-700 ease-out will-change-transform"
             priority={priorityImage}
             loading={priorityImage ? undefined : "lazy"}
           />
         ) : (
           <div
-            className="w-full h-full flex items-center justify-center text-5xl text-gray-300"
+            className="w-full h-full flex items-center justify-center text-5xl text-gray-300 group-hover:scale-110 transition-transform duration-500"
             aria-hidden="true"
           >
             📦
           </div>
         )}
 
-        {/* Detail View Hint Overlay */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-          <span className="px-3 py-1.5 rounded-xl bg-white/90 dark:bg-gray-900/90 text-xs font-bold text-gray-700 dark:text-gray-200 shadow-lg backdrop-blur-sm">
+        {/* Detail View Hint Overlay with Smooth Fade and Scale */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 backdrop-blur-[2px] transition-all duration-300 flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none">
+          <span className="px-3.5 py-1.5 rounded-xl bg-white/95 dark:bg-gray-900/95 text-xs font-extrabold text-gray-800 dark:text-gray-100 shadow-xl backdrop-blur-md transform scale-90 group-hover:scale-100 transition-all duration-300 border border-white/20 flex items-center gap-1.5">
             🔍 عرض التفاصيل
           </span>
         </div>
 
         {/* Tier Mode Discount Badge */}
         {hasDiscount && qty > 1 && (
-          <div className="absolute top-2 right-2 z-10">
+          <div className="absolute top-2 right-2 z-10 animate-popIn">
             <span className="px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-red-600 text-white shadow-md">
               -{activeTier.discountPct}%
             </span>
@@ -220,20 +220,21 @@ export default function ProductCard({
           {/* Stepper */}
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] font-bold text-gray-400 flex-shrink-0">الكمية:</span>
-            <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden flex-1">
+            <div className="flex items-center bg-gray-100 dark:bg-gray-800/90 rounded-xl overflow-hidden flex-1 border border-gray-200/50 dark:border-gray-700/50 shadow-2xs">
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleQtyUpdate(qty - 1);
                 }}
-                className="w-7 h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 font-bold text-sm transition-colors flex-shrink-0 cursor-pointer"
+                className="w-7 h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-violet-100 dark:hover:bg-violet-950/60 hover:text-violet-700 dark:hover:text-violet-300 active:scale-90 font-bold text-sm transition-all duration-150 flex-shrink-0 cursor-pointer"
                 aria-label={`تقليل الكمية لـ ${product.name}`}
               >
                 −
               </button>
               <span
-                className="flex-1 text-center text-xs font-extrabold text-gray-900 dark:text-white"
+                key={qty}
+                className="flex-1 text-center text-xs font-extrabold text-gray-900 dark:text-white transition-all duration-150 animate-popIn"
                 aria-live="polite"
               >
                 {qty}
@@ -244,7 +245,7 @@ export default function ProductCard({
                   e.stopPropagation();
                   handleQtyUpdate(qty + 1);
                 }}
-                className="w-7 h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 font-bold text-sm transition-colors flex-shrink-0 cursor-pointer"
+                className="w-7 h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-violet-100 dark:hover:bg-violet-950/60 hover:text-violet-700 dark:hover:text-violet-300 active:scale-90 font-bold text-sm transition-all duration-150 flex-shrink-0 cursor-pointer"
                 aria-label={`زيادة الكمية لـ ${product.name}`}
               >
                 +
@@ -262,10 +263,10 @@ export default function ProductCard({
                   e.preventDefault();
                   onToggleFavorite(product);
                 }}
-                className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-lg transition-all transform active:scale-125 border shrink-0 cursor-pointer ${
+                className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-lg transition-all duration-200 transform hover:scale-110 active:scale-125 border shrink-0 cursor-pointer ${
                   isFavorite
-                    ? "bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800/80 text-rose-600 dark:text-rose-400 scale-105 shadow-sm shadow-rose-100 dark:shadow-none"
-                    : "bg-gray-50 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-rose-500 hover:bg-rose-50/50 hover:border-rose-200"
+                    ? "bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800/80 text-rose-600 dark:text-rose-400 scale-105 shadow-md shadow-rose-200/50 dark:shadow-none animate-popIn"
+                    : "bg-gray-50 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-rose-500 hover:bg-rose-50/50 hover:border-rose-200 hover:shadow-xs"
                 }`}
                 title={isFavorite ? "إزالة من المفضلة" : "إضافة للمفضلة"}
                 aria-label={
@@ -288,7 +289,7 @@ export default function ProductCard({
                   e.stopPropagation();
                   onEditProduct?.(product);
                 }}
-                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-base transition-all transform active:scale-95 border shrink-0 cursor-pointer bg-gray-50 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 dark:hover:text-white hover:border-blue-600 dark:hover:border-blue-600 shadow-xs hover:scale-105"
+                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-base transition-all duration-300 transform active:scale-95 border shrink-0 cursor-pointer bg-gray-50 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-violet-600 hover:text-white dark:hover:bg-violet-600 dark:hover:text-white hover:border-violet-600 dark:hover:border-violet-600 shadow-xs hover:scale-110 hover:rotate-90"
                 title="تعديل المنتج (للإدارة فقط)"
                 aria-label={`تعديل المنتج ${product.name}`}
               >
@@ -305,12 +306,15 @@ export default function ProductCard({
                 onAddToCart?.(product, qty);
               }}
               disabled={isAdded}
-              className="flex-1 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold text-white transition-all hover:scale-[1.02] active:scale-[0.98] disabled:scale-100 shadow-md min-h-[36px] sm:min-h-[40px] flex items-center justify-center gap-1 cursor-pointer"
+              className="flex-1 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold text-white transition-all duration-200 hover:scale-[1.03] active:scale-[0.97] disabled:scale-100 shadow-md hover:shadow-lg min-h-[36px] sm:min-h-[40px] flex items-center justify-center gap-1 cursor-pointer transform-gpu"
               style={{ backgroundColor: isAdded ? "#10b981" : theme.primary }}
               aria-label={`إضافة ${product.name} إلى السلة`}
             >
               {isAdded ? (
-                <span>✓ تم الإضافة</span>
+                <span className="flex items-center gap-1 animate-popIn">
+                  <span>✓</span>
+                  <span>تم الإضافة</span>
+                </span>
               ) : (
                 <span>
                   أضف {qty > 1 ? `${qty} قطع` : ""} للسلة 🛒
