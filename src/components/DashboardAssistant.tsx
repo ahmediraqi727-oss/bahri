@@ -76,7 +76,6 @@ function FormattedMessageText({ text }: { text: string }) {
 }
 
 function parseInlineStyles(text: string) {
-  // Simple regex for **bold** and `code`
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
 
   return parts.map((part, index) => {
@@ -110,14 +109,26 @@ export default function DashboardAssistant() {
   const router = useRouter();
 
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => [
+    {
+      id: "welcome-1",
+      text: "مرحباً بك في مساعد الإدارة الذكي لـ متجر أحمد بحري! 👋",
+      isBot: true,
+      timestamp: new Date(),
+    },
+    {
+      id: "welcome-2",
+      text: "أنا مساعد الإدارة الذكي المدعوم بنموذج Google Gemini.\nجاهز لتحليل بيانات المخزون، فواتير المبيعات، حساب الأرباح، وتوجيهك في لوحة التحكم. كيف أقدر أساعدك اليوم؟",
+      isBot: true,
+      timestamp: new Date(),
+    },
+  ]);
   const [input, setInput] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeStreamId, setActiveStreamId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const initialized = useRef(false);
 
   // Compute live store context snapshot to ground Gemini with current figures
   const storeContextSnapshot = useMemo(() => {
@@ -151,28 +162,6 @@ export default function DashboardAssistant() {
     };
   }, [products, suppliers, categories, activities, settings.currentRole, unreadCount]);
 
-  // Initial welcome greeting
-  useEffect(() => {
-    if (isOpen && !initialized.current) {
-      initialized.current = true;
-      const roleName = settings.currentRole === "manager" ? "المدير" : "الإداري";
-      setMessages([
-        {
-          id: "welcome-1",
-          text: `مرحباً يا ${roleName}! 👋`,
-          isBot: true,
-          timestamp: new Date(),
-        },
-        {
-          id: "welcome-2",
-          text: `أنا مساعد الإدارة الذكي لـ ${settings.siteName || "متجر أحمد بحري"} المدعوم بنموذج Google Gemini.\nجاهز لتحليل بيانات المخزون، فواتير المبيعات، حساب الأرباح، وتوجيهك في لوحة التحكم. كيف أقدر أساعدك اليوم؟`,
-          isBot: true,
-          timestamp: new Date(),
-        },
-      ]);
-    }
-  }, [isOpen, settings.currentRole, settings.siteName]);
-
   // Auto scroll down smoothly on message changes or streaming tokens
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -184,17 +173,28 @@ export default function DashboardAssistant() {
 
   // Send request to Gemini API streaming endpoint
   const sendToGemini = async (userText: string) => {
-    if (!userText.trim() || isGenerating) return;
+    const cleanText = userText.trim();
+    if (!cleanText || isGenerating) return;
 
     const userMessageId = crypto.randomUUID();
     const botMessageId = crypto.randomUUID();
 
-    // 1. Append user message
-    const updatedMessages: Message[] = [
-      ...messages,
-      { id: userMessageId, text: userText.trim(), isBot: false, timestamp: new Date() },
-    ];
-    setMessages(updatedMessages);
+    const userMsg: Message = {
+      id: userMessageId,
+      text: cleanText,
+      isBot: false,
+      timestamp: new Date(),
+    };
+
+    const botMsg: Message = {
+      id: botMessageId,
+      text: "",
+      isBot: true,
+      timestamp: new Date(),
+    };
+
+    // 1. Immediately add both user message and empty bot thinking message to state
+    setMessages((prev) => [...prev, userMsg, botMsg]);
     setInput("");
     setIsGenerating(true);
     setActiveStreamId(botMessageId);
@@ -203,15 +203,10 @@ export default function DashboardAssistant() {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // Insert initial empty bot message placeholder
-    setMessages((prev) => [
-      ...prev,
-      { id: botMessageId, text: "", isBot: true, timestamp: new Date() },
-    ]);
-
     try {
       // Build conversation payload for Gemini
-      const conversationPayload = updatedMessages.map((m) => ({
+      const currentHistory = [...messages, userMsg];
+      const conversationPayload = currentHistory.map((m) => ({
         role: m.isBot ? "model" : "user",
         content: m.text,
       }));
@@ -222,7 +217,7 @@ export default function DashboardAssistant() {
         signal: controller.signal,
         body: JSON.stringify({
           messages: conversationPayload,
-          prompt: userText.trim(),
+          prompt: cleanText,
           storeContext: storeContextSnapshot,
         }),
       });
@@ -280,7 +275,7 @@ export default function DashboardAssistant() {
             ? {
                 ...msg,
                 isError: true,
-                text: `⚠️ عذراً، حدث خطأ أثناء التواصل مع نموذج الذكاء الاصطناعي.\nالتفاصيل: ${errMsg}\n\nيرجى التحقق من اتصال الإنترنت أو المحاولة مرة أخرى.`,
+                text: `⚠️ عذراً، حدث خطأ أثناء معالجة السؤال.\nالتفاصيل: ${errMsg}\n\nيرجى المحاولة مرة أخرى أو فحص الاتصال بالإنترنت.`,
               }
             : msg
         )
@@ -343,7 +338,7 @@ export default function DashboardAssistant() {
     setMessages([
       {
         id: crypto.randomUUID(),
-        text: "تم مسح المحادثة السابقة. أنا هنا لمساعدتك في أي أمر يخص متجر أحمد بحري!",
+        text: "تم مسح المحادثة السابقة. أنا هنا لمساعدتك في أي استفسار يخص متجر أحمد بحري!",
         isBot: true,
         timestamp: new Date(),
       },
@@ -422,14 +417,14 @@ export default function DashboardAssistant() {
               <button
                 onClick={handleClearHistory}
                 title="بدء محادثة جديدة ومسح السجل"
-                className="w-7 h-7 rounded-xl bg-white/10 hover:bg-white/20 text-white/90 flex items-center justify-center text-xs transition-colors"
+                className="w-7 h-7 rounded-xl bg-white/10 hover:bg-white/20 text-white/90 flex items-center justify-center text-xs transition-colors cursor-pointer"
               >
                 🔄
               </button>
               <button
                 onClick={() => setIsOpen(false)}
                 title="إغلاق"
-                className="w-7 h-7 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs font-bold transition-colors"
+                className="w-7 h-7 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs font-bold transition-colors cursor-pointer"
               >
                 ✕
               </button>
@@ -441,7 +436,7 @@ export default function DashboardAssistant() {
             {messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`flex items-end gap-2 ${msg.isBot ? "justify-start" : "justify-end"}`}
+                className={`flex items-end gap-2 ${msg.isBot ? "justify-start" : "justify-end"} animate-fadeIn`}
               >
                 {msg.isBot && (
                   <div
@@ -466,10 +461,14 @@ export default function DashboardAssistant() {
                     msg.text ? (
                       <FormattedMessageText text={msg.text} />
                     ) : (
-                      <div className="flex items-center gap-1.5 py-1 px-1">
-                        <span className="w-2 h-2 rounded-full bg-violet-500 animate-pulse" />
-                        <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
-                          جاري تفكير Gemini وتحليل البيانات...
+                      <div className="flex items-center gap-2 py-1 px-1">
+                        <div className="flex gap-1 items-center">
+                          <span className="w-2 h-2 rounded-full bg-violet-600 animate-bounce" />
+                          <span className="w-2 h-2 rounded-full bg-violet-600 animate-bounce [animation-delay:0.15s]" />
+                          <span className="w-2 h-2 rounded-full bg-violet-600 animate-bounce [animation-delay:0.3s]" />
+                        </div>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 font-bold">
+                          جاري التفكير وتحليل بيانات المتجر...
                         </span>
                       </div>
                     )
@@ -493,29 +492,6 @@ export default function DashboardAssistant() {
               </div>
             ))}
 
-            {/* Typing / Waiting indicator */}
-            {isGenerating && (!messages.length || messages[messages.length - 1].isBot === false) && (
-              <div className="flex items-center gap-2 justify-start">
-                <div
-                  className="w-7 h-7 rounded-xl flex items-center justify-center text-xs text-white shadow-sm flex-shrink-0"
-                  style={{ backgroundColor: theme.primary }}
-                >
-                  🤖
-                </div>
-                <div className="bg-white dark:bg-gray-800 px-4 py-2.5 rounded-2xl rounded-br-sm border border-gray-100 dark:border-gray-700 shadow-sm flex items-center gap-1.5">
-                  <div className="w-2 h-2 bg-violet-600 rounded-full animate-bounce" />
-                  <div
-                    className="w-2 h-2 bg-violet-600 rounded-full animate-bounce"
-                    style={{ animationDelay: "0.15s" }}
-                  />
-                  <div
-                    className="w-2 h-2 bg-violet-600 rounded-full animate-bounce"
-                    style={{ animationDelay: "0.3s" }}
-                  />
-                </div>
-              </div>
-            )}
-
             <div ref={messagesEndRef} />
           </div>
 
@@ -538,7 +514,9 @@ export default function DashboardAssistant() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                sendToGemini(input);
+                if (input.trim() && !isGenerating) {
+                  sendToGemini(input);
+                }
               }}
               className="flex items-center gap-2"
             >
@@ -546,7 +524,15 @@ export default function DashboardAssistant() {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="اكتب أمراً أو سؤال..."
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (input.trim() && !isGenerating) {
+                      sendToGemini(input);
+                    }
+                  }
+                }}
+                placeholder="اكتب أمراً أو سؤال (مثال: كم عدد المنتجات؟)..."
                 disabled={isGenerating}
                 className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-2xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs sm:text-sm focus:ring-2 focus:ring-violet-500 focus:bg-white dark:focus:bg-gray-900 outline-none transition-all placeholder:text-gray-400 disabled:opacity-60"
               />
@@ -556,7 +542,7 @@ export default function DashboardAssistant() {
                   type="button"
                   onClick={handleStopGeneration}
                   title="إيقاف التوليد"
-                  className="w-10 h-10 rounded-2xl bg-red-600 hover:bg-red-700 text-white flex items-center justify-center text-sm shadow-md transition-all active:scale-95 cursor-pointer"
+                  className="w-10 h-10 rounded-2xl bg-red-600 hover:bg-red-700 text-white flex items-center justify-center text-sm shadow-md transition-all active:scale-95 cursor-pointer flex-shrink-0"
                 >
                   ⏹
                 </button>
@@ -567,6 +553,7 @@ export default function DashboardAssistant() {
                   className="w-10 h-10 rounded-2xl text-white flex items-center justify-center text-sm shadow-md hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
                   style={{ backgroundColor: theme.primary }}
                   title="إرسال"
+                  aria-label="إرسال"
                 >
                   ➤
                 </button>

@@ -139,6 +139,30 @@ input[type="range"]::-webkit-slider-runnable-track {
   animation: pulseGlow 2s ease-in-out infinite;
 }
 
+@keyframes slideUpFade {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slideUpFade {
+  animation: slideUpFade 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes modalBackdrop {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.animate-modalBackdrop {
+  animation: modalBackdrop 0.25s ease-out forwards;
+}
+
 /* ==========================================================================
    GLOBAL UI/UX RESPONSIVENESS & PREVENT OVERLAP RULES
    ========================================================================== */
