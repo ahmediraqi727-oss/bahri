@@ -1,0 +1,9 @@
+{
+  "name": "متجر أحمد بحري - Ahmed Bahri Store",
+  "description": "المنصة الرائدة لتجارة الجملة والتجزئة لقطع غيار الدراجات النارية والكهربائية",
+  "version": "1.0.0",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

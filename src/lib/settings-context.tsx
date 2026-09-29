@@ -155,6 +155,7 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
     })(),
     importMarkupPct: row.import_markup_pct != null ? Number(row.import_markup_pct) : 10,
     importWholesaleReductionPct: row.import_wholesale_reduction_pct != null ? Number(row.import_wholesale_reduction_pct) : 10,
+    geminiApiKey: (row.gemini_api_key as string) || (row.geminiApiKey as string) || "",
 
     currentRole: "manager",
     roleThemes: {
@@ -265,6 +266,7 @@ function settingsToRow(settings: SiteSettings): Record<string, unknown> {
     pricing_tiers: settings.pricingTiers || DEFAULT_PRICING_CONFIG,
     import_markup_pct: settings.importMarkupPct ?? 10,
     import_wholesale_reduction_pct: settings.importWholesaleReductionPct ?? 10,
+    gemini_api_key: settings.geminiApiKey || "",
 
     notification_sound_url: settings.notificationSoundUrl || "/sounds/chime.mp3",
     notification_volume: settings.notificationVolume ?? 0.8,

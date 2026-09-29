@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3000 -H 0.0.0.0",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -19,6 +19,7 @@
     "@capacitor/push-notifications": "^8.1.2",
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.3",
+    "@google/genai": "^2.24.0",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.109.0",
     "@types/jsbarcode": "^3.11.4",

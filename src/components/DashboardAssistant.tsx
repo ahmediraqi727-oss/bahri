@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useData } from "@/lib/data-context";
 import { useSettings } from "@/lib/settings-context";
 import { useActivityLog } from "@/lib/activity-log";
@@ -13,246 +13,564 @@ interface Message {
   text: string;
   isBot: boolean;
   timestamp: Date;
+  isError?: boolean;
 }
 
 const QUICK_ACTIONS = [
-  { label: "📊 ملخص المخزون", value: "stock_summary" },
-  { label: "⚠️ تنبيهات المخزون", value: "low_stock" },
-  { label: "📝 آخر الحركات", value: "recent_activity" },
-  { label: "📦 إضافة منتج", value: "add_product" },
-  { label: "💰 حساب الأرباح", value: "profits" },
-  { label: "🧹 تنظيف السلة", value: "clean_trash" },
+  { label: "📊 ملخص المخزون", prompt: "أعطني ملخصاً شاملاً ودقيقاً عن المخزون الحالي وقيمته المالية وتوزيع المنتجات." },
+  { label: "⚠️ تنبيهات المخزون", prompt: "ما هي المنتجات التي أوشكت على النفاد أو كميتها صفر وتحتاج إلى إعادة تعبئة عاجلة؟" },
+  { label: "💰 حساب الأرباح", prompt: "قدم لي تحليلاً للأرباح المتوقعة وهوامش الربح بين سعر التكلفة وسعر البيع بالمفرد والجملة." },
+  { label: "📦 إضافة منتج", prompt: "كيف أقوم بإضافة منتج جديد وتعيين كود الباركود وتحديد الأسعار بالطريقة الصحيحة؟", directAction: "add_product" },
+  { label: "📝 آخر الحركات", prompt: "ما هي آخر العمليات والتعديلات المسجلة في سجل النظام؟", directAction: "recent_activity" },
+  { label: "🧹 تنظيف السلة", prompt: "افحص حالة سلة المهملات واقترح تنظيف العناصر القديمة غير المستخدمة.", directAction: "clean_trash" },
 ];
 
+// Helper to render simple Markdown (bold, bullet points, headers, inline code)
+function FormattedMessageText({ text }: { text: string }) {
+  const lines = text.split("\n");
+
+  return (
+    <div className="space-y-1.5 text-sm leading-relaxed text-right select-text break-words">
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          return <div key={idx} className="h-1.5" />;
+        }
+
+        // Header ###
+        if (trimmed.startsWith("### ")) {
+          return (
+            <h4 key={idx} className="font-bold text-base text-gray-900 dark:text-white pt-1">
+              {trimmed.replace(/^###\s+/, "")}
+            </h4>
+          );
+        }
+        if (trimmed.startsWith("## ")) {
+          return (
+            <h3 key={idx} className="font-extrabold text-base text-gray-900 dark:text-white pt-1.5 border-b border-gray-200/50 dark:border-gray-700/50 pb-0.5">
+              {trimmed.replace(/^##\s+/, "")}
+            </h3>
+          );
+        }
+
+        // Bullet point
+        const isBullet = trimmed.startsWith("• ") || trimmed.startsWith("- ") || trimmed.startsWith("* ");
+        const content = isBullet ? trimmed.replace(/^[•\-*]\s+/, "") : line;
+
+        // Render inline bold, code, and text
+        const renderedContent = parseInlineStyles(content);
+
+        if (isBullet) {
+          return (
+            <div key={idx} className="flex items-start gap-1.5 pr-1">
+              <span className="text-violet-500 font-bold select-none text-xs mt-1">●</span>
+              <span className="flex-1">{renderedContent}</span>
+            </div>
+          );
+        }
+
+        return <p key={idx}>{renderedContent}</p>;
+      })}
+    </div>
+  );
+}
+
+function parseInlineStyles(text: string) {
+  // Simple regex for **bold** and `code`
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+
+  return parts.map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return (
+        <strong key={index} className="font-bold text-gray-950 dark:text-gray-100">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return (
+        <code
+          key={index}
+          className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-violet-700 dark:text-violet-300 font-mono text-xs"
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    return part;
+  });
+}
+
 export default function DashboardAssistant() {
-  const { products, suppliers } = useData();
+  const { products, suppliers, categories } = useData();
   const { settings } = useSettings();
   const { activities } = useActivityLog();
   const { items: trashItems, purgeExpired } = useTrash();
-  const { notifications, unreadCount } = useNotifications();
+  const { unreadCount } = useNotifications();
   const router = useRouter();
 
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [activeStreamId, setActiveStreamId] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const initialized = useRef(false);
 
+  // Compute live store context snapshot to ground Gemini with current figures
+  const storeContextSnapshot = useMemo(() => {
+    const total = products.length;
+    const totalRetail = products.reduce((s, p) => s + (p.retailPrice || 0) * (p.stock || 0), 0);
+    const totalCost = products.reduce((s, p) => s + (p.costPrice || 0) * (p.stock || 0), 0);
+    const outOfStock = products.filter((p) => p.stock === 0);
+    const lowStock = products.filter((p) => p.stock > 0 && p.stock <= 10);
+
+    const topLow = [...outOfStock, ...lowStock].slice(0, 10).map((p) => ({
+      name: p.name,
+      stock: p.stock,
+      retailPrice: p.retailPrice,
+    }));
+
+    const recentAct = activities.slice(0, 6).map((a) => `${a.action}: ${a.details} (${a.entity})`);
+
+    return {
+      role: settings.currentRole,
+      userName: settings.currentRole === "manager" ? "أحمد العراقي (المدير)" : "ahmed al adeeb (إداري)",
+      totalProducts: total,
+      totalInventoryRetailValue: totalRetail,
+      totalInventoryCostValue: totalCost,
+      outOfStockCount: outOfStock.length,
+      lowStockCount: outOfStock.length + lowStock.length,
+      suppliersCount: suppliers.length,
+      categoriesCount: categories.length,
+      topLowStockProducts: topLow,
+      recentActivitiesSummary: recentAct,
+      unreadNotificationsCount: unreadCount,
+    };
+  }, [products, suppliers, categories, activities, settings.currentRole, unreadCount]);
+
+  // Initial welcome greeting
   useEffect(() => {
     if (isOpen && !initialized.current) {
       initialized.current = true;
+      const roleName = settings.currentRole === "manager" ? "المدير" : "الإداري";
       setMessages([
-        { id: crypto.randomUUID(), text: `مرحباً يا ${settings.currentRole === "manager" ? "المدير" : "الإداري"}! 👋`, isBot: true, timestamp: new Date() },
-        { id: crypto.randomUUID(), text: "أنا مساعدك الذكي في إدارة النظام. كيف أقدر أساعدك؟", isBot: true, timestamp: new Date() },
+        {
+          id: "welcome-1",
+          text: `مرحباً يا ${roleName}! 👋`,
+          isBot: true,
+          timestamp: new Date(),
+        },
+        {
+          id: "welcome-2",
+          text: `أنا مساعد الإدارة الذكي لـ ${settings.siteName || "متجر أحمد بحري"} المدعوم بنموذج Google Gemini.\nجاهز لتحليل بيانات المخزون، فواتير المبيعات، حساب الأرباح، وتوجيهك في لوحة التحكم. كيف أقدر أساعدك اليوم؟`,
+          isBot: true,
+          timestamp: new Date(),
+        },
       ]);
     }
-  }, [isOpen, settings.currentRole]);
+  }, [isOpen, settings.currentRole, settings.siteName]);
+
+  // Auto scroll down smoothly on message changes or streaming tokens
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isTyping]);
+    scrollToBottom();
+  }, [messages, isGenerating, scrollToBottom]);
 
-  const addBotMessage = (text: string) => {
-    setIsTyping(true);
-    setTimeout(() => {
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), text, isBot: true, timestamp: new Date() }]);
-      setIsTyping(false);
-    }, 400 + Math.random() * 400);
-  };
+  // Send request to Gemini API streaming endpoint
+  const sendToGemini = async (userText: string) => {
+    if (!userText.trim() || isGenerating) return;
 
-  const handleQuickAction = async (action: string) => {
-    const label = QUICK_ACTIONS.find((a) => a.value === action)?.label || action;
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), text: label, isBot: false, timestamp: new Date() }]);
+    const userMessageId = crypto.randomUUID();
+    const botMessageId = crypto.randomUUID();
 
-    switch (action) {
-      case "stock_summary": {
-        const total = products.length;
-        const totalValue = products.reduce((s, p) => s + p.retailPrice * p.stock, 0);
-        const outOfStock = products.filter((p) => p.stock === 0).length;
-        const avgStock = total > 0 ? Math.round(products.reduce((s, p) => s + p.stock, 0) / total) : 0;
-        addBotMessage(`📊 ملخص المخزون:\n\n📦 إجمالي المنتجات: ${total}\n💰 إجمالي القيمة: ${totalValue.toLocaleString()} د.ع\n📉 منتجات نافدة: ${outOfStock}\n📈 متوسط الكمية: ${avgStock}\n🚚 عدد الموردين: ${suppliers.length}`);
-        break;
-      }
-      case "low_stock": {
-        const low = products.filter((p) => p.stock <= 10 && p.stock > 0);
-        const out = products.filter((p) => p.stock === 0);
-        if (low.length === 0 && out.length === 0) {
-          addBotMessage("✅ لا توجد تنبيهات مخزون حالياً. كل شيء ممتاز!");
-        } else {
-          let msg = "";
-          if (out.length > 0) {
-            msg += `🔴 نفد بالكامل (${out.length}):\n${out.map((p) => `  • ${p.name}`).join("\n")}\n\n`;
-          }
-          if (low.length > 0) {
-            msg += `🟡 كمية منخفضة (${low.length}):\n${low.map((p) => `  • ${p.name}: ${p.stock}`).join("\n")}`;
-          }
-          addBotMessage(msg);
-        }
-        break;
-      }
-      case "recent_activity": {
-        if (activities.length === 0) {
-          addBotMessage("📝 لا توجد حركات مسجلة بعد.");
-        } else {
-          const recent = activities.slice(0, 5).map((a) => {
-            const icons: Record<string, string> = { create: "➕", update: "✏️", delete: "🗑️", import: "📥", export: "📤", restore: "♻️", login: "🔑" };
-            return `${icons[a.action] || "•"} ${a.details}`;
-          }).join("\n");
-          addBotMessage(`📝 آخر ${Math.min(5, activities.length)} حركات:\n\n${recent}`);
-        }
-        break;
-      }
-      case "add_product": {
-        addBotMessage("📦 جارِ تحويلك لصفحة المنتجات...\n\nاضغط على زر '+ إضافة منتج' في الصفحة.");
-        setTimeout(() => router.push("/dashboard/products"), 500);
-        break;
-      }
-      case "profits": {
-        const totalCost = products.reduce((s, p) => s + p.costPrice * p.stock, 0);
-        const totalRetail = products.reduce((s, p) => s + p.retailPrice * p.stock, 0);
-        const potentialProfit = totalRetail - totalCost;
-        addBotMessage(`💰 تقرير الأرباح المحتملة:\n\n📦 تكلفة المخزون: ${totalCost.toLocaleString()} د.ع\n💵 قيمة المخزون (بيع): ${totalRetail.toLocaleString()} د.ع\n📈 الربح المحتمل: ${potentialProfit.toLocaleString()} د.ع\n📊 هامش الربح: ${totalCost > 0 ? Math.round((potentialProfit / totalCost) * 100) : 0}%`);
-        break;
-      }
-      case "clean_trash": {
-        if (trashItems.length === 0) {
-          addBotMessage("🧹 سلة المهملات فارغة بالفعل!");
-        } else {
-          const count = await purgeExpired();
-          addBotMessage(`🧹 تم فحص سلة المهملات:\n\n📦 العناصر الحالية: ${trashItems.length}\n🗑️ تم حذف المنتهي: ${count} عنصر`);
-        }
-        break;
-      }
-    }
-  };
-
-  const processMessage = (text: string) => {
-    const q = text.toLowerCase().trim();
-
-    if (q.includes("مخزون") || q.includes("stock") || q.includes("كمية")) {
-      handleQuickAction("stock_summary");
-    } else if (q.includes("تنبيه") || q.includes("منخفض") || q.includes("نفد") || q.includes(".low")) {
-      handleQuickAction("low_stock");
-    } else if (q.includes("حركات") || q.includes("سجل") || q.includes("activity")) {
-      handleQuickAction("recent_activity");
-    } else if (q.includes("ربح") || q.includes("أرباح") || q.includes("مال") || q.includes("income")) {
-      handleQuickAction("profits");
-    } else if (q.includes("منتج") && (q.includes("إضافة") || q.includes("جديد") || q.includes("add"))) {
-      handleQuickAction("add_product");
-    } else if (q.includes("سلة") || q.includes("حذف") || q.includes("تنظيف")) {
-      handleQuickAction("clean_trash");
-    } else if (q.includes("مورد")) {
-      const list = suppliers.slice(0, 5).map((s) => `• ${s.name} ${s.phone ? `📞 ${s.phone}` : ""}`).join("\n");
-      addBotMessage(`🚚 الموردين (${suppliers.length}):\n\n${list || "لا يوجد موردين مسجلين."}`);
-    } else if (q.includes("مرحبا") || q.includes("سلام")) {
-      addBotMessage(`أهلاً! 👋 اليوم يومك. كيف أقدر أساعدك؟`);
-    } else if (q.includes("skór") || q.includes("help") || q.includes("مساعدة")) {
-      addBotMessage(`💡 أوامر متاحة:\n\n• "مخزون" - ملخص المخزون\n• "تنبيهات" - تنبيهات المخزون\n• "حركات" - آخر الحركات\n• "أرباح" - تقرير الأرباح\n• "إضافة منتج" - الانتقال لصفحة المنتجات\n• "مورد" - عرض الموردين\n• "تنظيف" - تنظيف سلة المهملات`);
-    } else {
-      const matched = products.filter((p) => p.name.toLowerCase().includes(q));
-      if (matched.length > 0) {
-        const list = matched.slice(0, 5).map((p) => `• ${p.name}: ${p.stock} قطعة | ${p.retailPrice.toLocaleString()} د.ع`).join("\n");
-        addBotMessage(`📦 نتائج البحث (${matched.length}):\n\n${list}`);
-      } else {
-        addBotMessage(`لم أفهم الأمر. جرّب كتابة:\n\n• "مخزون" أو "أرباح" أو "تنبيهات"\n• أو اسم منتج للبحث\n• أو "مساعدة" لقائمة الأوامر`);
-      }
-    }
-  };
-
-  const handleSend = () => {
-    if (!input.trim()) return;
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), text: input, isBot: false, timestamp: new Date() }]);
-    const text = input;
+    // 1. Append user message
+    const updatedMessages: Message[] = [
+      ...messages,
+      { id: userMessageId, text: userText.trim(), isBot: false, timestamp: new Date() },
+    ];
+    setMessages(updatedMessages);
     setInput("");
-    processMessage(text);
+    setIsGenerating(true);
+    setActiveStreamId(botMessageId);
+
+    // Create abort controller to allow user stopping
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    // Insert initial empty bot message placeholder
+    setMessages((prev) => [
+      ...prev,
+      { id: botMessageId, text: "", isBot: true, timestamp: new Date() },
+    ]);
+
+    try {
+      // Build conversation payload for Gemini
+      const conversationPayload = updatedMessages.map((m) => ({
+        role: m.isBot ? "model" : "user",
+        content: m.text,
+      }));
+
+      const res = await fetch("/api/ai-assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          messages: conversationPayload,
+          prompt: userText.trim(),
+          storeContext: storeContextSnapshot,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorJson = await res.json().catch(() => ({}));
+        throw new Error(errorJson.error || `خطأ في الاتصال بالخادم (${res.status})`);
+      }
+
+      if (!res.body) {
+        throw new Error("لم يتم استلام تدفق بيانات من الخادم");
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulatedText = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        accumulatedText += chunk;
+
+        // Update the bot message in real-time
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === botMessageId ? { ...msg, text: accumulatedText } : msg
+          )
+        );
+      }
+
+      // If finished and still empty
+      if (!accumulatedText.trim()) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === botMessageId
+              ? { ...msg, text: "عذراً، لم أتمكن من الحصول على إجابة واضحة. يرجى إعادة صياغة السؤال." }
+              : msg
+          )
+        );
+      }
+    } catch (err: unknown) {
+      if ((err as Error)?.name === "AbortError") {
+        console.log("Gemini stream aborted by user");
+        return;
+      }
+
+      console.error("AI Assistant stream error:", err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === botMessageId
+            ? {
+                ...msg,
+                isError: true,
+                text: `⚠️ عذراً، حدث خطأ أثناء التواصل مع نموذج الذكاء الاصطناعي.\nالتفاصيل: ${errMsg}\n\nيرجى التحقق من اتصال الإنترنت أو المحاولة مرة أخرى.`,
+              }
+            : msg
+        )
+      );
+    } finally {
+      setIsGenerating(false);
+      setActiveStreamId(null);
+      abortControllerRef.current = null;
+    }
+  };
+
+  const handleStopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setIsGenerating(false);
+      setActiveStreamId(null);
+    }
+  };
+
+  const handleQuickAction = async (action: (typeof QUICK_ACTIONS)[0]) => {
+    if (isGenerating) return;
+
+    if (action.directAction === "add_product") {
+      setMessages((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), text: action.label, isBot: false, timestamp: new Date() },
+        {
+          id: crypto.randomUUID(),
+          text: "📦 جارٍ تحويلك مباشرة إلى صفحة إدارة المنتجات...\nيمكنك الضغط على زر '+ إضافة منتج' لإدخال تفاصيل القطعة وصورها وتوليد باركود تلقائي.",
+          isBot: true,
+          timestamp: new Date(),
+        },
+      ]);
+      setTimeout(() => router.push("/dashboard/products"), 600);
+      return;
+    }
+
+    if (action.directAction === "clean_trash") {
+      if (trashItems.length === 0) {
+        setMessages((prev) => [
+          ...prev,
+          { id: crypto.randomUUID(), text: action.label, isBot: false, timestamp: new Date() },
+          { id: crypto.randomUUID(), text: "🧹 سلة المهملات فارغة تماماً ولا توجد عناصر منتهية الصلاحية لحذفها.", isBot: true, timestamp: new Date() },
+        ]);
+      } else {
+        const count = await purgeExpired();
+        sendToGemini(
+          `تم فحص سلة المهملات: إجمالي العناصر المحذوفة ${trashItems.length}، وتم تنظيف ${count} عنصر منتهي الصلاحية تلقائياً. لخص حالة السلة وقدم نصيحة للإدارة.`
+        );
+      }
+      return;
+    }
+
+    // Default: pass prompt to Gemini with rich store snapshot
+    sendToGemini(action.prompt);
+  };
+
+  const handleClearHistory = () => {
+    if (isGenerating) handleStopGeneration();
+    setMessages([
+      {
+        id: crypto.randomUUID(),
+        text: "تم مسح المحادثة السابقة. أنا هنا لمساعدتك في أي أمر يخص متجر أحمد بحري!",
+        isBot: true,
+        timestamp: new Date(),
+      },
+    ]);
   };
 
   const currentRole = settings?.currentRole || "manager";
-  const theme = settings?.roleThemes?.[currentRole] || { primary: "#1e40af", secondary: "#7c3aed", accent: "#f59e0b" };
+  const theme = settings?.roleThemes?.[currentRole] || {
+    primary: "#1e40af",
+    secondary: "#7c3aed",
+    accent: "#f59e0b",
+  };
 
   return (
     <>
+      {/* Floating Trigger Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 left-6 z-50 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-white text-2xl hover:scale-110 transition-transform"
-        style={{ backgroundColor: theme.primary }}
-        title="المساعد الذكي"
+        className="fixed bottom-6 left-6 z-50 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center text-white text-2xl hover:scale-110 active:scale-95 transition-all duration-200 cursor-pointer focus:outline-none focus:ring-4 focus:ring-violet-400/40"
+        style={{
+          background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary || "#7c3aed"})`,
+        }}
+        title="مساعد الإدارة الذكي (Google Gemini)"
+        aria-label="مساعد الإدارة الذكي"
       >
         {isOpen ? "✕" : "🤖"}
         {!isOpen && unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+          <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-red-600 text-white text-[11px] font-extrabold rounded-full flex items-center justify-center shadow-md animate-pulse">
             {unreadCount}
           </span>
         )}
       </button>
 
+      {/* Chat Window Container */}
       {isOpen && (
-        <div className="fixed bottom-24 left-6 z-50 w-80 sm:w-96 bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col" style={{ maxHeight: "500px" }}>
-          <div className="p-4 text-white flex items-center gap-3" style={{ backgroundColor: theme.primary }}>
-            <img src="/logo.jpg" alt="شعار" className="w-10 h-10 rounded-full object-cover shadow-md" />
-            <div>
-              <h3 className="font-bold text-sm">مساعد الإدارة</h3>
-              <p className="text-xs text-white/80">{settings.siteName}</p>
+        <div
+          className="fixed bottom-24 left-4 sm:left-6 z-50 w-[calc(100vw-2rem)] sm:w-96 bg-white dark:bg-gray-900 rounded-3xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col transition-all duration-300 animate-scaleUp"
+          style={{ height: "540px", maxHeight: "calc(100vh - 120px)" }}
+          dir="rtl"
+        >
+          {/* Header */}
+          <div
+            className="p-3.5 text-white flex items-center justify-between shadow-md select-none relative overflow-hidden"
+            style={{
+              background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary || "#6366f1"})`,
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <img
+                  src="/logo.jpg"
+                  alt="شعار متجر أحمد بحري"
+                  className="w-10 h-10 rounded-2xl object-cover ring-2 ring-white/30 shadow-md"
+                />
+                <span className="absolute -bottom-0.5 -left-0.5 w-3 h-3 bg-emerald-400 border-2 border-white rounded-full shadow-sm" />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <h3 className="font-extrabold text-sm text-white">مساعد الإدارة</h3>
+                  <span className="px-1.5 py-0.2 rounded-md bg-white/20 text-[10px] font-bold tracking-wider">
+                    Gemini AI
+                  </span>
+                </div>
+                <p className="text-[11px] text-white/80 font-medium truncate max-w-[160px]">
+                  {settings.siteName || "متجر أحمد بحري"}
+                </p>
+              </div>
             </div>
-            {unreadCount > 0 && (
-              <span className="mr-auto bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">{unreadCount} إشعار</span>
-            )}
+
+            <div className="flex items-center gap-2">
+              {unreadCount > 0 && (
+                <span className="bg-red-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-sm">
+                  {unreadCount} إشعار
+                </span>
+              )}
+              <button
+                onClick={handleClearHistory}
+                title="بدء محادثة جديدة ومسح السجل"
+                className="w-7 h-7 rounded-xl bg-white/10 hover:bg-white/20 text-white/90 flex items-center justify-center text-xs transition-colors"
+              >
+                🔄
+              </button>
+              <button
+                onClick={() => setIsOpen(false)}
+                title="إغلاق"
+                className="w-7 h-7 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center text-xs font-bold transition-colors"
+              >
+                ✕
+              </button>
+            </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[250px] max-h-[320px]">
+          {/* Messages Scroll Area */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-gray-50/60 dark:bg-gray-950/60 scrollbar-thin">
             {messages.map((msg) => (
-              <div key={msg.id} className={`flex ${msg.isBot ? "justify-start" : "justify-end"}`}>
-                <div className={`max-w-[85%] px-3 py-2 rounded-2xl text-sm whitespace-pre-line ${
-                  msg.isBot
-                    ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-br-md"
-                    : "text-white rounded-bl-md"
-                }`} style={!msg.isBot ? { backgroundColor: theme.primary } : {}}>
-                  {msg.text}
+              <div
+                key={msg.id}
+                className={`flex items-end gap-2 ${msg.isBot ? "justify-start" : "justify-end"}`}
+              >
+                {msg.isBot && (
+                  <div
+                    className="w-7 h-7 rounded-xl flex items-center justify-center text-xs text-white shadow-sm flex-shrink-0 mb-1"
+                    style={{ backgroundColor: theme.primary }}
+                  >
+                    🤖
+                  </div>
+                )}
+
+                <div
+                  className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl shadow-sm text-sm transition-all ${
+                    msg.isBot
+                      ? msg.isError
+                        ? "bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800 rounded-br-sm"
+                        : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-100 dark:border-gray-700/80 rounded-br-sm"
+                      : "text-white rounded-bl-sm font-medium"
+                  }`}
+                  style={!msg.isBot ? { backgroundColor: theme.primary } : {}}
+                >
+                  {msg.isBot ? (
+                    msg.text ? (
+                      <FormattedMessageText text={msg.text} />
+                    ) : (
+                      <div className="flex items-center gap-1.5 py-1 px-1">
+                        <span className="w-2 h-2 rounded-full bg-violet-500 animate-pulse" />
+                        <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                          جاري تفكير Gemini وتحليل البيانات...
+                        </span>
+                      </div>
+                    )
+                  ) : (
+                    <p className="whitespace-pre-wrap">{msg.text}</p>
+                  )}
+
+                  <span
+                    className={`block text-[10px] mt-1 text-left ${
+                      msg.isBot
+                        ? "text-gray-400 dark:text-gray-500"
+                        : "text-white/70"
+                    }`}
+                  >
+                    {new Date(msg.timestamp).toLocaleTimeString("ar-IQ", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
                 </div>
               </div>
             ))}
-            {isTyping && (
-              <div className="flex justify-start">
-                <div className="bg-gray-100 dark:bg-gray-800 px-4 py-2 rounded-2xl rounded-br-md">
-                  <div className="flex gap-1">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.1s" }} />
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} />
-                  </div>
+
+            {/* Typing / Waiting indicator */}
+            {isGenerating && (!messages.length || messages[messages.length - 1].isBot === false) && (
+              <div className="flex items-center gap-2 justify-start">
+                <div
+                  className="w-7 h-7 rounded-xl flex items-center justify-center text-xs text-white shadow-sm flex-shrink-0"
+                  style={{ backgroundColor: theme.primary }}
+                >
+                  🤖
+                </div>
+                <div className="bg-white dark:bg-gray-800 px-4 py-2.5 rounded-2xl rounded-br-sm border border-gray-100 dark:border-gray-700 shadow-sm flex items-center gap-1.5">
+                  <div className="w-2 h-2 bg-violet-600 rounded-full animate-bounce" />
+                  <div
+                    className="w-2 h-2 bg-violet-600 rounded-full animate-bounce"
+                    style={{ animationDelay: "0.15s" }}
+                  />
+                  <div
+                    className="w-2 h-2 bg-violet-600 rounded-full animate-bounce"
+                    style={{ animationDelay: "0.3s" }}
+                  />
                 </div>
               </div>
             )}
+
             <div ref={messagesEndRef} />
           </div>
 
-          {messages.length <= 3 && (
-            <div className="px-4 pb-2 flex flex-wrap gap-1.5">
-              {QUICK_ACTIONS.map((action) => (
-                <button
-                  key={action.value}
-                  onClick={() => {
-                    setMessages((prev) => [...prev, { id: crypto.randomUUID(), text: action.label, isBot: false, timestamp: new Date() }]);
-                    handleQuickAction(action.value);
-                  }}
-                  className="px-3 py-1.5 text-xs font-medium rounded-full border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                >
-                  {action.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="p-3 border-t border-gray-200 dark:border-gray-700">
-            <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="flex gap-2">
-              <input
-                type="text" value={input} onChange={(e) => setInput(e.target.value)}
-                placeholder="اكتب أمراً أو سؤال..."
-                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-full bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-[var(--primary)] outline-none"
-              />
-              <button type="submit" className="w-9 h-9 rounded-full text-white flex items-center justify-center text-sm hover:opacity-90" style={{ backgroundColor: theme.primary }}>
-                ➤
+          {/* Quick Actions Pills */}
+          <div className="px-3 pt-2 pb-1 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 flex flex-wrap gap-1.5 max-h-[85px] overflow-y-auto scrollbar-none">
+            {QUICK_ACTIONS.map((action) => (
+              <button
+                key={action.label}
+                disabled={isGenerating}
+                onClick={() => handleQuickAction(action)}
+                className="px-2.5 py-1 text-[11px] font-bold rounded-xl border border-gray-200 dark:border-gray-700/80 text-gray-700 dark:text-gray-300 hover:bg-violet-50 hover:border-violet-300 dark:hover:bg-violet-950/40 dark:hover:border-violet-700 hover:text-violet-700 dark:hover:text-violet-300 transition-all active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shadow-2xs"
+              >
+                {action.label}
               </button>
+            ))}
+          </div>
+
+          {/* Bottom Chat Input Form */}
+          <div className="p-3 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                sendToGemini(input);
+              }}
+              className="flex items-center gap-2"
+            >
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="اكتب أمراً أو سؤال..."
+                disabled={isGenerating}
+                className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-2xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs sm:text-sm focus:ring-2 focus:ring-violet-500 focus:bg-white dark:focus:bg-gray-900 outline-none transition-all placeholder:text-gray-400 disabled:opacity-60"
+              />
+
+              {isGenerating ? (
+                <button
+                  type="button"
+                  onClick={handleStopGeneration}
+                  title="إيقاف التوليد"
+                  className="w-10 h-10 rounded-2xl bg-red-600 hover:bg-red-700 text-white flex items-center justify-center text-sm shadow-md transition-all active:scale-95 cursor-pointer"
+                >
+                  ⏹
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!input.trim()}
+                  className="w-10 h-10 rounded-2xl text-white flex items-center justify-center text-sm shadow-md hover:scale-105 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
+                  style={{ backgroundColor: theme.primary }}
+                  title="إرسال"
+                >
+                  ➤
+                </button>
+              )}
             </form>
           </div>
         </div>

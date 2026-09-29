@@ -104,6 +104,13 @@ export default function SettingsPage() {
   const [arFallback, setArFallback] = useState("شكراً لتواصلك معنا! سيتم الرد عليك من قبل فريقنا في أقرب وقت.");
   const [arSettingsSaving, setArSettingsSaving] = useState(false);
 
+  // ── Gemini API Key Management State ─────────────────────────────
+  const [geminiKeyInput, setGeminiKeyInput] = useState("");
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [savingGeminiKey, setSavingGeminiKey] = useState(false);
+  const [geminiKeyToast, setGeminiKeyToast] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
+  const [testingGeminiKey, setTestingGeminiKey] = useState(false);
+
   // Restore undo snapshot backup from localStorage if available
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -123,6 +130,9 @@ export default function SettingsPage() {
   useEffect(() => {
     if (settings) {
       setFormData(settings);
+      if (settings.geminiApiKey !== undefined) {
+        setGeminiKeyInput(settings.geminiApiKey || "");
+      }
     }
   }, [settings]);
 
@@ -555,6 +565,89 @@ export default function SettingsPage() {
     setErrorMsg(null);
   };
 
+  const handleSaveGeminiKey = async () => {
+    setSavingGeminiKey(true);
+    setGeminiKeyToast(null);
+    try {
+      const cleanKey = geminiKeyInput.trim();
+      // 1. Update React Settings context & cache
+      await updateSettings({ geminiApiKey: cleanKey });
+
+      // 2. Direct Supabase update ensuring database persistence
+      const { error: dbError } = await supabase
+        .from("settings")
+        .update({ gemini_api_key: cleanKey, updated_at: new Date().toISOString() })
+        .match({ id: 1 });
+
+      if (dbError) {
+        await supabase
+          .from("settings")
+          .update({ gemini_api_key: cleanKey, updated_at: new Date().toISOString() })
+          .neq("id", "00000000-0000-0000-0000-000000000000");
+      }
+
+      await logActivity({
+        user: settings.currentRole,
+        action: "update",
+        entity: "إعدادات الذكاء الاصطناعي",
+        details: cleanKey ? "تحديث وتفعيل مفتاح Google Gemini API" : "حذف/إلغاء مفتاح Google Gemini API",
+      });
+
+      setGeminiKeyToast({
+        type: "success",
+        message: cleanKey
+          ? "🎉 تم حفظ مفتاح Google Gemini API بنجاح في قاعدة البيانات وتفعيله في المساعد الذكي والبحث بالصورة!"
+          : "تم مسح مفتاح Gemini API بنجاح والرجوع إلى وضع الضبط الافتراضي.",
+      });
+    } catch (err: unknown) {
+      console.error("Save Gemini key error:", err);
+      setGeminiKeyToast({
+        type: "error",
+        message: "❌ فشل حفظ المفتاح في قاعدة البيانات: " + parseErrorMessage(err),
+      });
+    } finally {
+      setSavingGeminiKey(false);
+      setTimeout(() => setGeminiKeyToast(null), 5000);
+    }
+  };
+
+  const handleTestGeminiKey = async () => {
+    setTestingGeminiKey(true);
+    setGeminiKeyToast(null);
+    try {
+      const res = await fetch("/api/ai-assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "اختبار الاتصال السريع" }],
+          prompt: "اختبار الاتصال",
+          storeContext: { role: settings.currentRole, totalProducts: products.length },
+        }),
+      });
+
+      if (res.ok) {
+        setGeminiKeyToast({
+          type: "success",
+          message: "✅ تم فحص الاتصال بنجاح! خدمات الذكاء الاصطناعي تعمل وجاهزة للاستخدام.",
+        });
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setGeminiKeyToast({
+          type: "error",
+          message: "⚠️ فشل اختبار الاتصال: " + (data.error || "تأكد من صلاحية المفتاح والاتصال بالإنترنت"),
+        });
+      }
+    } catch (err) {
+      setGeminiKeyToast({
+        type: "error",
+        message: "⚠️ حدث خطأ أثناء فحص المفتاح: " + parseErrorMessage(err),
+      });
+    } finally {
+      setTestingGeminiKey(false);
+      setTimeout(() => setGeminiKeyToast(null), 6000);
+    }
+  };
+
   const isManagerOrAdmin = settings.currentRole === "manager" || settings.currentRole === "admin";
 
   if (loading) {
@@ -613,6 +706,131 @@ export default function SettingsPage() {
           <button onClick={() => setErrorMsg(null)} className="text-red-600 hover:text-red-800 text-xs font-bold">✕</button>
         </div>
       )}
+
+      {/* === Section: Google Gemini API Configuration === */}
+      <section className="bg-white dark:bg-gray-900 rounded-2xl border border-violet-200 dark:border-violet-900/60 p-6 space-y-4 shadow-sm relative overflow-hidden">
+        <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white flex items-center justify-center text-xl shadow-md">
+              🤖
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
+                <span>إعدادات مفتاح Google Gemini API</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-950 text-violet-700 dark:text-violet-300 font-bold border border-violet-200 dark:border-violet-800">
+                  ذكاء اصطناعي
+                </span>
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                ربط مفتاح الـ API لتشغيل (البحث بالصورة) و(مساعد الإدارة الذكي) ومطابقة قطع الغيار
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {formData.geminiApiKey || geminiKeyInput ? (
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                المفتاح مفعل ونشط
+              </span>
+            ) : (
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                لم يتم إدخال مفتاح بعد
+              </span>
+            )}
+          </div>
+        </div>
+
+        {geminiKeyToast && (
+          <div
+            className={`p-3.5 rounded-xl border text-xs sm:text-sm font-bold flex items-center justify-between gap-2 animate-fadeIn ${
+              geminiKeyToast.type === "success"
+                ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700"
+                : "bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300 border-red-300 dark:border-red-700"
+            }`}
+          >
+            <span>{geminiKeyToast.message}</span>
+            <button onClick={() => setGeminiKeyToast(null)} className="text-xs hover:opacity-75">✕</button>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <label className="text-xs sm:text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center justify-between">
+            <span>مفتاح Gemini API Key:</span>
+            <span className="text-[11px] text-gray-400 font-normal">
+              (يبدأ عادة بـ <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">AIzaSy...</code>)
+            </span>
+          </label>
+
+          <div className="relative flex items-center">
+            <input
+              type={showGeminiKey ? "text" : "password"}
+              value={geminiKeyInput}
+              onChange={(e) => {
+                setGeminiKeyInput(e.target.value);
+                handleChange({ geminiApiKey: e.target.value });
+              }}
+              placeholder="ألصق مفتاح Google Gemini API هنا..."
+              className="w-full pl-12 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-violet-500 outline-none text-xs sm:text-sm font-mono"
+            />
+            <button
+              type="button"
+              onClick={() => setShowGeminiKey(!showGeminiKey)}
+              className="absolute left-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm cursor-pointer p-1"
+              title={showGeminiKey ? "إخفاء المفتاح" : "إظهار المفتاح"}
+            >
+              {showGeminiKey ? "🙈" : "👁️"}
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between flex-wrap gap-2 pt-2">
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed max-w-xl">
+              يتم حفظ المفتاح بأمان في جدول إعدادات قاعدة بيانات Supabase، ويستخدم ديناميكياً لتشغيل الفحص البصري بالصورة لقطع الغيار وتوليد إجابات مساعد الإدارة الذكي.
+            </p>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleTestGeminiKey}
+                disabled={testingGeminiKey || !geminiKeyInput.trim()}
+                className="px-3 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-xl text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              >
+                {testingGeminiKey ? (
+                  <>
+                    <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    <span>جاري الفحص...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🧪</span>
+                    <span>اختبار الاتصال</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveGeminiKey}
+                disabled={savingGeminiKey}
+                className="px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
+              >
+                {savingGeminiKey ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>جاري الحفظ...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>💾</span>
+                    <span>حفظ المفتاح</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* === Section 1: Branding Images === */}
       <section className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6 shadow-sm">
