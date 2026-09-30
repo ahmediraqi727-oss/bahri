@@ -34,6 +34,7 @@ import { useToast } from "@/components/ToastProvider";
 import ThermalLabelPrinter, {
   type ThermalLabelPrinterHandle,
 } from "@/components/ThermalLabelPrinter";
+import ThermalFooterNotesInput from "@/components/ThermalFooterNotesInput";
 
 export interface BatchPrintModalProps {
   isOpen: boolean;
@@ -1024,18 +1025,14 @@ export default function BatchPrintModal({
                 </div>
               )}
 
-              {/* Footer Text Customization */}
+              {/* Footer Text Customization with Smart Composite Input (Supabase Integration) */}
               {customization.showFooterText && (
-                <div className="pt-2 border-t border-purple-950 text-xs">
-                  <span className="block text-purple-200 font-bold mb-1">نص التذييل والملاحظات:</span>
-                  <input
-                    type="text"
-                    value={customization.footerText}
-                    onChange={(e) => setCustomization((prev) => ({ ...prev, footerText: e.target.value }))}
-                    placeholder="مثال: معرض أحمد بحري - ضمان الجودة"
-                    className="w-full px-3 py-1.5 bg-purple-950 border border-purple-500/40 rounded-xl text-xs text-white placeholder-purple-400 focus:outline-none"
-                  />
-                </div>
+                <ThermalFooterNotesInput
+                  value={customization.footerText}
+                  onChange={(newText) =>
+                    setCustomization((prev) => ({ ...prev, footerText: newText }))
+                  }
+                />
               )}
             </div>
 
