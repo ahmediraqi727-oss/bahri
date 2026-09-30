@@ -7,6 +7,14 @@ import { useCart } from "@/lib/cart-context";
 import { useSettings } from "@/lib/settings-context";
 import { lookupByBarcode } from "@/lib/barcode-service";
 import { decodeBarcodeFromCanvas, decodeBarcodeFromFile, decodeThermalOptimizedQR } from "@/lib/barcode-decoder";
+import { triggerSuccessSensoryFeedback, triggerToggleFeedback } from "@/lib/sensory-feedback";
+import {
+  loadSavedCameraSettings,
+  saveCameraSettings,
+  CAMERA_RESOLUTIONS,
+  type CameraSettingsState,
+} from "@/lib/camera-config";
+import CameraSettingsModal from "@/components/CameraSettingsModal";
 import {
   buildTierBadgeText,
   resolveTierForQty,
@@ -147,6 +155,18 @@ export default function DualPaneFastScanner({
   const [cooldownMs, setCooldownMs] = useState<number>(1500);
   const [autoAdd, setAutoAdd] = useState<boolean>(true);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+
+  // Camera Resolution & Frame Rate Settings (Low-End Device Optimization)
+  const [cameraSettings, setCameraSettings] = useState<CameraSettingsState>(loadSavedCameraSettings);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+
+  const toggleSensoryFeedback = useCallback(() => {
+    setSoundEnabled((prev) => {
+      const next = !prev;
+      if (next) triggerToggleFeedback();
+      return next;
+    });
+  }, []);
 
   // Scanner UI & Camera State
   const [cameraError, setCameraError] = useState("");
@@ -292,8 +312,9 @@ export default function DualPaneFastScanner({
         showFlash(`⚠️ المنتج "${foundProduct.name}" نفد من المخزون!`, "error");
       } else if (autoAdd) {
         added = executeAddToCart(foundProduct, 1);
+        triggerSuccessSensoryFeedback(soundEnabled);
       } else if (soundEnabled) {
-        playScanBeep("success");
+        triggerSuccessSensoryFeedback(true);
       }
 
       const logEntry: ScannedLogEntry = {
@@ -319,8 +340,9 @@ export default function DualPaneFastScanner({
       return;
     }
 
+    const currentThrottle = Math.max(25, Math.round(1000 / (cameraSettings.fps || 30)));
     const now = performance.now();
-    if (now - lastFrameTimeRef.current < FRAME_THROTTLE_MS) {
+    if (now - lastFrameTimeRef.current < currentThrottle) {
       rafRef.current = requestAnimationFrame(scanLoop);
       return;
     }
@@ -359,32 +381,47 @@ export default function DualPaneFastScanner({
     };
 
     performDecode();
-  }, [handleDetectedCode]);
+  }, [handleDetectedCode, cameraSettings.fps]);
 
-  const startCamera = useCallback(async () => {
-    setCameraError("");
-    try {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-      }
-
-      const constraints: MediaStreamConstraints = {
-        video: {
-          facingMode: { ideal: facingMode },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: false,
-      };
-
-      let stream: MediaStream;
+  const startCamera = useCallback(
+    async (targetSettings = cameraSettings, targetFacing = facingMode) => {
+      setCameraError("");
       try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-      } catch {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      }
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((t) => t.stop());
+        }
 
-      streamRef.current = stream;
+        const resConfig = CAMERA_RESOLUTIONS[targetSettings.resolution] || CAMERA_RESOLUTIONS["720p"];
+        const targetFps = targetSettings.fps || 30;
+
+        const constraints: MediaStreamConstraints = {
+          video: {
+            facingMode: targetFacing === "user" ? "user" : { ideal: targetFacing },
+            width: { ideal: resConfig.width },
+            height: { ideal: resConfig.height },
+            frameRate: { ideal: targetFps, max: targetFps },
+          },
+          audio: false,
+        };
+
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                width: { ideal: resConfig.width },
+                height: { ideal: resConfig.height },
+              },
+              audio: false,
+            });
+          } catch {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          }
+        }
+
+        streamRef.current = stream;
 
       if (videoRef.current) {
         const video = videoRef.current;
@@ -413,6 +450,15 @@ export default function DualPaneFastScanner({
       setCameraError("تعذّر الوصول إلى الكاميرا. يرجى التأكد من منح الإذن للمتصفح.");
     }
   }, [facingMode, scanLoop]);
+
+  const handleSaveCameraSettings = useCallback(
+    (newSettings: CameraSettingsState) => {
+      setCameraSettings(newSettings);
+      saveCameraSettings(newSettings);
+      startCamera(newSettings, facingMode);
+    },
+    [facingMode, startCamera]
+  );
 
   const toggleTorch = async () => {
     const track = streamRef.current?.getVideoTracks()[0];
@@ -622,7 +668,7 @@ export default function DualPaneFastScanner({
                   <div className="bg-red-950/60 border border-red-800 rounded-2xl p-5 text-center max-w-sm my-auto">
                     <p className="text-red-400 font-bold text-xs mb-3">{cameraError}</p>
                     <button
-                      onClick={startCamera}
+                      onClick={() => startCamera()}
                       className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all"
                     >
                       إعادة محاولة الاتصال بالكاميرا
@@ -632,7 +678,7 @@ export default function DualPaneFastScanner({
                   <div className="relative w-full h-full rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-gray-800 shadow-inner">
                     <video
                       ref={videoRef}
-                      className="w-full h-full object-cover"
+                      className={`w-full h-full object-cover transition-transform ${facingMode === "user" ? "-scale-x-100" : ""}`}
                       playsInline
                       muted
                       autoPlay
@@ -654,12 +700,51 @@ export default function DualPaneFastScanner({
                       <span>الكاميرا حية ومستمرة</span>
                     </div>
 
-                    <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between pointer-events-auto">
+                    <div className="absolute bottom-2 left-2 right-2 flex flex-wrap items-center justify-between gap-1.5 pointer-events-auto">
                       <button
-                        onClick={() => setFacingMode((prev) => (prev === "environment" ? "user" : "environment"))}
-                        className="bg-black/60 hover:bg-black/80 backdrop-blur-md text-white text-[11px] font-bold px-2.5 py-1 rounded-xl border border-white/20 transition-all"
+                        onClick={() => {
+                          const next = facingMode === "environment" ? "user" : "environment";
+                          setFacingMode(next);
+                          startCamera(cameraSettings, next);
+                        }}
+                        className="bg-black/70 hover:bg-black/90 active:scale-95 backdrop-blur-md text-white text-xs font-bold px-3 py-1.5 rounded-xl border border-white/20 transition-all flex items-center gap-1.5 shadow-md"
+                        title="تبديل الكاميرا (أمامية / خلفية)"
                       >
-                        🔄 {facingMode === "environment" ? "الخلفية" : "الأمامية"}
+                        <span className="text-sm">🔄</span>
+                        <span>{facingMode === "environment" ? "الكاميرا الخلفية 📷 (اضغط للتبديل)" : "الكاميرا الأمامية 🤳 (اضغط للتبديل)"}</span>
+                      </button>
+
+                      {/* Camera Resolution & FPS Settings Button */}
+                      <button
+                        type="button"
+                        onClick={() => setIsSettingsOpen(true)}
+                        className={`text-xs font-bold px-3 py-1.5 rounded-xl border backdrop-blur-md transition-all flex items-center gap-1.5 shadow-md active:scale-95 ${
+                          cameraSettings.resolution === "480p" && cameraSettings.fps === 15
+                            ? "bg-amber-600/90 hover:bg-amber-600 text-white border-amber-400"
+                            : "bg-black/70 hover:bg-black/90 text-gray-200 border-white/20"
+                        }`}
+                        title="إعدادات دقة وسرعة الكاميرا (Resolution & FPS) - مخصص للأجهزة الضعيفة"
+                      >
+                        <span>⚙️</span>
+                        <span>إعدادات الكاميرا ({cameraSettings.resolution} • {cameraSettings.fps}fps)</span>
+                        {cameraSettings.resolution === "480p" && cameraSettings.fps === 15 && (
+                          <span className="text-[9px] bg-amber-400 text-amber-950 font-bold px-1 rounded">خفيف ❄️</span>
+                        )}
+                      </button>
+
+                      {/* Sensory Feedback (Sound & Vibration) Toggle Button on Screen */}
+                      <button
+                        type="button"
+                        onClick={toggleSensoryFeedback}
+                        className={`text-xs font-bold px-3 py-1.5 rounded-xl border backdrop-blur-md transition-all flex items-center gap-1.5 shadow-md active:scale-95 ${
+                          soundEnabled
+                            ? "bg-emerald-600/90 hover:bg-emerald-600 text-white border-emerald-400"
+                            : "bg-black/70 hover:bg-black/90 text-gray-300 border-white/20"
+                        }`}
+                        title={soundEnabled ? "الملاحظات الحسية (صوت واهتزاز) مفعّلة - انقر للإيقاف" : "الملاحظات الحسية معطلة - انقر للتفعيل"}
+                      >
+                        <span>{soundEnabled ? "🔊📳" : "🔇"}</span>
+                        <span>{soundEnabled ? "صوت واهتزاز: مفعّل" : "صامت"}</span>
                       </button>
 
                       {torchSupported && (
@@ -921,6 +1006,14 @@ export default function DualPaneFastScanner({
         </div>
 
       </div>
+
+      {/* Camera Resolution & Frame Rate Settings Modal */}
+      <CameraSettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        currentSettings={cameraSettings}
+        onSave={handleSaveCameraSettings}
+      />
     </div>
   );
 }

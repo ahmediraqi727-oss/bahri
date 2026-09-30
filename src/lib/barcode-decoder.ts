@@ -12,13 +12,15 @@ import {
   DecodeHintType,
   MultiFormatReader,
   HTMLCanvasElementLuminanceSource,
+  InvertedLuminanceSource,
   HybridBinarizer,
+  GlobalHistogramBinarizer,
   BinaryBitmap,
 } from "@zxing/library";
 
-// Configure hints once
-const hints = new Map();
-hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+// ── Multi-Format Barcode Hints (1D + 2D) ──
+const multiHints = new Map();
+multiHints.set(DecodeHintType.POSSIBLE_FORMATS, [
   BarcodeFormat.EAN_13,
   BarcodeFormat.EAN_8,
   BarcodeFormat.CODE_128,
@@ -29,10 +31,78 @@ hints.set(DecodeHintType.POSSIBLE_FORMATS, [
   BarcodeFormat.UPC_E,
   BarcodeFormat.ITF,
 ]);
-hints.set(DecodeHintType.TRY_HARDER, true);
+multiHints.set(DecodeHintType.TRY_HARDER, true);
 
-const zxingReader = new MultiFormatReader();
-zxingReader.setHints(hints);
+const zxingMultiReader = new MultiFormatReader();
+zxingMultiReader.setHints(multiHints);
+
+// ── Dedicated High-Speed QR / 2D Hints ──
+const qrHints = new Map();
+qrHints.set(DecodeHintType.POSSIBLE_FORMATS, [
+  BarcodeFormat.QR_CODE,
+  BarcodeFormat.DATA_MATRIX,
+]);
+qrHints.set(DecodeHintType.TRY_HARDER, true);
+
+const zxingQRReader = new MultiFormatReader();
+zxingQRReader.setHints(qrHints);
+
+/**
+ * Robust ZXing Canvas Decoder with multi-stage binarizers:
+ * 1. HybridBinarizer (optimal for uneven lighting and glare)
+ * 2. GlobalHistogramBinarizer (superior for low-contrast/faded thermal paper)
+ * 3. InvertedLuminanceSource (for white-on-dark or inverted thermal codes)
+ */
+export function decodeCanvasWithZXing(canvas: HTMLCanvasElement, preferQR = false): string | null {
+  if (!canvas || canvas.width === 0 || canvas.height === 0) return null;
+  const reader = preferQR ? zxingQRReader : zxingMultiReader;
+
+  try {
+    const lumSource = new HTMLCanvasElementLuminanceSource(canvas);
+
+    // 1. HybridBinarizer
+    try {
+      const bitmap = new BinaryBitmap(new HybridBinarizer(lumSource));
+      const res = reader.decode(bitmap);
+      if (res && res.getText()) return res.getText();
+    } catch { /* proceed */ }
+
+    // 2. GlobalHistogramBinarizer (excels on faded thermal prints)
+    try {
+      const bitmap = new BinaryBitmap(new GlobalHistogramBinarizer(lumSource));
+      const res = reader.decode(bitmap);
+      if (res && res.getText()) return res.getText();
+    } catch { /* proceed */ }
+
+    // 3. Inverted Luminance (for dark mode or thermal paper inversions)
+    try {
+      const invSource = new InvertedLuminanceSource(lumSource);
+      const bitmap = new BinaryBitmap(new HybridBinarizer(invSource));
+      const res = reader.decode(bitmap);
+      if (res && res.getText()) return res.getText();
+    } catch { /* proceed */ }
+
+    // 4. Inverted + GlobalHistogram
+    try {
+      const invSource = new InvertedLuminanceSource(lumSource);
+      const bitmap = new BinaryBitmap(new GlobalHistogramBinarizer(invSource));
+      const res = reader.decode(bitmap);
+      if (res && res.getText()) return res.getText();
+    } catch { /* proceed */ }
+  } catch { /* ignore */ }
+
+  // Fallback to multi-format reader if preferQR was true
+  if (preferQR) {
+    try {
+      const lumSource = new HTMLCanvasElementLuminanceSource(canvas);
+      const bitmap = new BinaryBitmap(new HybridBinarizer(lumSource));
+      const res = zxingMultiReader.decode(bitmap);
+      if (res && res.getText()) return res.getText();
+    } catch { /* ignore */ }
+  }
+
+  return null;
+}
 
 /**
  * Specialized computer-vision preprocessor for thermal-printed barcodes and QR codes.
@@ -74,8 +144,8 @@ export function enhanceThermalLabelImage(
 }
 
 /**
- * Fast-path QR decoder tuned specifically for thermal printed stickers.
- * Uses center-weighted ROI cropping, thermal contrast equalization, and multi-pass jsQR / BarcodeDetector.
+ * Fast-path QR & Barcode decoder tuned specifically for thermal printed stickers using ZXing.js.
+ * Uses center-weighted ROI cropping, thermal contrast equalization, and multi-pass ZXing binarizers.
  */
 export async function decodeThermalOptimizedQR(
   sourceCanvas: HTMLCanvasElement
@@ -87,7 +157,7 @@ export async function decodeThermalOptimizedQR(
     try {
       // @ts-expect-error — BarcodeDetector API
       const detector = new window.BarcodeDetector({
-        formats: ["qr_code", "data_matrix", "code_128", "ean_13"],
+        formats: ["qr_code", "data_matrix", "code_128", "ean_13", "ean_8"],
       });
       const detected = await detector.detect(sourceCanvas);
       if (detected && detected.length > 0 && detected[0].rawValue) {
@@ -96,8 +166,12 @@ export async function decodeThermalOptimizedQR(
     } catch { /* proceed */ }
   }
 
-  // 2. Center-weighted Crop (ROI) for thermal stickers in viewfinder
-  // Thermal stickers are typically positioned inside the central 60% of the screen.
+  // 2. High-Speed ZXing pass on full frame
+  const zxingDirect = decodeCanvasWithZXing(sourceCanvas, true);
+  if (zxingDirect) return zxingDirect;
+
+  // 3. Center-weighted Crop (ROI) for thermal stickers in viewfinder
+  // Thermal stickers are typically positioned inside the central 65% of the screen.
   const w = sourceCanvas.width;
   const h = sourceCanvas.height;
   const roiW = Math.round(w * 0.65);
@@ -116,7 +190,7 @@ export async function decodeThermalOptimizedQR(
     if (typeof window !== "undefined" && "BarcodeDetector" in window) {
       try {
         // @ts-expect-error — BarcodeDetector API
-        const detector = new window.BarcodeDetector({ formats: ["qr_code", "code_128", "ean_13"] });
+        const detector = new window.BarcodeDetector({ formats: ["qr_code", "data_matrix", "code_128", "ean_13"] });
         const detected = await detector.detect(roiCanvas);
         if (detected && detected.length > 0 && detected[0].rawValue) {
           return detected[0].rawValue;
@@ -124,27 +198,26 @@ export async function decodeThermalOptimizedQR(
       } catch { /* proceed */ }
     }
 
-    // Try jsQR on thermal-enhanced ROI
+    // Try pure ZXing on uncompressed ROI
+    const zxingRoi = decodeCanvasWithZXing(roiCanvas, true);
+    if (zxingRoi) return zxingRoi;
+
+    // Try ZXing on thermal-enhanced ROI
     try {
-      const { default: jsQR } = await import("jsqr");
       const enhancedImageData = enhanceThermalLabelImage(roiCtx, roiW, roiH);
       roiCtx.putImageData(enhancedImageData, 0, 0);
 
-      const qrResult = jsQR(enhancedImageData.data, roiW, roiH, {
-        inversionAttempts: "attemptBoth",
-      });
-      if (qrResult?.data) {
-        return qrResult.data;
-      }
+      const zxingThermal = decodeCanvasWithZXing(roiCanvas, true);
+      if (zxingThermal) return zxingThermal;
     } catch { /* proceed */ }
   }
 
-  // 3. Fallback to standard multi-pass decoder on full canvas
+  // 4. Fallback to standard multi-pass ZXing decoder on full canvas
   return decodeBarcodeFromCanvas(sourceCanvas);
 }
 
 /**
- * Decodes barcode or QR code from a canvas using a 4-pass contrast & binarization pipeline.
+ * Decodes barcode or QR code from a canvas using a multi-pass ZXing binarization pipeline.
  */
 export async function decodeBarcodeFromCanvas(
   sourceCanvas: HTMLCanvasElement
@@ -167,18 +240,9 @@ export async function decodeBarcodeFromCanvas(
     }
   }
 
-  // Pass 2: Raw canvas decode with ZXing MultiFormatReader
-  try {
-    const luminanceSource = new HTMLCanvasElementLuminanceSource(sourceCanvas);
-    const binarizer = new HybridBinarizer(luminanceSource);
-    const bitmap = new BinaryBitmap(binarizer);
-    const result = zxingReader.decode(bitmap);
-    if (result && result.getText()) {
-      return result.getText();
-    }
-  } catch {
-    // Continue to Pass 3
-  }
+  // Pass 2: Raw canvas decode with ZXing (Hybrid + GlobalHistogram + Inverted)
+  const pass2 = decodeCanvasWithZXing(sourceCanvas, false);
+  if (pass2) return pass2;
 
   // Create an off-screen processing canvas for image optimization
   const processCanvas = document.createElement("canvas");
@@ -203,7 +267,7 @@ export async function decodeBarcodeFromCanvas(
 
   ctx.drawImage(sourceCanvas, 0, 0, width, height);
 
-  // Pass 2: Contrast & Sharpening Preprocessing
+  // Pass 3: Contrast & Sharpening Preprocessing + ZXing
   try {
     const imageData = ctx.getImageData(0, 0, width, height);
     const data = imageData.data;
@@ -221,18 +285,13 @@ export async function decodeBarcodeFromCanvas(
     }
     ctx.putImageData(imageData, 0, 0);
 
-    const luminanceSource = new HTMLCanvasElementLuminanceSource(processCanvas);
-    const binarizer = new HybridBinarizer(luminanceSource);
-    const bitmap = new BinaryBitmap(binarizer);
-    const result = zxingReader.decode(bitmap);
-    if (result && result.getText()) {
-      return result.getText();
-    }
+    const pass3 = decodeCanvasWithZXing(processCanvas, false);
+    if (pass3) return pass3;
   } catch {
-    // Continue to Pass 3
+    // Continue to Pass 4
   }
 
-  // Pass 3: High-Thresholding Binarization for glare/shiny label captures
+  // Pass 4: High-Thresholding Binarization for glare/shiny label captures + ZXing
   try {
     const imageData = ctx.getImageData(0, 0, width, height);
     const data = imageData.data;
@@ -245,29 +304,10 @@ export async function decodeBarcodeFromCanvas(
     }
     ctx.putImageData(imageData, 0, 0);
 
-    const luminanceSource = new HTMLCanvasElementLuminanceSource(processCanvas);
-    const binarizer = new HybridBinarizer(luminanceSource);
-    const bitmap = new BinaryBitmap(binarizer);
-    const result = zxingReader.decode(bitmap);
-    if (result && result.getText()) {
-      return result.getText();
-    }
+    const pass4 = decodeCanvasWithZXing(processCanvas, false);
+    if (pass4) return pass4;
   } catch {
-    // Continue to Pass 4
-  }
-
-  // Pass 4: Fallback to jsQR
-  try {
-    const { default: jsQR } = await import("jsqr");
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const qrResult = jsQR(imageData.data, imageData.width, imageData.height, {
-      inversionAttempts: "attemptBoth",
-    });
-    if (qrResult?.data) {
-      return qrResult.data;
-    }
-  } catch {
-    // Silent
+    // Continue
   }
 
   return null;

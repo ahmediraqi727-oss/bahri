@@ -8,6 +8,17 @@ import {
   decodeThermalOptimizedQR,
   enhanceThermalLabelImage,
 } from "@/lib/barcode-decoder";
+import {
+  triggerSuccessSensoryFeedback,
+  triggerToggleFeedback,
+} from "@/lib/sensory-feedback";
+import {
+  loadSavedCameraSettings,
+  saveCameraSettings,
+  CAMERA_RESOLUTIONS,
+  type CameraSettingsState,
+} from "@/lib/camera-config";
+import CameraSettingsModal from "@/components/CameraSettingsModal";
 import type { Product } from "@/lib/types";
 
 interface BarcodeScannerProps {
@@ -52,6 +63,30 @@ export default function BarcodeScanner({
   // Thermal Label QR Optimization Mode (True by default for maximum barcode & sticker read speed)
   const [thermalMode, setThermalMode] = useState<boolean>(true);
 
+  // Sensory Feedback Mode (Sound chime + Haptic vibration on success)
+  const [sensoryFeedbackEnabled, setSensoryFeedbackEnabled] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("ahmed_bahri_scanner_sensory");
+      return saved !== null ? saved === "true" : true;
+    }
+    return true;
+  });
+
+  const toggleSensoryFeedback = useCallback(() => {
+    setSensoryFeedbackEnabled((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("ahmed_bahri_scanner_sensory", String(next));
+      }
+      if (next) triggerToggleFeedback();
+      return next;
+    });
+  }, []);
+
+  // Camera Resolution & Frame Rate Settings (Low-End Device Optimization)
+  const [cameraSettings, setCameraSettings] = useState<CameraSettingsState>(loadSavedCameraSettings);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   // Hardware Zoom Support
   const [supportsZoom, setSupportsZoom] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
@@ -93,46 +128,66 @@ export default function BarcodeScanner({
     }
   }, []);
 
-  // Start Camera with explicit facingMode and deviceId
-  const startCamera = useCallback(async (targetFacing = facingMode, targetDeviceId = selectedCameraId) => {
-    stopCamera();
-    setCameraError("");
+  // Start Camera with explicit facingMode, deviceId, and cameraSettings
+  const startCamera = useCallback(
+    async (
+      targetFacing = facingMode,
+      targetDeviceId = selectedCameraId,
+      targetSettings = cameraSettings
+    ) => {
+      stopCamera();
+      setCameraError("");
 
-    try {
-      let constraints: MediaStreamConstraints;
-
-      if (targetDeviceId) {
-        constraints = {
-          video: {
-            deviceId: { exact: targetDeviceId },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: false,
-        };
-      } else {
-        constraints = {
-          video: {
-            facingMode: { ideal: targetFacing },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: false,
-        };
-      }
-
-      let stream: MediaStream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-      } catch (firstErr) {
-        // Fallback for laptops/desktops without environment camera or specific ID
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: false,
-        });
-      }
+        const resConfig = CAMERA_RESOLUTIONS[targetSettings.resolution] || CAMERA_RESOLUTIONS["720p"];
+        const targetFps = targetSettings.fps || 30;
 
-      streamRef.current = stream;
+        let constraints: MediaStreamConstraints;
+
+        if (targetDeviceId) {
+          constraints = {
+            video: {
+              deviceId: { exact: targetDeviceId },
+              width: { ideal: resConfig.width },
+              height: { ideal: resConfig.height },
+              frameRate: { ideal: targetFps, max: targetFps },
+            },
+            audio: false,
+          };
+        } else {
+          constraints = {
+            video: {
+              facingMode: targetFacing === "user" ? "user" : { ideal: "environment" },
+              width: { ideal: resConfig.width },
+              height: { ideal: resConfig.height },
+              frameRate: { ideal: targetFps, max: targetFps },
+            },
+            audio: false,
+          };
+        }
+
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (firstErr) {
+          // Fallback for laptops/desktops without specific constraints
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                width: { ideal: resConfig.width },
+                height: { ideal: resConfig.height },
+              },
+              audio: false,
+            });
+          } catch {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false,
+            });
+          }
+        }
+
+        streamRef.current = stream;
 
       // Check zoom capabilities on the active video track
       const videoTrack = stream.getVideoTracks()[0];
@@ -180,14 +235,24 @@ export default function BarcodeScanner({
     const nextFacing = facingMode === "environment" ? "user" : "environment";
     setFacingMode(nextFacing);
     setSelectedCameraId(""); // clear explicit device ID so facingMode applies
-    startCamera(nextFacing, "");
-  }, [facingMode, startCamera]);
+    startCamera(nextFacing, "", cameraSettings);
+  }, [facingMode, cameraSettings, startCamera]);
 
   // Select specific camera from device list
   const handleSelectCamera = useCallback((deviceId: string) => {
     setSelectedCameraId(deviceId);
-    startCamera(facingMode, deviceId);
-  }, [facingMode, startCamera]);
+    startCamera(facingMode, deviceId, cameraSettings);
+  }, [facingMode, cameraSettings, startCamera]);
+
+  // Save and apply camera resolution and frame rate settings
+  const handleSaveCameraSettings = useCallback(
+    (newSettings: CameraSettingsState) => {
+      setCameraSettings(newSettings);
+      saveCameraSettings(newSettings);
+      startCamera(facingMode, selectedCameraId, newSettings);
+    },
+    [facingMode, selectedCameraId, startCamera]
+  );
 
   // Adjust camera hardware zoom
   const handleSetZoom = useCallback(async (newZoom: number) => {
@@ -211,9 +276,13 @@ export default function BarcodeScanner({
       return;
     }
 
-    // High performance scan rate: 12-15 FPS (every 70ms) for instant detection
+    // Adaptive scan rate tuned to camera frame rate:
+    // 15 FPS -> throttled to ~70ms to drastically reduce CPU load on weak phones
+    // 30 FPS -> throttled to ~40ms
+    // 60 FPS -> throttled to ~20ms
+    const targetThrottle = Math.max(25, Math.round(1000 / (cameraSettings.fps || 30)));
     const now = performance.now();
-    if (now - lastScanTimeRef.current < 70) {
+    if (now - lastScanTimeRef.current < targetThrottle) {
       rafRef.current = requestAnimationFrame(scanLoop);
       return;
     }
@@ -288,10 +357,14 @@ export default function BarcodeScanner({
     const cleaned = code.trim();
     if (!cleaned || cleaned === lastScanned) return;
     setLastScanned(cleaned);
+
+    // Trigger dedicated sensory feedback (crystal chime + haptic vibration)
+    triggerSuccessSensoryFeedback(sensoryFeedbackEnabled);
+
     stopCamera();
     onScan(cleaned);
     onClose();
-  }, [lastScanned, stopCamera, onScan, onClose]);
+  }, [lastScanned, sensoryFeedbackEnabled, stopCamera, onScan, onClose]);
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -375,18 +448,37 @@ export default function BarcodeScanner({
                 <button
                   type="button"
                   onClick={toggleCameraFacing}
-                  className="flex-1 min-w-[140px] flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-bold transition-all shadow-2xs"
-                  title="التبديل بين الكاميرا الخلفية والأمامية"
+                  className={`flex-1 min-w-[150px] flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl font-extrabold text-xs transition-all shadow-sm border ${
+                    facingMode === "environment"
+                      ? "bg-blue-600 hover:bg-blue-700 text-white border-blue-500 shadow-blue-500/20"
+                      : "bg-purple-600 hover:bg-purple-700 text-white border-purple-500 shadow-purple-500/20"
+                  }`}
+                  title="تبديل الكاميرا بين الخلفية والأمامية"
                 >
                   <span className="text-base">🔄</span>
-                  <span>{facingMode === "environment" ? "كاميرا خلفية 📷" : "كاميرا أمامية 🤳"}</span>
+                  <span>{facingMode === "environment" ? "الكاميرا الخلفية 📷" : "الكاميرا الأمامية 🤳"}</span>
+                </button>
+
+                {/* Sensory Feedback Toggle Button (Sound & Vibration) */}
+                <button
+                  type="button"
+                  onClick={toggleSensoryFeedback}
+                  className={`flex-1 min-w-[150px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs transition-all shadow-sm border ${
+                    sensoryFeedbackEnabled
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 shadow-emerald-500/20"
+                      : "bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700"
+                  }`}
+                  title={sensoryFeedbackEnabled ? "الملاحظات الحسية (صوت واهتزاز) مفعّلة - انقر للإيقاف" : "الملاحظات الحسية معطلة - انقر للتفعيل"}
+                >
+                  <span className="text-base">{sensoryFeedbackEnabled ? "🔊" : "🔇"}</span>
+                  <span>{sensoryFeedbackEnabled ? "صوت واهتزاز: مفعّل 📳" : "صامت: معطّل"}</span>
                 </button>
 
                 {/* Thermal Label QR Optimization Toggle */}
                 <button
                   type="button"
                   onClick={() => setThermalMode(!thermalMode)}
-                  className={`flex-1 min-w-[150px] flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-all shadow-2xs border ${
+                  className={`flex-1 min-w-[140px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-bold transition-all shadow-2xs border ${
                     thermalMode
                       ? "bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25"
                       : "bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-200"
@@ -395,6 +487,26 @@ export default function BarcodeScanner({
                 >
                   <span className="text-base">⚡</span>
                   <span>ملصقات حرارية: {thermalMode ? "مُفعّل 🔥" : "إيقاف"}</span>
+                </button>
+
+                {/* Camera Resolution & Frame Rate Settings Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsOpen(true)}
+                  className={`flex-1 min-w-[150px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs transition-all shadow-2xs border ${
+                    cameraSettings.resolution === "480p" && cameraSettings.fps === 15
+                      ? "bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25"
+                      : "bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200"
+                  }`}
+                  title="تغيير دقة الكاميرا ومعدل الإطارات (Resolution & FPS) لتحسين الاستقرار على الأجهزة الضعيفة"
+                >
+                  <span className="text-base">⚙️</span>
+                  <span>إعدادات الكاميرا ({cameraSettings.resolution} • {cameraSettings.fps}fps)</span>
+                  {cameraSettings.resolution === "480p" && cameraSettings.fps === 15 && (
+                    <span className="text-[9px] bg-amber-500/30 px-1.5 py-0.5 rounded-full font-bold">
+                      خفيف ❄️
+                    </span>
+                  )}
                 </button>
               </div>
 
@@ -431,7 +543,7 @@ export default function BarcodeScanner({
                 <div className="relative w-full rounded-2xl overflow-hidden bg-black aspect-[4/3] shadow-lg border border-gray-800">
                   <video
                     ref={videoRef}
-                    className="w-full h-full object-cover"
+                    className={`w-full h-full object-cover transition-transform ${facingMode === "user" ? "-scale-x-100" : ""}`}
                     playsInline
                     muted
                     autoPlay
@@ -477,6 +589,50 @@ export default function BarcodeScanner({
                   <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] text-white font-mono">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                     <span>{thermalMode ? "Thermal OCR ⚡" : "Standard QR"}</span>
+                  </div>
+
+                  {/* Floating Controls on Video (Top Right) */}
+                  <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 pointer-events-auto">
+                    {/* Floating Camera Settings Button on Video */}
+                    <button
+                      type="button"
+                      onClick={() => setIsSettingsOpen(true)}
+                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-bold backdrop-blur-md border shadow-md transition-all active:scale-95 ${
+                        cameraSettings.resolution === "480p" && cameraSettings.fps === 15
+                          ? "bg-amber-600/85 hover:bg-amber-600 text-white border-amber-400/60 shadow-amber-500/20"
+                          : "bg-black/60 hover:bg-black/80 text-gray-200 border-white/20"
+                      }`}
+                      title="إعدادات دقة وسرعة الكاميرا (Resolution & FPS)"
+                    >
+                      <span>⚙️</span>
+                      <span className="hidden sm:inline">{cameraSettings.resolution}</span>
+                    </button>
+
+                    {/* Floating Sensory Feedback Toggle on Screen */}
+                    <button
+                      type="button"
+                      onClick={toggleSensoryFeedback}
+                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-bold backdrop-blur-md border shadow-md transition-all active:scale-95 ${
+                        sensoryFeedbackEnabled
+                          ? "bg-emerald-600/85 hover:bg-emerald-600 text-white border-emerald-400/60 shadow-emerald-500/20"
+                          : "bg-black/60 hover:bg-black/80 text-gray-300 border-white/20"
+                      }`}
+                      title={sensoryFeedbackEnabled ? "الملاحظات الحسية (صوت واهتزاز) مفعّلة - اضغط للإيقاف" : "الملاحظات الحسية معطلة - اضغط للتفعيل"}
+                    >
+                      <span>{sensoryFeedbackEnabled ? "🔊📳" : "🔇"}</span>
+                      <span className="hidden sm:inline">{sensoryFeedbackEnabled ? "صوت واهتزاز" : "صامت"}</span>
+                    </button>
+
+                    {/* Floating Camera Switch Button on Video */}
+                    <button
+                      type="button"
+                      onClick={toggleCameraFacing}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/60 hover:bg-black/80 active:scale-95 text-white text-[11px] font-bold backdrop-blur-md border border-white/20 shadow-md transition-all"
+                      title="تبديل الكاميرا (أمامية / خلفية)"
+                    >
+                      <span>🔄</span>
+                      <span>{facingMode === "environment" ? "أمامية" : "خلفية"}</span>
+                    </button>
                   </div>
 
                   {isScanning && (
@@ -634,6 +790,14 @@ export default function BarcodeScanner({
           50% { top: 85%; }
         }
       `}</style>
+
+      {/* Camera Resolution & Frame Rate Settings Modal */}
+      <CameraSettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        currentSettings={cameraSettings}
+        onSave={handleSaveCameraSettings}
+      />
     </div>
   );
 }

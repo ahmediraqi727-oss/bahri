@@ -87,11 +87,11 @@ export function generateBarcodeDataURL(
     const canvas = document.createElement("canvas");
     JsBarcode(canvas, text.trim(), {
       format: format || "CODE128",
-      width: 1.5,
-      height: height,
+      width: 2,
+      height: Math.round(height * 1.35),
       displayValue: true,
-      fontSize: 11,
-      margin: 4,
+      fontSize: 14,
+      margin: 5,
       background: "#ffffff",
       lineColor: "#000000",
     });
@@ -118,7 +118,7 @@ export async function generateQRDataURL(
 
     if (typeof toDataURLFn === "function") {
       return await toDataURLFn(text.trim(), {
-        width: 180,
+        width: 280,
         margin: 1,
         color: { dark: "#000000", light: "#ffffff" },
         errorCorrectionLevel: ecc,
