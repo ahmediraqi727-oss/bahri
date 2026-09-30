@@ -6,7 +6,7 @@ import { useData } from "@/lib/data-context";
 import { useCart } from "@/lib/cart-context";
 import { useSettings } from "@/lib/settings-context";
 import { lookupByBarcode } from "@/lib/barcode-service";
-import { decodeBarcodeFromCanvas, decodeBarcodeFromFile } from "@/lib/barcode-decoder";
+import { decodeBarcodeFromCanvas, decodeBarcodeFromFile, decodeThermalOptimizedQR } from "@/lib/barcode-decoder";
 import {
   buildTierBadgeText,
   resolveTierForQty,
@@ -348,7 +348,7 @@ export default function DualPaneFastScanner({
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
         if (ctx) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const code = await decodeBarcodeFromCanvas(canvas);
+          const code = await decodeThermalOptimizedQR(canvas);
           if (code) {
             handleDetectedCode(code);
           }
@@ -617,7 +617,7 @@ export default function DualPaneFastScanner({
 
             {/* Camera Stream Display */}
             {activeTab === "camera" && (
-              <div className="flex-1 flex flex-col items-center justify-center relative min-h-[260px]">
+              <div className="barcode-scanner-container flex-1 flex flex-col items-center justify-center relative min-h-[260px]">
                 {cameraError ? (
                   <div className="bg-red-950/60 border border-red-800 rounded-2xl p-5 text-center max-w-sm my-auto">
                     <p className="text-red-400 font-bold text-xs mb-3">{cameraError}</p>

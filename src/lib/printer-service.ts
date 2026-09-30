@@ -341,7 +341,8 @@ export async function buildPrintableDocument(options: PrintJobOptions): Promise<
         .footer-text {
           font-size: 9px;
           font-weight: bold;
-          border-top: 1px solid #f1f5f9;
+          border-top: none;
+          padding-top: 2px;
           width: 100%;
         }
       </style>

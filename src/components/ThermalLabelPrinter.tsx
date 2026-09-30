@@ -327,13 +327,15 @@ function LabelPreviewDOM({
         if (elemId === "footer" && customization.showFooterText && customization.footerText) {
           return (
             <div key="footer" dir="rtl" lang="ar"
+              className="thermal-label-footer"
+              data-thermal-footer="true"
               style={{
                 fontSize: "9px",
                 fontWeight: "bold",
                 color: customization.textColor || "#64748b",
                 textAlign: "center",
-                borderTop: `1px solid ${customization.borderColor || "#e2e8f0"}`,
-                paddingTop: "3px",
+                borderTop: "none",
+                paddingTop: "2px",
                 width: "100%",
                 wordBreak: "break-word",
                 flexShrink: 0,
@@ -811,22 +813,250 @@ window.addEventListener("afterprint", function() {
     [batchItems, product, rasterize, rasterizeProduct, customization, openPrintPopup, onRasterizeStart, onRasterizeComplete, onError]
   );
 
+  // ── rasterizeHighRes4X: True 4× Native Vector-Sharp Offscreen Pipeline ──
+  const rasterizeHighRes4X = useCallback(async (): Promise<string> => {
+    const { toPng } = await import("html-to-image");
+
+    const pIsCircle = customization.labelShape === "circle";
+    const pIsSquare = customization.labelShape === "square";
+    const pWidthMM = customization.rollWidthMM;
+    const pHeightMM = pIsCircle || pIsSquare ? pWidthMM : customization.rollHeightMM;
+
+    // 4× Native pixel dimensions
+    const scale4x = MM_TO_PX_96DPI * 4;
+    const widthPx4x = Math.round(pWidthMM * scale4x);
+    const heightPx4x = Math.round(pHeightMM * scale4x);
+
+    // Ultra high-res 4× barcode
+    let pBarcodeUrl = "";
+    if (product.barcode && customization.showBarcode) {
+      pBarcodeUrl = generateBarcodeDataURL(
+        product.barcode,
+        Math.round(customization.barcodeHeight * 4),
+        customization.barcodeType || "CODE128"
+      );
+    }
+
+    // Ultra high-res 4× QR code
+    let pQrUrl = "";
+    const qrPayload = resolveQRPayload(product, customization);
+    if (qrPayload && (customization.showQRCode || customization.showStoreURLQR)) {
+      pQrUrl = await generateQRDataURL(qrPayload, customization.qrErrorCorrection || "M");
+    }
+
+    let pLogoUrl = "";
+    if (customization.showLogo && customization.logoUrl) {
+      pLogoUrl = await fetchImageAsDataUrl(customization.logoUrl);
+    }
+
+    // Mount off-screen high-res container
+    const container = document.createElement("div");
+    container.style.cssText = [
+      "position:fixed",
+      "top:-9999px",
+      "left:-9999px",
+      `width:${widthPx4x}px`,
+      `height:${heightPx4x}px`,
+      "pointer-events:none",
+      "z-index:-999",
+      "overflow:hidden",
+    ].join(";");
+    document.body.appendChild(container);
+
+    const { createRoot } = await import("react-dom/client");
+    const root = createRoot(container);
+
+    // High-res customization with 4× fonts and zero borderTop separator
+    const highResCustomization: LabelCustomizationOptions = {
+      ...customization,
+      nameFontSize: Math.round((customization.nameFontSize || 14) * 4),
+      priceFontSize: Math.round((customization.priceFontSize || 16) * 4),
+      barcodeHeight: Math.round((customization.barcodeHeight || 28) * 4),
+      qrSizePx: Math.round((customization.qrSizePx || 56) * 4),
+    };
+
+    await new Promise<void>((resolve) => {
+      root.render(
+        <div
+          id="high-res-thermal-label-4x"
+          style={{
+            width: `${widthPx4x}px`,
+            height: `${heightPx4x}px`,
+            backgroundColor: highResCustomization.labelBgColor || "#ffffff",
+            color: highResCustomization.textColor || "#0f172a",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: pIsCircle ? "14%" : `${Math.round(14 * 4)}px`,
+            borderRadius: pIsCircle ? "50%" : pIsSquare ? "32px" : "24px",
+            border: pIsCircle || pIsSquare ? "none" : `3px solid ${highResCustomization.borderColor || "#cbd5e1"}`,
+            boxSizing: "border-box",
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
+          {highResCustomization.elementOrder.map((elemId) => {
+            if (elemId === "name" && highResCustomization.showProductName && product.name) {
+              return (
+                <div
+                  key="name"
+                  dir="rtl"
+                  lang="ar"
+                  style={{
+                    fontSize: `${highResCustomization.nameFontSize}px`,
+                    fontWeight: 900,
+                    color: highResCustomization.textColor || "#0f172a",
+                    textAlign: "center",
+                    lineHeight: 1.25,
+                    width: "100%",
+                    wordBreak: "break-word",
+                    marginBottom: "8px",
+                  }}
+                >
+                  {product.name}
+                </div>
+              );
+            }
+
+            if (elemId === "price" && highResCustomization.showProductPrice && typeof product.retailPrice === "number") {
+              return (
+                <div
+                  key="price"
+                  style={{
+                    fontSize: `${highResCustomization.priceFontSize}px`,
+                    fontWeight: 900,
+                    color: highResCustomization.textColor || "#2563eb",
+                    textAlign: "center",
+                    fontVariantNumeric: "tabular-nums",
+                    marginBottom: "8px",
+                  }}
+                >
+                  {product.retailPrice.toLocaleString("ar-IQ")} IQD
+                </div>
+              );
+            }
+
+            if (elemId === "codes") {
+              const hasBarcode = highResCustomization.showBarcode && pBarcodeUrl;
+              const hasQR = (highResCustomization.showQRCode || highResCustomization.showStoreURLQR) && pQrUrl;
+              if (!hasBarcode && !hasQR) return null;
+
+              return (
+                <div
+                  key="codes"
+                  style={{
+                    display: "flex",
+                    flexDirection: hasBarcode && hasQR ? "row" : "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "16px",
+                    width: "100%",
+                    flexShrink: 0,
+                    margin: "8px 0",
+                  }}
+                >
+                  {hasBarcode && (
+                    <div style={{ flex: hasQR ? 1 : undefined, display: "flex", alignItems: "center", justifyContent: "center", maxWidth: "100%", overflow: "hidden" }}>
+                      <img
+                        src={pBarcodeUrl}
+                        alt="Barcode"
+                        style={{
+                          height: `${Math.min(highResCustomization.barcodeHeight, heightPx4x * 0.28)}px`,
+                          maxWidth: "100%",
+                          objectFit: "contain",
+                          display: "block",
+                        }}
+                      />
+                    </div>
+                  )}
+                  {hasQR && (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <img
+                        src={pQrUrl}
+                        alt="QR Code"
+                        style={{
+                          width: `${Math.min(highResCustomization.qrSizePx, heightPx4x * 0.28)}px`,
+                          height: `${Math.min(highResCustomization.qrSizePx, heightPx4x * 0.28)}px`,
+                          objectFit: "contain",
+                          display: "block",
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            if (elemId === "footer" && highResCustomization.showFooterText && highResCustomization.footerText) {
+              return (
+                <div
+                  key="footer"
+                  dir="rtl"
+                  lang="ar"
+                  className="thermal-label-footer-clean"
+                  style={{
+                    fontSize: "36px",
+                    fontWeight: 800,
+                    color: highResCustomization.textColor || "#64748b",
+                    textAlign: "center",
+                    width: "100%",
+                    wordBreak: "break-word",
+                    paddingTop: "6px",
+                    borderTop: "none", // NO SEPARATOR LINE!
+                  }}
+                >
+                  {highResCustomization.footerText}
+                </div>
+              );
+            }
+
+            return null;
+          })}
+        </div>
+      );
+      requestAnimationFrame(() => setTimeout(resolve, 150));
+    });
+
+    try {
+      const labelNode = container.firstElementChild as HTMLElement;
+
+      // Pre-capture DOM clean-up phase: ensure no borderTop separator lines
+      const separators = labelNode.querySelectorAll<HTMLElement>("hr, .border-t, [style*='borderTop'], [style*='border-top']");
+      separators.forEach((el) => {
+        el.style.borderTop = "none";
+      });
+
+      const dataUrl = await toPng(labelNode, {
+        cacheBust: true,
+        pixelRatio: 1,
+        backgroundColor: highResCustomization.labelBgColor || "#ffffff",
+      });
+
+      return dataUrl;
+    } finally {
+      root.unmount();
+      document.body.removeChild(container);
+    }
+  }, [product, customization]);
+
   // ── handleDownloadPNG ─────────────────────────────────────────────────────
   const handleDownloadPNG = useCallback(async (): Promise<void> => {
-    setStatusMsg("جاري استخراج صورة PNG 4× الدقة...");
+    setStatusMsg("جاري استخراج صورة PNG فائقة الوضوح (4× Ultra-HD)...");
     try {
-      const dataUrl  = await rasterize();
+      const dataUrl = await rasterizeHighRes4X();
       const safeName = (product.name || "label").replace(/\s+/g, "_").replace(/[^\w\u0600-\u06FF-]/g, "");
       const a = document.createElement("a");
-      a.href     = dataUrl;
-      a.download = `label_${safeName}_${wMM}x${hMM}mm_4x.png`;
+      a.href = dataUrl;
+      a.download = `label_${safeName}_${wMM}x${hMM}mm_4x_ultra_hd.png`;
       a.click();
-      setStatusMsg("✅ تم تحميل PNG بنجاح!");
+      setStatusMsg("✅ تم تحميل PNG فائق الوضوح (4×) بنجاح!");
       setTimeout(() => setStatusMsg(""), 3500);
-    } catch {
+    } catch (err) {
+      console.error("[ThermalLabelPrinter] Download PNG error:", err);
       setStatusMsg("❌ فشل تحميل الصورة.");
     }
-  }, [rasterize, product.name, wMM, hMM]);
+  }, [rasterizeHighRes4X, product.name, wMM, hMM]);
 
   // ── Expose imperative handle ──────────────────────────────────────────────
   useImperativeHandle(
@@ -959,7 +1189,7 @@ window.addEventListener("afterprint", function() {
           }}
         >
           <span>🖼</span>
-          <span>تحميل PNG عالي الدقة (4×)</span>
+          <span>تحميل PNG عالي الدقة فائق الوضوح (4× Ultra-HD)</span>
         </button>
       </div>
     </div>

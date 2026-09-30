@@ -1478,7 +1478,7 @@ export default function BatchPrintModal({
                           key="footer"
                           dir="rtl"
                           lang="ar"
-                          className="text-[10px] font-bold border-t border-gray-200/60 pt-1.5 w-full text-center mt-1 break-words whitespace-normal"
+                          className="text-[10px] font-bold pt-1 w-full text-center mt-0.5 break-words whitespace-normal"
                           style={{ color: customization.textColor || "#64748b" }}
                         >
                           {customization.footerText}

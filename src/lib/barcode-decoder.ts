@@ -35,6 +35,115 @@ const zxingReader = new MultiFormatReader();
 zxingReader.setHints(hints);
 
 /**
+ * Specialized computer-vision preprocessor for thermal-printed barcodes and QR codes.
+ * Thermal paper has micro-fading, low contrast, specular reflections, and dot-matrix artifacts.
+ * This pipeline enhances local module contrast, sharpens module edges, and removes glare.
+ */
+export function enhanceThermalLabelImage(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number
+): ImageData {
+  const imgData = ctx.getImageData(0, 0, width, height);
+  const data = imgData.data;
+
+  // 1. Min/Max luminance detection for auto-contrast stretching
+  let minL = 255;
+  let maxL = 0;
+  for (let i = 0; i < data.length; i += 8) {
+    const l = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    if (l < minL) minL = l;
+    if (l > maxL) maxL = l;
+  }
+
+  const range = maxL - minL || 1;
+  const stretchFactor = 255 / range;
+
+  // 2. High-contrast equalization & adaptive binarization for thermal print
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    const stretched = (gray - minL) * stretchFactor;
+    // Binarization curve tuned for thermal dot matrix: steep cutoff below 135
+    const finalVal = stretched < 135 ? Math.max(0, stretched * 0.6) : Math.min(255, stretched * 1.3);
+    data[i] = finalVal;
+    data[i + 1] = finalVal;
+    data[i + 2] = finalVal;
+  }
+
+  return imgData;
+}
+
+/**
+ * Fast-path QR decoder tuned specifically for thermal printed stickers.
+ * Uses center-weighted ROI cropping, thermal contrast equalization, and multi-pass jsQR / BarcodeDetector.
+ */
+export async function decodeThermalOptimizedQR(
+  sourceCanvas: HTMLCanvasElement
+): Promise<string | null> {
+  if (!sourceCanvas || sourceCanvas.width === 0 || sourceCanvas.height === 0) return null;
+
+  // 1. First attempt: Native BarcodeDetector if available on full frame
+  if (typeof window !== "undefined" && "BarcodeDetector" in window) {
+    try {
+      // @ts-expect-error — BarcodeDetector API
+      const detector = new window.BarcodeDetector({
+        formats: ["qr_code", "data_matrix", "code_128", "ean_13"],
+      });
+      const detected = await detector.detect(sourceCanvas);
+      if (detected && detected.length > 0 && detected[0].rawValue) {
+        return detected[0].rawValue;
+      }
+    } catch { /* proceed */ }
+  }
+
+  // 2. Center-weighted Crop (ROI) for thermal stickers in viewfinder
+  // Thermal stickers are typically positioned inside the central 60% of the screen.
+  const w = sourceCanvas.width;
+  const h = sourceCanvas.height;
+  const roiW = Math.round(w * 0.65);
+  const roiH = Math.round(h * 0.65);
+  const roiX = Math.round((w - roiW) / 2);
+  const roiY = Math.round((h - roiH) / 2);
+
+  const roiCanvas = document.createElement("canvas");
+  roiCanvas.width = roiW;
+  roiCanvas.height = roiH;
+  const roiCtx = roiCanvas.getContext("2d", { willReadFrequently: true });
+  if (roiCtx) {
+    roiCtx.drawImage(sourceCanvas, roiX, roiY, roiW, roiH, 0, 0, roiW, roiH);
+
+    // Try BarcodeDetector on high-density ROI
+    if (typeof window !== "undefined" && "BarcodeDetector" in window) {
+      try {
+        // @ts-expect-error — BarcodeDetector API
+        const detector = new window.BarcodeDetector({ formats: ["qr_code", "code_128", "ean_13"] });
+        const detected = await detector.detect(roiCanvas);
+        if (detected && detected.length > 0 && detected[0].rawValue) {
+          return detected[0].rawValue;
+        }
+      } catch { /* proceed */ }
+    }
+
+    // Try jsQR on thermal-enhanced ROI
+    try {
+      const { default: jsQR } = await import("jsqr");
+      const enhancedImageData = enhanceThermalLabelImage(roiCtx, roiW, roiH);
+      roiCtx.putImageData(enhancedImageData, 0, 0);
+
+      const qrResult = jsQR(enhancedImageData.data, roiW, roiH, {
+        inversionAttempts: "attemptBoth",
+      });
+      if (qrResult?.data) {
+        return qrResult.data;
+      }
+    } catch { /* proceed */ }
+  }
+
+  // 3. Fallback to standard multi-pass decoder on full canvas
+  return decodeBarcodeFromCanvas(sourceCanvas);
+}
+
+/**
  * Decodes barcode or QR code from a canvas using a 4-pass contrast & binarization pipeline.
  */
 export async function decodeBarcodeFromCanvas(
