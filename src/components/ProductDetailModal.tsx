@@ -12,18 +12,24 @@ import {
 import { useCart } from "@/lib/cart-context";
 import { useLang } from "@/lib/lang-context";
 import StructuredData from "@/components/StructuredData";
-import { extractCategoryFromNotes } from "@/lib/seo";
+import {
+  extractCategoryFromNotes,
+  ALL_CATEGORIES_LABEL,
+  isProductInAllCategories,
+} from "@/lib/seo";
 
 interface ProductDetailModalProps {
   product: Product | null;
   tiers: PricingTier[];
   onClose: () => void;
+  selectedCategory?: string | null;
 }
 
 export default function ProductDetailModal({
   product,
   tiers,
   onClose,
+  selectedCategory = null,
 }: ProductDetailModalProps) {
   const { addItem } = useCart();
   const { t } = useLang();
@@ -87,9 +93,14 @@ export default function ProductDetailModal({
   if (!product) return null;
 
   const sortedTiers = [...tiers].sort((a, b) => a.minQty - b.minQty);
-  const categoryName = product.notes
+  const isUniversal = isProductInAllCategories(product);
+  const activeCatClean =
+    selectedCategory && selectedCategory !== "الكل" ? selectedCategory : null;
+  const categoryName = isUniversal
+    ? activeCatClean || ALL_CATEGORIES_LABEL
+    : product.notes
     ? extractCategoryFromNotes(product.notes)
-    : null;
+    : product.categoryName || null;
 
   return (
     <>

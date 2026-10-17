@@ -125,8 +125,15 @@ export function useAdaptiveProducts({
           .order("created_at", { ascending: false })
           .range(from, to);
 
-        if (selectedCategory && selectedCategory.trim()) {
-          query = query.ilike("notes", `%${selectedCategory}%`);
+        if (
+          selectedCategory &&
+          selectedCategory.trim() &&
+          selectedCategory.trim() !== "الكل"
+        ) {
+          const cat = selectedCategory.trim();
+          query = query.or(
+            `notes.ilike.%${cat}%,notes.ilike.%جميع الاقسام%,notes.ilike.%جميع الأقسام%`
+          );
         }
 
         if (searchQuery && searchQuery.trim()) {

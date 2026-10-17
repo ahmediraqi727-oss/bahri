@@ -39,7 +39,12 @@ import {
   DEFAULT_PRICING_CONFIG,
 } from "@/lib/pricing-engine";
 import type { Product } from "@/lib/types";
-import { generateProductAltText, extractCategoryFromNotes } from "@/lib/seo";
+import {
+  generateProductAltText,
+  extractCategoryFromNotes,
+  isUniversalCategory,
+  isProductInAllCategories,
+} from "@/lib/seo";
 // ─── Barcode / QR Scanner ─────────────────────────────────────────────────
 import BarcodeScanner from "@/components/BarcodeScanner";
 import ScannerProductModal from "@/components/ScannerProductModal";
@@ -209,17 +214,17 @@ export default function HomeClient() {
 
   const allAvailableProducts = useMemo(() => products, [products]);
 
-  // Extract all categories dynamically from categories context and product notes
+  // Extract all categories dynamically from categories context and product notes (excluding universal "جميع الاقسام")
   const categoriesList = useMemo(() => {
     const set = new Set<string>();
     categories.forEach((c) => {
-      if (c.name) set.add(c.name.trim());
+      if (c.name && !isUniversalCategory(c.name)) set.add(c.name.trim());
     });
     products.forEach((p) => {
       if (!p.notes) return;
       if (p.notes.includes("الفئة:")) {
         const cat = p.notes.split("الفئة:")[1]?.split("|")[0]?.trim();
-        if (cat) set.add(cat);
+        if (cat && !isUniversalCategory(cat)) set.add(cat);
       }
     });
     return Array.from(set).filter(Boolean);
@@ -241,7 +246,21 @@ export default function HomeClient() {
     let result = streamingProducts.length > 0 ? streamingProducts : allAvailableProducts;
 
     if (selectedCategory) {
-      result = result.filter((p) => p.notes && p.notes.toLowerCase().includes(selectedCategory.toLowerCase()));
+      const seenIds = new Set(result.map((p) => p.id));
+      const extraUniversal = allAvailableProducts.filter(
+        (p) => !seenIds.has(p.id) && isProductInAllCategories(p)
+      );
+      if (extraUniversal.length > 0) {
+        result = [...result, ...extraUniversal];
+      }
+
+      const selLower = selectedCategory.toLowerCase();
+      result = result.filter(
+        (p) =>
+          isProductInAllCategories(p) ||
+          (p.notes && p.notes.toLowerCase().includes(selLower)) ||
+          (p.categoryName && p.categoryName.toLowerCase().includes(selLower))
+      );
     }
 
     if (search) {
@@ -1546,6 +1565,7 @@ export default function HomeClient() {
           product={detailProduct}
           tiers={getEffectiveTiers(detailProduct.id, globalPricingConfig)}
           onClose={() => setDetailProduct(null)}
+          selectedCategory={selectedCategory}
         />
       )}
 

@@ -235,10 +235,48 @@ export function generateProductAltText(
   return `قطع غيار دراجات نارية - ${product.name} - ${categoryPart} | متجر أحمد بحري كركوك`;
 }
 
+export const ALL_CATEGORIES_LABEL = "جميع الاقسام";
+
+export const ALL_CATEGORIES_VARIANTS = [
+  "جميع الاقسام",
+  "جميع الأقسام",
+  "كل الاقسام",
+  "كل الأقسام",
+  "all categories",
+];
+
+/**
+ * التحقق مما إذا كان اسم التصنيف يمثل الخيار الشامل "جميع الاقسام"
+ */
+export function isUniversalCategory(catName?: string | null): boolean {
+  if (!catName) return false;
+  const normalized = catName.trim().toLowerCase();
+  return ALL_CATEGORIES_VARIANTS.some((v) => v.toLowerCase() === normalized);
+}
+
+/**
+ * التحقق مما إذا كان المنتج معيناً للظهور في "جميع الاقسام"
+ */
+export function isProductInAllCategories(product?: {
+  notes?: string | null;
+  categoryName?: string | null;
+  isAllCategories?: boolean;
+} | null): boolean {
+  if (!product) return false;
+  if (product.isAllCategories === true) return true;
+  if (isUniversalCategory(product.categoryName)) return true;
+  if (product.notes) {
+    const match = product.notes.match(/الفئة:\s*([^|,\n]+)/);
+    const extracted = match?.[1]?.trim();
+    if (isUniversalCategory(extracted)) return true;
+  }
+  return false;
+}
+
 /** Extracts category name from product notes field (e.g. "الفئة: إطارات وجنوط | ...") */
 export function extractCategoryFromNotes(notes?: string | null): string {
   if (!notes) return "قطع غيار اصلية";
-  const match = notes.match(/الفئة:\s*([^|]+)/);
+  const match = notes.match(/الفئة:\s*([^|,\n]+)/);
   return match?.[1]?.trim() ?? "قطع غيار اصلية";
 }
 

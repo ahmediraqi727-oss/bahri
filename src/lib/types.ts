@@ -346,6 +346,7 @@ export interface Product {
   sku?: string | null;
   categoryId?: string | null;
   categoryName?: string | null;
+  isAllCategories?: boolean;
   // Barcode & QR Code fields (1-to-1 strict mapping enforced at DB level)
   barcode?: string | null;
   qrCode?: string | null;
@@ -375,6 +376,7 @@ export interface BackupProductItem {
   sku?: string | null;
   categoryId?: string | null;
   categoryName?: string | null;
+  isAllCategories?: boolean;
   supplierId?: string | null;
   notes?: string;
   createdAt?: string;

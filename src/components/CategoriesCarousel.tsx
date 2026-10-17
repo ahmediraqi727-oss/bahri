@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useData } from "@/lib/data-context";
 import { CategoryItem, getCategoryDisplayImage } from "@/lib/types";
+import { isUniversalCategory } from "@/lib/seo";
 
 interface CategoriesCarouselProps {
   selectedCategory: string | null;
@@ -19,8 +20,8 @@ export default function CategoriesCarousel({ selectedCategory, onSelectCategory 
   const [scrollLeftState, setScrollLeftState] = useState(0);
   const [dragged, setDragged] = useState(false);
 
-  // Combine database categories with categories detected from products
-  const allCategories: CategoryItem[] = [...categories];
+  // Combine database categories with categories detected from products (excluding universal "جميع الاقسام")
+  const allCategories: CategoryItem[] = categories.filter((c) => !isUniversalCategory(c.name));
 
   products.forEach((p) => {
     if (!p.notes) return;
@@ -31,7 +32,11 @@ export default function CategoriesCarousel({ selectedCategory, onSelectCategory 
       const parts = p.notes.split(/[\n|,]/);
       if (parts[0] && parts[0].length <= 35) name = parts[0].trim();
     }
-    if (name && !allCategories.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
+    if (
+      name &&
+      !isUniversalCategory(name) &&
+      !allCategories.some((c) => c.name.toLowerCase() === name.toLowerCase())
+    ) {
       allCategories.push({
         id: `auto-${name}`,
         name: name,
@@ -44,7 +49,7 @@ export default function CategoriesCarousel({ selectedCategory, onSelectCategory 
 
   // Sort categories by priority ascending (1 first)
   const sortedCategories = allCategories
-    .filter((c) => c.isActive !== false)
+    .filter((c) => c.isActive !== false && !isUniversalCategory(c.name))
     .sort((a, b) => (a.priority || 0) - (b.priority || 0));
 
   const scroll = (direction: "left" | "right") => {

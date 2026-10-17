@@ -13,6 +13,11 @@ import ImportExportBar from "@/components/ImportExportBar";
 import DataTableWrapper from "@/components/DataTableWrapper";
 import DateFilterPanel from "@/components/DateFilterPanel";
 import { useToast } from "@/components/ToastProvider";
+import {
+  ALL_CATEGORIES_LABEL,
+  isUniversalCategory,
+  isProductInAllCategories,
+} from "@/lib/seo";
 
 export default function ProductsPage() {
   const { products, suppliers, categories, addCategory, deleteProduct, updateProduct, bulkUpdateProducts, bulkDeleteProducts, persistAllCategoriesAndProducts, reloadAllData } = useData();
@@ -174,19 +179,66 @@ export default function ProductsPage() {
     if (!bulkCategory.trim() || selectedIds.length === 0) return;
     setSubmittingBulk(true);
     try {
-      await bulkUpdateProducts(selectedIds, { notes: bulkCategory.trim() });
+      const rawInput = bulkCategory.trim().replace(/^الفئة:\s*/, "").trim();
+      const isAllCats = isUniversalCategory(rawInput);
+      const targetCatName = isAllCats ? ALL_CATEGORIES_LABEL : rawInput;
+
+      // If it's a new specific category (not "جميع الاقسام"), ensure it exists in categories table
+      let resolvedCatId: string | null = null;
+      if (!isAllCats && targetCatName) {
+        const existingCat = categories.find(
+          (c) => c.name.trim().toLowerCase() === targetCatName.toLowerCase()
+        );
+        if (existingCat) {
+          resolvedCatId = existingCat.id;
+        } else {
+          const created = await addCategory({
+            name: targetCatName,
+            image: "",
+            priority: categories.length + 1,
+            isActive: true,
+          });
+          resolvedCatId = created.id;
+        }
+      }
+
+      const selectedSet = new Set(selectedIds);
+      const targetProducts = products.filter((pr) => selectedSet.has(pr.id));
+
+      await Promise.all(
+        targetProducts.map((p) => {
+          const currentNotes = (p.notes || "").trim();
+          const tag = `الفئة: ${targetCatName}`;
+          let updatedNotes = "";
+          if (currentNotes.includes("الفئة:")) {
+            updatedNotes = currentNotes.replace(/الفئة:\s*[^|,\n]+/g, tag);
+          } else if (!currentNotes) {
+            updatedNotes = tag;
+          } else {
+            updatedNotes = `${currentNotes} | ${tag}`;
+          }
+
+          return updateProduct(p.id, {
+            notes: updatedNotes,
+            categoryName: targetCatName,
+            categoryId: isAllCats ? null : resolvedCatId,
+            isAllCategories: isAllCats,
+          });
+        })
+      );
+
       await logActivity({
         user: settings.currentRole,
         action: "update",
         entity: "منتجات",
-        details: `تعديل قسم/فئة ${selectedIds.length} منتج إلى "${bulkCategory.trim()}"`,
+        details: `تعديل قسم/فئة ${selectedIds.length} منتج إلى "${targetCatName}"`,
       });
-      alert(`🎉 تم تعديل الفئة لـ ${selectedIds.length} منتج بنجاح في أجزاء من الثانية!`);
+      toastSuccess(`🎉 تم تعديل الفئة لـ ${selectedIds.length} منتج إلى "${targetCatName}" بنجاح!`);
       setBulkModal(null);
       setBulkCategory("");
       setSelectedIds([]);
     } catch (err) {
-      alert("حدث خطأ أثناء التعديل الجماعي");
+      toastError("خطأ في التعديل", "حدث خطأ أثناء التعديل الجماعي للفئة");
     } finally {
       setSubmittingBulk(false);
     }
@@ -480,10 +532,13 @@ export default function ProductsPage() {
       for (let i = 0; i < updatedProducts.length; i++) {
         const p = updatedProducts[i];
         // Extract existing category tag
+        if (isProductInAllCategories(p)) {
+          continue;
+        }
         const existingMatch = p.notes ? p.notes.match(/الفئة:\s*([^|,\n]+)/) : null;
         const existingCat = existingMatch && existingMatch[1] ? existingMatch[1].trim() : "";
 
-        if (existingCat && currentCategories.some((c) => c.name.toLowerCase() === existingCat.toLowerCase())) {
+        if (existingCat && (isUniversalCategory(existingCat) || currentCategories.some((c) => c.name.toLowerCase() === existingCat.toLowerCase()))) {
           continue;
         }
 
@@ -847,8 +902,19 @@ export default function ProductsPage() {
 
                           <td className="p-2 text-center">
                             {(() => {
+                              const isUniversal = isProductInAllCategories(product);
                               const match = product.notes ? product.notes.match(/الفئة:\s*([^|,\n]+)/) : null;
-                              const catName = match && match[1] ? match[1].trim() : null;
+                              const catName = isUniversal
+                                ? ALL_CATEGORIES_LABEL
+                                : (match && match[1] ? match[1].trim() : product.categoryName || null);
+                              if (isUniversal || isUniversalCategory(catName)) {
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-200 border border-purple-300 dark:border-purple-500/60 font-extrabold text-[11px] whitespace-nowrap shadow-xs">
+                                    <span>🌐</span>
+                                    <span>{ALL_CATEGORIES_LABEL}</span>
+                                  </span>
+                                );
+                              }
                               return catName ? (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-[11px] whitespace-nowrap">
                                   {catName}
@@ -943,8 +1009,11 @@ export default function ProductsPage() {
             <div className="block md:hidden space-y-3.5 p-3">
               {filtered.map((product) => {
                 const isSelected = selectedIds.includes(product.id);
+                const isUniversal = isProductInAllCategories(product);
                 const match = product.notes ? product.notes.match(/الفئة:\s*([^|,\n]+)/) : null;
-                const catName = match && match[1] ? match[1].trim() : null;
+                const catName = isUniversal
+                  ? ALL_CATEGORIES_LABEL
+                  : (match && match[1] ? match[1].trim() : product.categoryName || null);
                 const isAvailable = product.stock > 0;
 
                 return (
@@ -974,9 +1043,16 @@ export default function ProductsPage() {
 
                       <div className="flex items-center gap-1.5 flex-shrink-0">
                         {catName && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-[11px] whitespace-nowrap shrink-0">
-                            {catName}
-                          </span>
+                          isUniversal || isUniversalCategory(catName) ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-200 border border-purple-300 dark:border-purple-500/60 font-extrabold text-[11px] whitespace-nowrap shrink-0">
+                              <span>🌐</span>
+                              <span>{ALL_CATEGORIES_LABEL}</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-[11px] whitespace-nowrap shrink-0">
+                              {catName}
+                            </span>
+                          )
                         )}
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap shrink-0 ${
                           isAvailable
@@ -1116,27 +1192,72 @@ export default function ProductsPage() {
       {/* 1. Bulk Category / Department Modal */}
       {bulkModal === "category" && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" dir="rtl">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 max-w-md w-full border border-gray-200 dark:border-gray-700 shadow-2xl text-right space-y-4">
-            <div className="flex justify-between items-center border-b border-gray-200 dark:border-gray-700 pb-3">
+          <div className="bg-white dark:bg-[#160b2e] rounded-2xl p-6 max-w-md w-full border border-purple-200 dark:border-purple-500/40 shadow-2xl text-right space-y-4">
+            <div className="flex justify-between items-center border-b border-gray-200 dark:border-purple-800/50 pb-3">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">📁 تعديل الفئة / القسم لـ ({selectedIds.length}) منتج</h3>
-              <button onClick={() => setBulkModal(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+              <button onClick={() => setBulkModal(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">اسم الفئة أو القسم الجديد:</label>
-              <input
-                type="text"
-                placeholder="مثال: قطع غيار، بطاريات، زيوت..."
-                value={bulkCategory}
-                onChange={(e) => setBulkCategory(e.target.value)}
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-blue-500"
-              />
+
+            <div className="space-y-3">
+              {/* Standalone One-Click Universal Category Button */}
+              <button
+                type="button"
+                onClick={() => setBulkCategory(ALL_CATEGORIES_LABEL)}
+                className={`w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm font-extrabold transition-all flex items-center justify-between gap-2 cursor-pointer active:scale-[0.99] ${
+                  isUniversalCategory(bulkCategory)
+                    ? "bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 text-white border-purple-400 shadow-lg shadow-purple-600/25 ring-2 ring-purple-400/40"
+                    : "bg-purple-50/90 dark:bg-[#1e113b] hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-900 dark:text-purple-100 border-purple-300 dark:border-purple-500/40"
+                }`}
+              >
+                <div className="flex items-center gap-2 text-right">
+                  <span className="text-base">🌐</span>
+                  <div>
+                    <span className="font-black block sm:inline">{ALL_CATEGORIES_LABEL}</span>
+                    <span className="text-[11px] opacity-85 block sm:inline sm:mr-1.5">
+                      (تعيين المنتجات المحددة للظهور في كل الأقسام)
+                    </span>
+                  </div>
+                </div>
+                <span
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-black whitespace-nowrap ${
+                    isUniversalCategory(bulkCategory)
+                      ? "bg-white/20 text-white border border-white/30"
+                      : "bg-purple-600 text-white"
+                  }`}
+                >
+                  {isUniversalCategory(bulkCategory) ? "✓ محدد" : "تحديد الكل ⚡"}
+                </span>
+              </button>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1.5">
+                  أو اختر قسماً محدداً / اكتب اسم قسم جديد:
+                </label>
+                <input
+                  type="text"
+                  list="bulk-categories-datalist"
+                  placeholder="مثال: قطع غيار، بطاريات، زيوت..."
+                  value={bulkCategory}
+                  onChange={(e) => setBulkCategory(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-purple-500/40 rounded-xl bg-white dark:bg-[#1e113b] text-gray-900 dark:text-white text-sm font-bold outline-none focus:ring-2 focus:ring-purple-500"
+                />
+                <datalist id="bulk-categories-datalist">
+                  <option value={ALL_CATEGORIES_LABEL}>🌐 جميع الاقسام (شامل لكل المتجر)</option>
+                  {categories
+                    .filter((c) => !isUniversalCategory(c.name))
+                    .map((c) => (
+                      <option key={c.id} value={c.name} />
+                    ))}
+                </datalist>
+              </div>
             </div>
+
             <div className="flex gap-3 justify-end pt-2">
               <button onClick={() => setBulkModal(null)} className="px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-xl">إلغاء</button>
               <button
                 onClick={handleBulkCategorySave}
                 disabled={submittingBulk || !bulkCategory.trim()}
-                className="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50"
+                className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 rounded-xl disabled:opacity-50 shadow-md transition-all"
               >
                 {submittingBulk ? "جاري الحفظ..." : "تطبيق التعديل"}
               </button>

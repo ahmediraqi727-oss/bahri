@@ -7,6 +7,11 @@ import { useData } from "@/lib/data-context";
 import BarcodeDisplay from "@/components/BarcodeDisplay";
 import BarcodeScanner from "@/components/BarcodeScanner";
 import { generateEAN13 } from "@/lib/barcode-service";
+import {
+  ALL_CATEGORIES_LABEL,
+  isUniversalCategory,
+  isProductInAllCategories,
+} from "@/lib/seo";
 
 interface ProductModalProps {
   isOpen: boolean;
@@ -31,7 +36,8 @@ function updateNotesWithCategory(notes: string | undefined, categoryName: string
     if (updated.startsWith("|")) updated = updated.slice(1).trim();
     return updated;
   }
-  const tag = `الفئة: ${categoryName}`;
+  const normalizedCat = isUniversalCategory(categoryName) ? ALL_CATEGORIES_LABEL : categoryName.trim();
+  const tag = `الفئة: ${normalizedCat}`;
   if (current.includes("الفئة:")) {
     return current.replace(/الفئة:\s*[^|,\n]+/g, tag);
   }
@@ -95,7 +101,10 @@ export default function ProductModal({
       setNotes(product.notes);
       setBarcode(product.barcode || initialBarcode || "");
       setQrCode(product.qrCode || initialQrCode || "");
-      const cat = extractCategoryFromNotes(product.notes);
+      const isUniversal = isProductInAllCategories(product);
+      const cat = isUniversal
+        ? ALL_CATEGORIES_LABEL
+        : extractCategoryFromNotes(product.notes) || product.categoryName || "";
       setSelectedCategoryName(cat);
       setCategoryQuery(cat);
       setShowNewSupplier(false);
@@ -134,6 +143,7 @@ export default function ProductModal({
     const q = name.trim().toLowerCase();
 
     for (const cat of categories) {
+      if (isUniversalCategory(cat.name)) continue;
       if (q.includes(cat.name.toLowerCase()) || cat.name.toLowerCase().includes(q)) {
         return cat.name;
       }
@@ -153,7 +163,9 @@ export default function ProductModal({
         if (q.includes(pName) || pName.includes(q)) {
           const match = p.notes.match(/الفئة:\s*([^|,\n]+)/);
           if (match && match[1]) {
-            const foundCat = categories.find((c) => c.name.toLowerCase() === match[1].trim().toLowerCase());
+            const candidate = match[1].trim();
+            if (isUniversalCategory(candidate)) continue;
+            const foundCat = categories.find((c) => c.name.toLowerCase() === candidate.toLowerCase());
             if (foundCat) return foundCat.name;
           }
         }
@@ -163,31 +175,40 @@ export default function ProductModal({
     return null;
   }, [name, categories, products]);
 
-  // Filtered categories for combobox
+  // Filtered categories for combobox (excluding any duplicate universal category entry)
   const filteredCategories = useMemo(() => {
-    if (!categoryQuery.trim()) return categories;
+    const baseList = categories.filter((c) => !isUniversalCategory(c.name));
+    if (!categoryQuery.trim() || isUniversalCategory(categoryQuery.trim())) return baseList;
     const q = categoryQuery.trim().toLowerCase();
-    return categories.filter(
+    return baseList.filter(
       (c) => c.name.toLowerCase().includes(q) || (c.keywords && c.keywords.toLowerCase().includes(q))
     );
   }, [categories, categoryQuery]);
 
-  // Check if typed query matches an existing category name exactly
+  // Check if typed query matches an existing category name or Universal Category
   const exactCategoryMatch = useMemo(() => {
     if (!categoryQuery.trim()) return null;
+    if (isUniversalCategory(categoryQuery.trim())) {
+      return { id: "universal-all", name: ALL_CATEGORIES_LABEL, priority: 0, isActive: true, image: "" };
+    }
     return categories.find((c) => c.name.toLowerCase() === categoryQuery.trim().toLowerCase());
   }, [categories, categoryQuery]);
 
   const handleSelectCategory = (catName: string) => {
-    setSelectedCategoryName(catName);
-    setCategoryQuery(catName);
-    setNotes((prev) => updateNotesWithCategory(prev, catName));
+    const finalName = isUniversalCategory(catName) ? ALL_CATEGORIES_LABEL : catName;
+    setSelectedCategoryName(finalName);
+    setCategoryQuery(finalName);
+    setNotes((prev) => updateNotesWithCategory(prev, finalName));
     setIsComboOpen(false);
   };
 
   const handleCreateNewCategory = async (catNameToCreate: string) => {
     const trimmed = catNameToCreate.trim();
     if (!trimmed) return;
+    if (isUniversalCategory(trimmed)) {
+      handleSelectCategory(ALL_CATEGORIES_LABEL);
+      return;
+    }
     try {
       const created = await addCategory({
         name: trimmed,
@@ -236,9 +257,20 @@ export default function ProductModal({
         finalSupplierId = newSup.id;
       }
 
-      // If user typed a new category name in input without clicking create button, create it automatically!
+      // Resolve category name: handle "جميع الاقسام" without creating a fake row in categories table
       let finalCategoryName = selectedCategoryName;
-      if (categoryQuery.trim() && !exactCategoryMatch && categoryQuery.trim() !== selectedCategoryName) {
+      let resolvedCategoryId: string | null = null;
+      const isAllCats =
+        isUniversalCategory(categoryQuery.trim()) || isUniversalCategory(selectedCategoryName);
+
+      if (isAllCats) {
+        finalCategoryName = ALL_CATEGORIES_LABEL;
+        resolvedCategoryId = null;
+      } else if (
+        categoryQuery.trim() &&
+        !exactCategoryMatch &&
+        categoryQuery.trim() !== selectedCategoryName
+      ) {
         const created = await addCategory({
           name: categoryQuery.trim(),
           image: "",
@@ -246,8 +278,10 @@ export default function ProductModal({
           isActive: true,
         });
         finalCategoryName = created.name;
+        resolvedCategoryId = created.id;
       } else if (categoryQuery.trim() && exactCategoryMatch) {
         finalCategoryName = exactCategoryMatch.name;
+        resolvedCategoryId = exactCategoryMatch.id !== "universal-all" ? exactCategoryMatch.id : null;
       }
 
       const finalNotes = updateNotesWithCategory(notes, finalCategoryName);
@@ -262,6 +296,9 @@ export default function ProductModal({
         stock: parseInt(stock) || 0,
         supplierId: finalSupplierId,
         notes: finalNotes,
+        categoryName: finalCategoryName || null,
+        categoryId: resolvedCategoryId,
+        isAllCategories: isUniversalCategory(finalCategoryName),
         barcode: barcode.trim() || null,
         qrCode: qrCode.trim() || null,
       };
@@ -422,15 +459,57 @@ export default function ProductModal({
           </div>
 
           {/* Creatable Autocomplete Category Select Combobox */}
-          <div ref={comboRef} className="relative">
-            <label className="text-sm font-bold text-gray-700 dark:text-gray-300 block mb-1 flex items-center justify-between">
+          <div ref={comboRef} className="relative space-y-2">
+            <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex flex-wrap items-center justify-between gap-2">
               <span>📁 القسم / التصنيف (اختر أو اكتب اسم قسم جديد)</span>
               {selectedCategoryName && (
-                <span className="text-xs text-blue-600 dark:text-blue-400 font-extrabold">
-                  المحدد حالياً: {selectedCategoryName}
+                <span
+                  className={`text-xs font-extrabold px-2.5 py-0.5 rounded-lg border ${
+                    isUniversalCategory(selectedCategoryName)
+                      ? "bg-purple-600/20 text-purple-700 dark:text-purple-200 border-purple-400/50"
+                      : "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800"
+                  }`}
+                >
+                  المحدد حالياً: {isUniversalCategory(selectedCategoryName) ? `🌐 ${ALL_CATEGORIES_LABEL}` : selectedCategoryName}
                 </span>
               )}
             </label>
+
+            {/* Standalone One-Click "جميع الاقسام" Button above input */}
+            <button
+              type="button"
+              onClick={() => handleSelectCategory(ALL_CATEGORIES_LABEL)}
+              className={`w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm font-extrabold transition-all duration-200 flex items-center justify-between gap-2 active:scale-[0.99] cursor-pointer ${
+                isUniversalCategory(selectedCategoryName)
+                  ? "bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 text-white border-purple-400 shadow-lg shadow-purple-600/25 ring-2 ring-purple-400/40"
+                  : "bg-purple-50/90 dark:bg-[#1e113b] hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-900 dark:text-purple-100 border-purple-300 dark:border-purple-500/40 shadow-sm"
+              }`}
+            >
+              <div className="flex items-center gap-2 text-right">
+                <span className="text-base sm:text-lg leading-none">🌐</span>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:gap-1.5">
+                  <span className="font-black tracking-wide">{ALL_CATEGORIES_LABEL}</span>
+                  <span
+                    className={`text-[10px] sm:text-xs font-semibold ${
+                      isUniversalCategory(selectedCategoryName)
+                        ? "text-purple-100"
+                        : "text-purple-600 dark:text-purple-300/80"
+                    }`}
+                  >
+                    (إظهار هذا المنتج تلقائياً في كافة أقسام المتجر)
+                  </span>
+                </div>
+              </div>
+              <span
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-black whitespace-nowrap transition-colors ${
+                  isUniversalCategory(selectedCategoryName)
+                    ? "bg-white/20 text-white border border-white/30"
+                    : "bg-purple-600 text-white hover:bg-purple-500 shadow-xs"
+                }`}
+              >
+                {isUniversalCategory(selectedCategoryName) ? "✓ مفعل للكل" : "تحديد بنقرة ⚡"}
+              </span>
+            </button>
 
             <div className="relative">
               <input
@@ -441,8 +520,12 @@ export default function ProductModal({
                   setIsComboOpen(true);
                 }}
                 onFocus={() => setIsComboOpen(true)}
-                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-bold text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                placeholder="ابحث عن قسم أو اكتب اسم قسم جديد..."
+                className={`w-full px-4 py-2.5 border rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-bold text-sm focus:ring-2 outline-none transition-all ${
+                  isUniversalCategory(selectedCategoryName)
+                    ? "border-purple-500 dark:border-purple-500/70 focus:ring-purple-500"
+                    : "border-gray-300 dark:border-gray-600 focus:ring-blue-500"
+                }`}
+                placeholder="ابحث عن قسم معين، أو اكتب اسم قسم جديد..."
               />
 
               {categoryQuery && (
@@ -453,7 +536,7 @@ export default function ProductModal({
                     setSelectedCategoryName("");
                     setNotes((prev) => updateNotesWithCategory(prev, ""));
                   }}
-                  className="absolute left-3 top-2.5 text-gray-400 hover:text-gray-600 text-xs font-bold"
+                  className="absolute left-3 top-2.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs font-bold"
                 >
                   ✕ مسح
                 </button>
@@ -462,31 +545,68 @@ export default function ProductModal({
 
             {/* Interactive Dropdown Menu */}
             {isComboOpen && (
-              <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl z-50 max-h-56 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700 animate-fadeIn">
+              <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-[#180e35] border border-purple-200 dark:border-purple-500/40 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto divide-y divide-gray-100 dark:divide-purple-800/40 animate-fadeIn">
+                {/* Pinned Universal Option inside Dropdown */}
+                <div
+                  onClick={() => handleSelectCategory(ALL_CATEGORIES_LABEL)}
+                  className={`p-3 text-xs font-extrabold cursor-pointer transition-all flex items-center justify-between ${
+                    isUniversalCategory(selectedCategoryName)
+                      ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
+                      : "bg-purple-50/70 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/70 text-purple-900 dark:text-purple-200"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">🌐</span>
+                    <span>{ALL_CATEGORIES_LABEL}</span>
+                    <span
+                      className={`text-[10px] font-semibold ${
+                        isUniversalCategory(selectedCategoryName)
+                          ? "text-purple-100"
+                          : "text-purple-600 dark:text-purple-300/80"
+                      }`}
+                    >
+                      — شامل لجميع أقسام المتجر
+                    </span>
+                  </div>
+                  {isUniversalCategory(selectedCategoryName) ? (
+                    <span className="font-black text-white bg-white/20 px-2 py-0.5 rounded-md">✓ محدد</span>
+                  ) : (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-200/70 dark:bg-purple-800/60 text-purple-800 dark:text-purple-200">
+                      شامل
+                    </span>
+                  )}
+                </div>
+
                 {filteredCategories.length > 0 ? (
                   filteredCategories.map((c) => (
                     <div
                       key={c.id}
                       onClick={() => handleSelectCategory(c.name)}
-                      className={`p-3 text-xs font-bold cursor-pointer transition-colors flex items-center justify-between hover:bg-blue-50 dark:hover:bg-blue-900/30 ${
-                        selectedCategoryName === c.name ? "bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400" : "text-gray-800 dark:text-gray-200"
+                      className={`p-3 text-xs font-bold cursor-pointer transition-colors flex items-center justify-between hover:bg-purple-50 dark:hover:bg-purple-900/30 ${
+                        selectedCategoryName === c.name
+                          ? "bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400"
+                          : "text-gray-800 dark:text-gray-200"
                       }`}
                     >
                       <div className="flex items-center gap-2">
                         <span>📁</span>
                         <span>{c.name}</span>
                       </div>
-                      {selectedCategoryName === c.name && <span className="text-blue-600 dark:text-blue-400 font-bold">✓ محدد</span>}
+                      {selectedCategoryName === c.name && (
+                        <span className="text-blue-600 dark:text-blue-400 font-bold">✓ محدد</span>
+                      )}
                     </div>
                   ))
                 ) : (
-                  <div className="p-3 text-xs text-gray-400 text-center">
-                    لا يوجد قسم مطابق لـ "{categoryQuery}"
-                  </div>
+                  !isUniversalCategory(categoryQuery.trim()) && (
+                    <div className="p-3 text-xs text-gray-400 text-center">
+                      لا يوجد قسم فرعي مطابق لـ "{categoryQuery}"
+                    </div>
+                  )
                 )}
 
                 {/* Creatable Option if query does not match an existing category */}
-                {categoryQuery.trim() && !exactCategoryMatch && (
+                {categoryQuery.trim() && !exactCategoryMatch && !isUniversalCategory(categoryQuery.trim()) && (
                   <div
                     onClick={() => handleCreateNewCategory(categoryQuery)}
                     className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/40 dark:to-indigo-900/40 hover:from-blue-100 hover:to-indigo-100 text-blue-700 dark:text-blue-300 font-bold text-xs cursor-pointer flex items-center gap-2 transition-colors border-t border-blue-200 dark:border-blue-800"

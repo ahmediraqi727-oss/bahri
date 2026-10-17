@@ -11,6 +11,7 @@ import {
   overrideFromRow,
   getEffectiveTiers as engineGetEffectiveTiers,
 } from "./pricing-engine";
+import { ALL_CATEGORIES_LABEL, isUniversalCategory } from "./seo";
 
 export function extractCategoryFromNotes(notes: string): string {
   if (!notes) return "عام";
@@ -19,12 +20,12 @@ export function extractCategoryFromNotes(notes: string): string {
     const after = str.split("الفئة:")[1];
     if (after) {
       const cat = after.split("|")[0]?.split("\n")[0]?.trim();
-      if (cat) return cat;
+      if (cat) return isUniversalCategory(cat) ? ALL_CATEGORIES_LABEL : cat;
     }
   }
   const firstPart = str.split("|")[0]?.split("\n")[0]?.trim();
   if (firstPart && firstPart.length <= 40 && !firstPart.includes(":")) {
-    return firstPart;
+    return isUniversalCategory(firstPart) ? ALL_CATEGORIES_LABEL : firstPart;
   }
   return "عام";
 }
@@ -126,8 +127,18 @@ export function rowToProduct(row: Record<string, unknown>): Product {
   const qrVal = (row.qr_code as string | null) ?? (row.qrCodeData as string | null) ?? (row.qr_code_data as string | null) ?? (row.qrCode as string | null) ?? null;
   const barcodeVal = (row.barcode as string | null) ?? null;
   const skuVal = (row.sku as string | null) ?? (row.id as string | null) ?? null;
-  const catId = (row.category_id as string | null) ?? (row.categoryId as string | null) ?? null;
-  const catName = (row.category_name as string | null) ?? (row.categoryName as string | null) ?? null;
+  const rawNotes = (row.notes as string) || "";
+  const rawCatName = (row.category_name as string | null) ?? (row.categoryName as string | null) ?? null;
+  const notesCat = extractCategoryFromNotes(rawNotes);
+  const isAllCats =
+    Boolean(row.is_all_categories ?? row.isAllCategories) ||
+    isUniversalCategory(rawCatName) ||
+    isUniversalCategory(notesCat);
+
+  const catId = isAllCats
+    ? null
+    : ((row.category_id as string | null) ?? (row.categoryId as string | null) ?? null);
+  const catName = isAllCats ? ALL_CATEGORIES_LABEL : rawCatName;
 
   return {
     id: row.id as string,
@@ -140,7 +151,7 @@ export function rowToProduct(row: Record<string, unknown>): Product {
     retailPrice: retailP,
     stock: stockVal,
     supplierId: (row.supplier_id as string) || "",
-    notes: (row.notes as string) || "",
+    notes: rawNotes,
     createdAt: (row.created_at as string) || new Date().toISOString(),
     updatedAt: (row.updated_at as string) || new Date().toISOString(),
     // Comprehensive dual-naming & alias fields
@@ -150,6 +161,7 @@ export function rowToProduct(row: Record<string, unknown>): Product {
     sku: skuVal,
     categoryId: catId,
     categoryName: catName,
+    isAllCategories: isAllCats,
     // Barcode & QR Code fields
     barcode: barcodeVal,
     qrCode: qrVal,
@@ -196,9 +208,20 @@ export function productToRow(product: Record<string, unknown>): Record<string, u
     row.supplier_id = isUUID(sid) ? sid : null;
   }
 
-  if (("categoryId" in product && product.categoryId) || ("category_id" in product && product.category_id)) {
+  const notesStr = "notes" in product ? String(product.notes || "") : "";
+  const isAllCats =
+    Boolean(product.isAllCategories ?? product.is_all_categories) ||
+    isUniversalCategory(product.categoryName as string | null) ||
+    isUniversalCategory(product.category_name as string | null) ||
+    isUniversalCategory(extractCategoryFromNotes(notesStr));
+
+  if (isAllCats) {
+    row.category_id = null;
+  } else if (("categoryId" in product && product.categoryId) || ("category_id" in product && product.category_id)) {
     const cid = String(product.categoryId ?? product.category_id ?? "").trim();
     if (isUUID(cid)) row.category_id = cid;
+  } else if ("categoryId" in product && product.categoryId === null) {
+    row.category_id = null;
   }
 
   if ("notes" in product) row.notes = product.notes || "";
@@ -313,7 +336,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       for (const p of prodsData) {
         const notes = (p.notes as string) || "";
         const catName = extractCategoryFromNotes(notes);
-        if (catName && catName !== "عام" && catName !== "غير محدد") {
+        if (
+          catName &&
+          catName !== "عام" &&
+          catName !== "غير محدد" &&
+          !isUniversalCategory(catName)
+        ) {
           const existingImg = existingImageMap.get(catName.trim().toLowerCase());
           if (!categoryMap.has(catName)) {
             categoryMap.set(catName, { 
@@ -740,7 +768,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const match = (item.notes || "").match(/الفئة:\s*([^|]+)/);
         if (match && match[1]) {
           const catName = match[1].trim();
-          if (catName && !["عام", "غير محدد", "غير مصنف"].includes(catName)) {
+          if (catName && !["عام", "غير محدد", "غير مصنف"].includes(catName) && !isUniversalCategory(catName)) {
             categoryNames.add(catName);
           }
         }
@@ -972,7 +1000,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       if (data.categories && data.categories.length > 0) {
         data.categories.forEach((c) => {
-          if (c.name && c.name.trim()) {
+          if (c.name && c.name.trim() && !isUniversalCategory(c.name)) {
             catMapToUpsert.set(c.name.trim().toLowerCase(), {
               name: c.name.trim(),
               priority: c.priority || 1,
@@ -987,7 +1015,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           const rawCatName = p.categoryName || p.category_name;
           const notesCatName = extractCategoryFromNotes(p.notes || "");
           const candidateCat = (rawCatName || (notesCatName !== "عام" ? notesCatName : null)) as string | null;
-          if (candidateCat && candidateCat.trim()) {
+          if (candidateCat && candidateCat.trim() && !isUniversalCategory(candidateCat)) {
             const key = candidateCat.trim().toLowerCase();
             if (!catMapToUpsert.has(key)) {
               catMapToUpsert.set(key, {

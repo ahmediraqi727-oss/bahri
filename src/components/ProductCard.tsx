@@ -6,7 +6,12 @@ import { useAuth } from "@/lib/auth-context";
 import { useSettings } from "@/lib/settings-context";
 import { useData } from "@/lib/data-context";
 import { useLang } from "@/lib/lang-context";
-import { generateProductAltText, extractCategoryFromNotes } from "@/lib/seo";
+import {
+  generateProductAltText,
+  extractCategoryFromNotes,
+  ALL_CATEGORIES_LABEL,
+  isProductInAllCategories,
+} from "@/lib/seo";
 import {
   buildTierBadgeText,
   resolveTierForQty,
@@ -156,11 +161,23 @@ export default function ProductCard({
           >
             {product.name}
           </h3>
-          {product.notes && (
-            <p className="text-xs text-gray-400 mt-1 line-clamp-1">
-              {extractCategoryFromNotes(product.notes)}
-            </p>
-          )}
+          {(() => {
+            const isUniversal = isProductInAllCategories(product);
+            const activeCatClean =
+              selectedCategory && selectedCategory !== "الكل" ? selectedCategory : null;
+            const displayCat = isUniversal
+              ? activeCatClean || ALL_CATEGORIES_LABEL
+              : product.notes
+              ? extractCategoryFromNotes(product.notes)
+              : product.categoryName || null;
+
+            if (!displayCat) return null;
+            return (
+              <p className="text-xs text-purple-600 dark:text-purple-300/80 font-semibold mt-1 line-clamp-1">
+                {displayCat}
+              </p>
+            );
+          })()}
         </div>
 
         {/* Dual Price Display */}
