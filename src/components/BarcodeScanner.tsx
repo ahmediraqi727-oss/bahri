@@ -87,6 +87,13 @@ export default function BarcodeScanner({
   const [cameraSettings, setCameraSettings] = useState<CameraSettingsState>(loadSavedCameraSettings);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  // Mobile-Optimized Collapsible Options Drawer State
+  const [optionsDrawerOpen, setOptionsDrawerOpen] = useState(false);
+
+  // Categorized Camera Error Type for Mobile-Specific Guidance
+  type CameraErrorType = "none" | "permission_denied" | "insecure_context" | "not_supported" | "in_use" | "not_found" | "generic";
+  const [cameraErrorType, setCameraErrorType] = useState<CameraErrorType>("none");
+
   // Hardware Zoom Support
   const [supportsZoom, setSupportsZoom] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
@@ -100,15 +107,22 @@ export default function BarcodeScanner({
 
   const lastScanTimeRef = useRef<number>(0);
 
-  // Stop current camera tracks
+  // Stop current camera tracks cleanly with video release
   const stopCamera = useCallback(() => {
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current.getTracks().forEach((t) => {
+        try {
+          t.stop();
+        } catch { /* silent */ }
+      });
       streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     setIsScanning(false);
     setTorchOn(false);
@@ -128,144 +142,19 @@ export default function BarcodeScanner({
     }
   }, []);
 
-  // Start Camera with explicit facingMode, deviceId, and cameraSettings
-  const startCamera = useCallback(
-    async (
-      targetFacing = facingMode,
-      targetDeviceId = selectedCameraId,
-      targetSettings = cameraSettings
-    ) => {
-      stopCamera();
-      setCameraError("");
+  // ─── Scanned Code Handler ──────────────────────────────────────────────────
+  const handleScannedCode = useCallback((code: string) => {
+    const cleaned = code.trim();
+    if (!cleaned || cleaned === lastScanned) return;
+    setLastScanned(cleaned);
 
-      try {
-        const resConfig = CAMERA_RESOLUTIONS[targetSettings.resolution] || CAMERA_RESOLUTIONS["720p"];
-        const targetFps = targetSettings.fps || 30;
+    // Trigger dedicated sensory feedback (crystal chime + haptic vibration)
+    triggerSuccessSensoryFeedback(sensoryFeedbackEnabled);
 
-        let constraints: MediaStreamConstraints;
-
-        if (targetDeviceId) {
-          constraints = {
-            video: {
-              deviceId: { exact: targetDeviceId },
-              width: { ideal: resConfig.width },
-              height: { ideal: resConfig.height },
-              frameRate: { ideal: targetFps, max: targetFps },
-            },
-            audio: false,
-          };
-        } else {
-          constraints = {
-            video: {
-              facingMode: targetFacing === "user" ? "user" : { ideal: "environment" },
-              width: { ideal: resConfig.width },
-              height: { ideal: resConfig.height },
-              frameRate: { ideal: targetFps, max: targetFps },
-            },
-            audio: false,
-          };
-        }
-
-        let stream: MediaStream;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia(constraints);
-        } catch (firstErr) {
-          // Fallback for laptops/desktops without specific constraints
-          try {
-            stream = await navigator.mediaDevices.getUserMedia({
-              video: {
-                width: { ideal: resConfig.width },
-                height: { ideal: resConfig.height },
-              },
-              audio: false,
-            });
-          } catch {
-            stream = await navigator.mediaDevices.getUserMedia({
-              video: true,
-              audio: false,
-            });
-          }
-        }
-
-        streamRef.current = stream;
-
-      // Check zoom capabilities on the active video track
-      const videoTrack = stream.getVideoTracks()[0];
-      if (videoTrack) {
-        try {
-          const caps = (videoTrack.getCapabilities?.() || {}) as {
-            zoom?: { min: number; max: number; step: number };
-            torch?: boolean;
-          };
-          if (caps.zoom) {
-            setSupportsZoom(true);
-            setZoomRange({
-              min: caps.zoom.min || 1,
-              max: caps.zoom.max || 3,
-              step: caps.zoom.step || 0.1,
-            });
-            const settings = videoTrack.getSettings?.() as { zoom?: number };
-            if (settings?.zoom) setZoomLevel(settings.zoom);
-          }
-        } catch {
-          // Capabilities check not supported
-        }
-      }
-
-      if (videoRef.current) {
-        const video = videoRef.current;
-        video.setAttribute("playsinline", "true");
-        video.setAttribute("webkit-playsinline", "true");
-        video.muted = true;
-        video.srcObject = stream;
-        await video.play();
-      }
-
-      setIsScanning(true);
-      updateAvailableCameras();
-      scanLoop();
-    } catch (err) {
-      console.error("Camera access error:", err);
-      setCameraError("تعذّر الوصول إلى الكاميرا. تحقق من منح الإذن للمتصفح أو استخدم الإدخال اليدوي.");
-    }
-  }, [facingMode, selectedCameraId, stopCamera, updateAvailableCameras]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Toggle front/back camera
-  const toggleCameraFacing = useCallback(() => {
-    const nextFacing = facingMode === "environment" ? "user" : "environment";
-    setFacingMode(nextFacing);
-    setSelectedCameraId(""); // clear explicit device ID so facingMode applies
-    startCamera(nextFacing, "", cameraSettings);
-  }, [facingMode, cameraSettings, startCamera]);
-
-  // Select specific camera from device list
-  const handleSelectCamera = useCallback((deviceId: string) => {
-    setSelectedCameraId(deviceId);
-    startCamera(facingMode, deviceId, cameraSettings);
-  }, [facingMode, cameraSettings, startCamera]);
-
-  // Save and apply camera resolution and frame rate settings
-  const handleSaveCameraSettings = useCallback(
-    (newSettings: CameraSettingsState) => {
-      setCameraSettings(newSettings);
-      saveCameraSettings(newSettings);
-      startCamera(facingMode, selectedCameraId, newSettings);
-    },
-    [facingMode, selectedCameraId, startCamera]
-  );
-
-  // Adjust camera hardware zoom
-  const handleSetZoom = useCallback(async (newZoom: number) => {
-    setZoomLevel(newZoom);
-    const track = streamRef.current?.getVideoTracks()[0];
-    if (!track) return;
-    try {
-      // @ts-expect-error — Camera Zoom Constraints API
-      await track.applyConstraints({ advanced: [{ zoom: newZoom }] });
-    } catch {
-      // Zoom not supported
-    }
-  }, []);
+    stopCamera();
+    onScan(cleaned);
+    onClose();
+  }, [lastScanned, sensoryFeedbackEnabled, stopCamera, onScan, onClose]);
 
   // ─── High-Speed Computer Vision Scan Loop with Thermal QR Optimization ───
   const scanLoop = useCallback(() => {
@@ -331,10 +220,221 @@ export default function BarcodeScanner({
     };
 
     tryDetect();
-  }, [thermalMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cameraSettings.fps, handleScannedCode, thermalMode]);
+
+  // Start Camera with explicit facingMode, deviceId, progressive mobile fallback, and permissions check
+  const startCamera = useCallback(
+    async (
+      targetFacing = facingMode,
+      targetDeviceId = selectedCameraId,
+      targetSettings = cameraSettings
+    ) => {
+      stopCamera();
+      setCameraError("");
+      setCameraErrorType("none");
+
+      // 1. Secure context verification (Mobile Chrome/Safari block camera on plain HTTP)
+      if (typeof window !== "undefined" && window.isSecureContext === false) {
+        setCameraErrorType("insecure_context");
+        setCameraError("يتطلب تشغيل الكاميرا اتصالاً مشفراً وآمناً (HTTPS). يرجى فتح الموقع عبر HTTPS.");
+        return;
+      }
+
+      // 2. MediaDevices API existence check
+      if (typeof navigator === "undefined" || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setCameraErrorType("not_supported");
+        setCameraError("متصفحك الحالي لا يدعم واجهة الوصول المباشر للكاميرا (MediaDevices API). يرجى استخدام متصفح حديث مثل Chrome أو Safari.");
+        return;
+      }
+
+      // Small pause to allow mobile camera hardware drivers to cleanly release previous locks
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      try {
+        const resConfig = CAMERA_RESOLUTIONS[targetSettings.resolution] || CAMERA_RESOLUTIONS["720p"];
+        const targetFps = targetSettings.fps || 30;
+
+        let stream: MediaStream | null = null;
+
+        // Stage 1: Attempt with target device/facing and requested resolution
+        try {
+          let stage1Constraints: MediaStreamConstraints;
+          if (targetDeviceId) {
+            stage1Constraints = {
+              video: {
+                deviceId: { exact: targetDeviceId },
+                width: { ideal: resConfig.width },
+                height: { ideal: resConfig.height },
+                frameRate: { ideal: targetFps, max: targetFps },
+              },
+              audio: false,
+            };
+          } else {
+            stage1Constraints = {
+              video: {
+                facingMode: { ideal: targetFacing },
+                width: { ideal: resConfig.width },
+                height: { ideal: resConfig.height },
+                frameRate: { ideal: targetFps, max: targetFps },
+              },
+              audio: false,
+            };
+          }
+          stream = await navigator.mediaDevices.getUserMedia(stage1Constraints);
+        } catch (stage1Err) {
+          console.warn("Stage 1 constraints failed on mobile, attempting relaxed Stage 2:", stage1Err);
+
+          // Stage 2: Relax constraints to basic facingMode without resolution restrictions (mobile auto-negotiates best native res)
+          try {
+            const stage2Constraints: MediaStreamConstraints = {
+              video: {
+                facingMode: targetFacing === "user" ? "user" : "environment",
+              },
+              audio: false,
+            };
+            stream = await navigator.mediaDevices.getUserMedia(stage2Constraints);
+          } catch (stage2Err) {
+            console.warn("Stage 2 relaxed failed, attempting Stage 3 bare video:", stage2Err);
+
+            // Stage 3: Bare video constraint
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false,
+            });
+          }
+        }
+
+        if (!stream) {
+          throw new Error("تعذّر بدء بث الفيديو من الكاميرا.");
+        }
+
+        streamRef.current = stream;
+
+        // Check zoom capabilities on the active video track
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack) {
+          try {
+            const caps = (videoTrack.getCapabilities?.() || {}) as {
+              zoom?: { min: number; max: number; step: number };
+              torch?: boolean;
+            };
+            if (caps.zoom) {
+              setSupportsZoom(true);
+              setZoomRange({
+                min: caps.zoom.min || 1,
+                max: caps.zoom.max || 3,
+                step: caps.zoom.step || 0.1,
+              });
+              const settings = videoTrack.getSettings?.() as { zoom?: number };
+              if (settings?.zoom) setZoomLevel(settings.zoom);
+            }
+          } catch {
+            // Capabilities check not supported
+          }
+        }
+
+        // Attach to video element and synchronize metadata ready event
+        if (videoRef.current) {
+          const video = videoRef.current;
+          video.setAttribute("playsinline", "true");
+          video.setAttribute("webkit-playsinline", "true");
+          video.muted = true;
+          video.srcObject = stream;
+
+          // Wait for metadata loaded event before calling play to avoid unhandled play rejections on mobile
+          await new Promise<void>((resolve) => {
+            if (video.readyState >= 1) {
+              resolve();
+            } else {
+              const onLoaded = () => {
+                video.removeEventListener("loadedmetadata", onLoaded);
+                resolve();
+              };
+              video.addEventListener("loadedmetadata", onLoaded);
+              setTimeout(() => {
+                video.removeEventListener("loadedmetadata", onLoaded);
+                resolve();
+              }, 600);
+            }
+          });
+
+          try {
+            await video.play();
+          } catch (playErr) {
+            console.warn("video.play() was prevented by browser:", playErr);
+          }
+        }
+
+        setIsScanning(true);
+        updateAvailableCameras();
+        scanLoop();
+      } catch (err: unknown) {
+        console.error("Camera access error:", err);
+        const errorObj = err as { name?: string; message?: string };
+        const errName = errorObj?.name || "";
+
+        if (errName === "NotAllowedError" || errName === "PermissionDeniedError") {
+          setCameraErrorType("permission_denied");
+          setCameraError("تم رفض إذن الوصول للكاميرا من قبل المتصفح. اتبع الخطوات أدناه لمنح الإذن.");
+        } else if (errName === "NotFoundError" || errName === "DevicesNotFoundError") {
+          setCameraErrorType("not_found");
+          setCameraError("لم يتم العثور على كاميرا متصلة بجهازك.");
+        } else if (errName === "NotReadableError" || errName === "TrackStartError") {
+          setCameraErrorType("in_use");
+          setCameraError("الكاميرا قيد الاستخدام حالياً بواسطة تطبيق آخر أو علامة تبويب أخرى.");
+        } else if (errName === "OverconstrainedError") {
+          setCameraErrorType("generic");
+          setCameraError("إعدادات الدقة المطلوبة غير مدعومة من عدسة الكاميرا الحالية.");
+        } else if (errName === "SecurityError") {
+          setCameraErrorType("insecure_context");
+          setCameraError("يتطلب تشغيل الكاميرا اتصالاً مشفراً (HTTPS).");
+        } else {
+          setCameraErrorType("generic");
+          setCameraError(errorObj?.message || "تعذّر الوصول إلى الكاميرا. تحقق من منح الإذن للمتصفح أو استخدم الإدخال اليدوي.");
+        }
+      }
+    },
+    [facingMode, selectedCameraId, cameraSettings, stopCamera, updateAvailableCameras, scanLoop]
+  );
+
+  // Toggle front/back camera
+  const toggleCameraFacing = useCallback(() => {
+    const nextFacing = facingMode === "environment" ? "user" : "environment";
+    setFacingMode(nextFacing);
+    setSelectedCameraId(""); // clear explicit device ID so facingMode applies
+    startCamera(nextFacing, "", cameraSettings);
+  }, [facingMode, cameraSettings, startCamera]);
+
+  // Select specific camera from device list
+  const handleSelectCamera = useCallback((deviceId: string) => {
+    setSelectedCameraId(deviceId);
+    startCamera(facingMode, deviceId, cameraSettings);
+  }, [facingMode, cameraSettings, startCamera]);
+
+  // Save and apply camera resolution and frame rate settings
+  const handleSaveCameraSettings = useCallback(
+    (newSettings: CameraSettingsState) => {
+      setCameraSettings(newSettings);
+      saveCameraSettings(newSettings);
+      startCamera(facingMode, selectedCameraId, newSettings);
+    },
+    [facingMode, selectedCameraId, startCamera]
+  );
+
+  // Adjust camera hardware zoom
+  const handleSetZoom = useCallback(async (newZoom: number) => {
+    setZoomLevel(newZoom);
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      // @ts-expect-error — Camera Zoom Constraints API
+      await track.applyConstraints({ advanced: [{ zoom: newZoom }] });
+    } catch {
+      // Zoom not supported
+    }
+  }, []);
 
   // ─── Decode barcode from uploaded image ───────────────────────────────────
-
   const decodeImageFile = useCallback(async (file: File) => {
     setImageDecoding(true);
     setImageError("");
@@ -351,20 +451,7 @@ export default function BarcodeScanner({
       setImageError("حدث خطأ أثناء معالجة الصورة.");
     }
     setImageDecoding(false);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleScannedCode = useCallback((code: string) => {
-    const cleaned = code.trim();
-    if (!cleaned || cleaned === lastScanned) return;
-    setLastScanned(cleaned);
-
-    // Trigger dedicated sensory feedback (crystal chime + haptic vibration)
-    triggerSuccessSensoryFeedback(sensoryFeedbackEnabled);
-
-    stopCamera();
-    onScan(cleaned);
-    onClose();
-  }, [lastScanned, sensoryFeedbackEnabled, stopCamera, onScan, onClose]);
+  }, [handleScannedCode]);
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -390,28 +477,29 @@ export default function BarcodeScanner({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" dir="rtl">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-2 sm:p-4 overflow-y-auto" dir="rtl">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity"
         onClick={onClose}
       />
 
       {/* Modal */}
-      <div className="relative bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-200 dark:border-gray-800 animate-fadeIn">
+      <div className="relative bg-white dark:bg-gray-900 rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-200 dark:border-gray-800 animate-fadeIn my-auto">
 
         {/* Header */}
-        <div className="bg-gradient-to-l from-blue-600 to-indigo-700 px-5 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">📷</span>
+        <div className="bg-gradient-to-l from-blue-600 via-indigo-600 to-purple-700 px-4 py-3 sm:px-5 sm:py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center text-xl shrink-0">📷</span>
             <div>
-              <h2 className="text-white font-extrabold text-base">ماسح الباركود والـ QR</h2>
-              <p className="text-blue-200 text-xs">امسح أو ابحث بأي طريقة</p>
+              <h2 className="text-white font-extrabold text-sm sm:text-base leading-tight">ماسح الباركود والـ QR</h2>
+              <p className="text-blue-100 text-[11px]">امسح بالكاميرا أو ابحث بأي طريقة</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors shrink-0"
+            title="إغلاق"
           >
             ✕
           </button>
@@ -424,120 +512,255 @@ export default function BarcodeScanner({
               <button
                 key={tab}
                 onClick={() => { stopCamera(); setActiveTab(tab); }}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-bold transition-all ${
+                className={`flex-1 min-h-[44px] flex items-center justify-center gap-1.5 py-2.5 sm:py-3 px-2 text-xs font-bold transition-all whitespace-nowrap ${
                   activeTab === tab
                     ? "border-b-2 border-blue-600 text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-900"
                     : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                 }`}
               >
-                <span>{tabLabels[tab].icon}</span>
-                <span>{tabLabels[tab].label}</span>
+                <span className="shrink-0">{tabLabels[tab].icon}</span>
+                <span className="whitespace-nowrap">{tabLabels[tab].label}</span>
               </button>
             ))}
           </div>
         )}
 
-        <div className="p-5">
+        <div className="p-3 sm:p-5">
 
           {/* ── Camera Tab ── */}
           {activeTab === "camera" && (
-            <div className="barcode-scanner-container flex flex-col items-center gap-3 w-full">
-              {/* Camera Switcher & Thermal Mode Bar */}
-              <div className="w-full flex flex-wrap items-center justify-between gap-2 bg-gray-50 dark:bg-gray-800/60 p-2 rounded-2xl border border-gray-200 dark:border-gray-700/60 text-xs">
-                {/* Front / Back Camera Switch Button */}
-                <button
-                  type="button"
-                  onClick={toggleCameraFacing}
-                  className={`flex-1 min-w-[150px] flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl font-extrabold text-xs transition-all shadow-sm border ${
-                    facingMode === "environment"
-                      ? "bg-blue-600 hover:bg-blue-700 text-white border-blue-500 shadow-blue-500/20"
-                      : "bg-purple-600 hover:bg-purple-700 text-white border-purple-500 shadow-purple-500/20"
-                  }`}
-                  title="تبديل الكاميرا بين الخلفية والأمامية"
-                >
-                  <span className="text-base">🔄</span>
-                  <span>{facingMode === "environment" ? "الكاميرا الخلفية 📷" : "الكاميرا الأمامية 🤳"}</span>
-                </button>
-
-                {/* Sensory Feedback Toggle Button (Sound & Vibration) */}
-                <button
-                  type="button"
-                  onClick={toggleSensoryFeedback}
-                  className={`flex-1 min-w-[150px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs transition-all shadow-sm border ${
-                    sensoryFeedbackEnabled
-                      ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 shadow-emerald-500/20"
-                      : "bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700"
-                  }`}
-                  title={sensoryFeedbackEnabled ? "الملاحظات الحسية (صوت واهتزاز) مفعّلة - انقر للإيقاف" : "الملاحظات الحسية معطلة - انقر للتفعيل"}
-                >
-                  <span className="text-base">{sensoryFeedbackEnabled ? "🔊" : "🔇"}</span>
-                  <span>{sensoryFeedbackEnabled ? "صوت واهتزاز: مفعّل 📳" : "صامت: معطّل"}</span>
-                </button>
-
-                {/* Thermal Label QR Optimization Toggle */}
-                <button
-                  type="button"
-                  onClick={() => setThermalMode(!thermalMode)}
-                  className={`flex-1 min-w-[140px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-bold transition-all shadow-2xs border ${
-                    thermalMode
-                      ? "bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25"
-                      : "bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-200"
-                  }`}
-                  title="خوارزمية تباين فائقة لمسح ملصقات الطابعات الحرارية حتى في الإضاءة الخافتة أو مع الانعكاس"
-                >
-                  <span className="text-base">⚡</span>
-                  <span>ملصقات حرارية: {thermalMode ? "مُفعّل 🔥" : "إيقاف"}</span>
-                </button>
-
-                {/* Camera Resolution & Frame Rate Settings Button */}
-                <button
-                  type="button"
-                  onClick={() => setIsSettingsOpen(true)}
-                  className={`flex-1 min-w-[150px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs transition-all shadow-2xs border ${
-                    cameraSettings.resolution === "480p" && cameraSettings.fps === 15
-                      ? "bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/25"
-                      : "bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200"
-                  }`}
-                  title="تغيير دقة الكاميرا ومعدل الإطارات (Resolution & FPS) لتحسين الاستقرار على الأجهزة الضعيفة"
-                >
-                  <span className="text-base">⚙️</span>
-                  <span>إعدادات الكاميرا ({cameraSettings.resolution} • {cameraSettings.fps}fps)</span>
-                  {cameraSettings.resolution === "480p" && cameraSettings.fps === 15 && (
-                    <span className="text-[9px] bg-amber-500/30 px-1.5 py-0.5 rounded-full font-bold">
-                      خفيف ❄️
+            <div className="barcode-scanner-container flex flex-col items-center gap-2.5 sm:gap-3 w-full">
+              {/* ── Mobile-Optimized Compact Control Strip ── */}
+              <div className="w-full flex flex-col gap-2">
+                <div className="w-full flex items-center justify-between gap-1.5 p-1.5 sm:p-2 bg-gray-100/90 dark:bg-gray-800/80 backdrop-blur-md rounded-2xl border border-gray-200 dark:border-gray-700/60 shadow-xs">
+                  {/* Action 1: Flip Camera Button */}
+                  <button
+                    type="button"
+                    onClick={toggleCameraFacing}
+                    className={`flex-1 min-h-[42px] sm:min-h-[44px] flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl font-bold text-xs transition-all shadow-sm active:scale-95 border ${
+                      facingMode === "environment"
+                        ? "bg-blue-600 hover:bg-blue-700 text-white border-blue-500 shadow-blue-500/20"
+                        : "bg-purple-600 hover:bg-purple-700 text-white border-purple-500 shadow-purple-500/20"
+                    }`}
+                    title="تبديل الكاميرا بين الخلفية والأمامية"
+                  >
+                    <span className="text-base shrink-0">🔄</span>
+                    <span className="whitespace-nowrap text-[11px] sm:text-xs">
+                      {facingMode === "environment" ? "خلفية 📷" : "أمامية 🤳"}
                     </span>
-                  )}
-                </button>
+                  </button>
+
+                  {/* Action 2: Sensory Audio / Vibration Toggle Button */}
+                  <button
+                    type="button"
+                    onClick={toggleSensoryFeedback}
+                    className={`flex-1 min-h-[42px] sm:min-h-[44px] flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl font-bold text-xs transition-all shadow-sm active:scale-95 border ${
+                      sensoryFeedbackEnabled
+                        ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 shadow-emerald-500/20"
+                        : "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600"
+                    }`}
+                    title={sensoryFeedbackEnabled ? "الملاحظات الحسية مفعّلة - انقر للكتم" : "الملاحظات الحسية معطلة - انقر للتفعيل"}
+                  >
+                    <span className="text-base shrink-0">{sensoryFeedbackEnabled ? "🔊" : "🔇"}</span>
+                    <span className="whitespace-nowrap text-[11px] sm:text-xs">
+                      {sensoryFeedbackEnabled ? "صوت واهتزاز" : "صامت"}
+                    </span>
+                  </button>
+
+                  {/* Action 3: Expandable Options Dropdown/Drawer Button */}
+                  <button
+                    type="button"
+                    onClick={() => setOptionsDrawerOpen(!optionsDrawerOpen)}
+                    className={`min-h-[42px] sm:min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs transition-all shadow-sm active:scale-95 border ${
+                      optionsDrawerOpen || thermalMode || cameraSettings.resolution === "480p"
+                        ? "bg-amber-600 hover:bg-amber-700 text-white border-amber-500 shadow-amber-500/20"
+                        : "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600"
+                    }`}
+                    title="خيارات إضافية: جودة الكاميرا، الملصقات الحرارية، واختيار العدسة"
+                  >
+                    <span className="text-base shrink-0">⚙️</span>
+                    <span className="whitespace-nowrap text-[11px] sm:text-xs">خيارات</span>
+                    <span className="text-[10px] opacity-75">{optionsDrawerOpen ? "▲" : "▼"}</span>
+                  </button>
+                </div>
+
+                {/* Collapsible Secondary Options Panel */}
+                {optionsDrawerOpen && (
+                  <div className="w-full bg-gray-50 dark:bg-gray-850 p-3 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md space-y-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="flex items-center justify-between text-xs pb-1.5 border-b border-gray-200 dark:border-gray-750 font-bold text-gray-700 dark:text-gray-200">
+                      <span>إعدادات وخيارات الكاميرا</span>
+                      <button
+                        type="button"
+                        onClick={() => setOptionsDrawerOpen(false)}
+                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs font-bold"
+                      >
+                        إغلاق ✕
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      {/* Thermal Label Mode Toggle */}
+                      <button
+                        type="button"
+                        onClick={() => setThermalMode(!thermalMode)}
+                        className={`flex items-center justify-between p-2.5 rounded-xl border font-bold transition-all ${
+                          thermalMode
+                            ? "bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300"
+                            : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"
+                        }`}
+                        title="خوارزمية تباين فائقة لمسح ملصقات الطابعات الحرارية"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span>⚡</span>
+                          <span>ملصقات حرارية</span>
+                        </span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-extrabold bg-amber-500/20">
+                          {thermalMode ? "مفعّل 🔥" : "إيقاف"}
+                        </span>
+                      </button>
+
+                      {/* Resolution & FPS Settings Modal Trigger */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsSettingsOpen(true);
+                          setOptionsDrawerOpen(false);
+                        }}
+                        className="flex items-center justify-between p-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold hover:bg-gray-100 dark:hover:bg-gray-750 transition-all"
+                        title="تغيير دقة الكاميرا ومعدل الإطارات"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span>⚙️</span>
+                          <span>دقة وسرعة الكاميرا</span>
+                        </span>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-600 dark:text-blue-400 font-bold">
+                          {cameraSettings.resolution} • {cameraSettings.fps}fps
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Multi-Camera Device Selector (when more than 1 camera exists) */}
+                    {availableCameras.length > 1 && (
+                      <div className="flex items-center gap-2 pt-1 border-t border-gray-200 dark:border-gray-750">
+                        <span className="text-[11px] font-bold text-gray-500 shrink-0">العدسة:</span>
+                        <select
+                          value={selectedCameraId}
+                          onChange={(e) => handleSelectCamera(e.target.value)}
+                          className="flex-1 px-2.5 py-1.5 rounded-xl text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 font-medium focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">تلقائي ({facingMode === "environment" ? "خلفية" : "أمامية"})</option>
+                          {availableCameras.map((cam, idx) => (
+                            <option key={cam.deviceId} value={cam.deviceId}>
+                              {cam.label || `عدسة ${idx + 1}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Multi-Camera Device Selector (when more than 1 camera exists) */}
-              {availableCameras.length > 1 && (
-                <div className="w-full flex items-center gap-2">
-                  <span className="text-[11px] font-bold text-gray-500 shrink-0">اختيار الكاميرا:</span>
-                  <select
-                    value={selectedCameraId}
-                    onChange={(e) => handleSelectCamera(e.target.value)}
-                    className="flex-1 px-2.5 py-1 rounded-xl text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 font-medium text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">تلقائي ({facingMode === "environment" ? "خلفية" : "أمامية"})</option>
-                    {availableCameras.map((cam, idx) => (
-                      <option key={cam.deviceId} value={cam.deviceId}>
-                        {cam.label || `كاميرا ${idx + 1}`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
+              {/* ── Camera Error & Interactive Permissions Guidance Card ── */}
               {cameraError ? (
-                <div className="w-full bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-2xl p-4 text-center">
-                  <p className="text-red-600 dark:text-red-400 text-sm font-medium">{cameraError}</p>
-                  <button
-                    onClick={() => startCamera()}
-                    className="mt-2 text-xs text-blue-600 dark:text-blue-400 underline font-bold"
-                  >
-                    إعادة المحاولة
-                  </button>
+                <div className="w-full animate-in fade-in duration-200">
+                  {cameraErrorType === "permission_denied" ? (
+                    <div className="w-full bg-gradient-to-b from-gray-900 via-gray-900 to-purple-950/80 border border-purple-500/40 rounded-2xl sm:rounded-3xl p-4 sm:p-5 text-right space-y-3.5 shadow-xl text-xs">
+                      <div className="flex items-center justify-between pb-2 border-b border-purple-900/60">
+                        <div className="flex items-center gap-2 text-amber-400 font-extrabold text-sm">
+                          <span className="text-xl">🔒</span>
+                          <span>إذن الكاميرا محظور في المتصفح</span>
+                        </div>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-950/80 border border-red-500/40 text-red-300 font-bold">
+                          تم الرفض
+                        </span>
+                      </div>
+
+                      <p className="text-purple-200 leading-relaxed text-xs">
+                        قام متصفح هاتفك بحظر تشغيل الكاميرا. يمكنك تفعيلها بخطوات بسيطة لمواصلة المسح:
+                      </p>
+
+                      <div className="bg-purple-950/50 rounded-2xl p-3 border border-purple-500/20 space-y-2 text-purple-100 text-[11px] leading-relaxed">
+                        <div className="flex items-start gap-2">
+                          <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 text-xs">1</span>
+                          <span>اضغط على أيقونة <strong>القفل 🔒</strong> أو <strong>الإعدادات ⚙️</strong> بجانب رابط الموقع في شريط العناوين بالأعلى.</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 text-xs">2</span>
+                          <span>اختر <strong>أذونات الموقع (Site settings / Permissions)</strong> ثم غيّر <strong>الكاميرا (Camera)</strong> إلى <strong>سماح (Allow)</strong>.</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 text-xs">3</span>
+                          <span>اضغط على زر <strong>إعادة المحاولة</strong> أدناه للبدء في المسح فوراً.</span>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex flex-col gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => startCamera()}
+                          className="w-full min-h-[44px] py-2.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold rounded-xl shadow-lg shadow-blue-600/30 active:scale-95 transition-all text-xs flex items-center justify-center gap-2"
+                        >
+                          <span>🔄</span>
+                          <span>إعادة طلب الإذن ومحاولة الفتح</span>
+                        </button>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { stopCamera(); setActiveTab("image"); }}
+                            className="min-h-[42px] py-2 px-3 bg-purple-900/60 hover:bg-purple-900 text-purple-200 font-bold rounded-xl border border-purple-500/40 active:scale-95 transition-all text-xs flex items-center justify-center gap-1.5"
+                          >
+                            <span>🖼️</span>
+                            <span>مسح من صورة</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { stopCamera(); setActiveTab("manual"); }}
+                            className="min-h-[42px] py-2 px-3 bg-purple-900/60 hover:bg-purple-900 text-purple-200 font-bold rounded-xl border border-purple-500/40 active:scale-95 transition-all text-xs flex items-center justify-center gap-1.5"
+                          >
+                            <span>⌨️</span>
+                            <span>إدخال يدوي</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : cameraErrorType === "insecure_context" ? (
+                    <div className="w-full bg-amber-950/80 border border-amber-600/50 rounded-2xl sm:rounded-3xl p-4 text-center space-y-2 text-xs">
+                      <span className="text-3xl">⚠️</span>
+                      <h4 className="font-extrabold text-amber-300 text-sm">اتصال غير مشفر (Insecure Context)</h4>
+                      <p className="text-amber-200 leading-relaxed text-[11px]">
+                        تمنع متصفحات الهواتف المحمولة فتح الكاميرا عبر روابط HTTP العادية لحماية خصوصيتك. يرجى فتح الموقع عبر بروتوكول مشفر (HTTPS) أو استخدام الإدخال اليدوي.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => { stopCamera(); setActiveTab("manual"); }}
+                        className="mt-2 min-h-[44px] px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs active:scale-95 transition-all"
+                      >
+                        ⌨️ الانتقال للإدخال اليدوي
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-full bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-2xl p-4 text-center space-y-2">
+                      <p className="text-red-600 dark:text-red-400 text-xs sm:text-sm font-medium leading-relaxed">{cameraError}</p>
+                      <div className="flex items-center justify-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => startCamera()}
+                          className="min-h-[40px] px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all active:scale-95"
+                        >
+                          إعادة المحاولة 🔄
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { stopCamera(); setActiveTab("manual"); }}
+                          className="min-h-[40px] px-3 py-1.5 bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold rounded-xl text-xs"
+                        >
+                          إدخال يدوي ⌨️
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="relative w-full rounded-2xl overflow-hidden bg-black aspect-[4/3] shadow-lg border border-gray-800">

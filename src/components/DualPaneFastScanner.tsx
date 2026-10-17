@@ -210,8 +210,15 @@ export default function DualPaneFastScanner({
       rafRef.current = null;
     }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch { /* silent */ }
+      });
       streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     setTorchOn(false);
   }, []);
@@ -386,33 +393,47 @@ export default function DualPaneFastScanner({
   const startCamera = useCallback(
     async (targetSettings = cameraSettings, targetFacing = facingMode) => {
       setCameraError("");
+
+      if (typeof window !== "undefined" && window.isSecureContext === false) {
+        setCameraError("يتطلب تشغيل الكاميرا اتصالاً مشفراً وآمناً (HTTPS).");
+        return;
+      }
+      if (typeof navigator === "undefined" || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setCameraError("متصفحك الحالي لا يدعم واجهة الوصول المباشر للكاميرا (MediaDevices API).");
+        return;
+      }
+
       try {
         if (streamRef.current) {
-          streamRef.current.getTracks().forEach((t) => t.stop());
+          streamRef.current.getTracks().forEach((t) => {
+            try { t.stop(); } catch { /* silent */ }
+          });
+          streamRef.current = null;
         }
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
 
         const resConfig = CAMERA_RESOLUTIONS[targetSettings.resolution] || CAMERA_RESOLUTIONS["720p"];
         const targetFps = targetSettings.fps || 30;
 
-        const constraints: MediaStreamConstraints = {
-          video: {
-            facingMode: targetFacing === "user" ? "user" : { ideal: targetFacing },
-            width: { ideal: resConfig.width },
-            height: { ideal: resConfig.height },
-            frameRate: { ideal: targetFps, max: targetFps },
-          },
-          audio: false,
-        };
-
-        let stream: MediaStream;
+        let stream: MediaStream | null = null;
         try {
+          const constraints: MediaStreamConstraints = {
+            video: {
+              facingMode: targetFacing === "user" ? "user" : { ideal: targetFacing },
+              width: { ideal: resConfig.width },
+              height: { ideal: resConfig.height },
+              frameRate: { ideal: targetFps, max: targetFps },
+            },
+            audio: false,
+          };
           stream = await navigator.mediaDevices.getUserMedia(constraints);
-        } catch {
+        } catch (stage1Err) {
+          console.warn("DualPane Stage 1 constraints failed, attempting relaxed Stage 2:", stage1Err);
           try {
             stream = await navigator.mediaDevices.getUserMedia({
               video: {
-                width: { ideal: resConfig.width },
-                height: { ideal: resConfig.height },
+                facingMode: targetFacing === "user" ? "user" : "environment",
               },
               audio: false,
             });
@@ -421,35 +442,67 @@ export default function DualPaneFastScanner({
           }
         }
 
+        if (!stream) {
+          throw new Error("تعذّر بدء بث الفيديو من الكاميرا.");
+        }
+
         streamRef.current = stream;
 
-      if (videoRef.current) {
-        const video = videoRef.current;
-        video.setAttribute("playsinline", "true");
-        video.setAttribute("webkit-playsinline", "true");
-        video.muted = true;
-        video.srcObject = stream;
-        await video.play();
-      }
+        if (videoRef.current) {
+          const video = videoRef.current;
+          video.setAttribute("playsinline", "true");
+          video.setAttribute("webkit-playsinline", "true");
+          video.muted = true;
+          video.srcObject = stream;
 
-      const track = stream.getVideoTracks()[0];
-      if (track && "getCapabilities" in track) {
-        try {
-          const caps = track.getCapabilities() as MediaTrackCapabilities & { torch?: boolean };
-          setTorchSupported(!!caps?.torch);
-        } catch {
+          await new Promise<void>((resolve) => {
+            if (video.readyState >= 1) {
+              resolve();
+            } else {
+              const onLoaded = () => {
+                video.removeEventListener("loadedmetadata", onLoaded);
+                resolve();
+              };
+              video.addEventListener("loadedmetadata", onLoaded);
+              setTimeout(() => {
+                video.removeEventListener("loadedmetadata", onLoaded);
+                resolve();
+              }, 600);
+            }
+          });
+
+          try {
+            await video.play();
+          } catch (playErr) {
+            console.warn("DualPane video.play() error (handled):", playErr);
+          }
+        }
+
+        const track = stream.getVideoTracks()[0];
+        if (track && "getCapabilities" in track) {
+          try {
+            const caps = track.getCapabilities() as MediaTrackCapabilities & { torch?: boolean };
+            setTorchSupported(!!caps?.torch);
+          } catch {
+            setTorchSupported(false);
+          }
+        } else {
           setTorchSupported(false);
         }
-      } else {
-        setTorchSupported(false);
-      }
 
-      scanLoop();
-    } catch (err) {
-      console.error("Camera access error:", err);
-      setCameraError("تعذّر الوصول إلى الكاميرا. يرجى التأكد من منح الإذن للمتصفح.");
-    }
-  }, [facingMode, scanLoop]);
+        scanLoop();
+      } catch (err: unknown) {
+        console.error("Camera access error:", err);
+        const errorObj = err as { name?: string; message?: string };
+        if (errorObj?.name === "NotAllowedError" || errorObj?.name === "PermissionDeniedError") {
+          setCameraError("تم رفض إذن الوصول للكاميرا من قبل المتصفح. يرجى تفعيل الكاميرا من إعدادات الموقع 🔒.");
+        } else {
+          setCameraError("تعذّر الوصول إلى الكاميرا. يرجى التأكد من منح الإذن للمتصفح.");
+        }
+      }
+    },
+    [cameraSettings, facingMode, scanLoop]
+  );
 
   const handleSaveCameraSettings = useCallback(
     (newSettings: CameraSettingsState) => {
