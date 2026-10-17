@@ -584,43 +584,46 @@ export default function DualPaneFastScanner({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md transition-all duration-300"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-2.5 sm:p-5 bg-black/80 backdrop-blur-md transition-all duration-300"
       dir="rtl"
       onClick={() => getAudioContext()}
     >
-      {/* ── إطار مركزي متناسق ومستقل (شاشة ثنائية الجانب بجنب بعضها مع الحفاظ على كامل الميزات الأصلية) ── */}
-      <div className="relative bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-6xl h-[88vh] flex flex-col overflow-hidden border border-gray-200 dark:border-gray-800 animate-fadeIn">
+      {/* ── إطار مركزي متناسق ومستقل بالسمة البنفسجية الفاخرة (شاشة ثنائية الجانب) ── */}
+      <div className="relative bg-[#130924] text-white rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.85)] w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden border border-purple-500/30 animate-fadeIn">
 
         {/* ── Header Bar ── */}
-        <div className="bg-gradient-to-l from-blue-700 via-indigo-700 to-purple-800 px-4 sm:px-6 py-3 flex items-center justify-between shrink-0 text-white shadow-md">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center text-lg shrink-0 border border-white/20">
+        <div className="bg-gradient-to-l from-[#3b0764] via-[#4c1d95] to-[#5b21b6] px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 shrink-0 text-white border-b border-purple-400/20 shadow-md">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-purple-500/20 backdrop-blur-md flex items-center justify-center text-lg shrink-0 border border-purple-300/30 shadow-inner">
               ⚡
             </div>
-            <div>
-              <h2 className="font-extrabold text-base sm:text-lg leading-tight flex items-center gap-2">
-                <span>المسح السريع المزدوج</span>
-                <span className="text-[10px] bg-blue-500/40 text-blue-200 border border-blue-400/30 px-2 py-0.5 rounded-full font-mono">
-                  Dual-Pane
+            <div className="min-w-0">
+              <h2 className="font-extrabold text-sm sm:text-base leading-tight flex flex-wrap items-center gap-2">
+                <span className="truncate">المسح السريع المزدوج</span>
+                <span className="text-[10px] bg-purple-950/70 text-purple-200 border border-purple-400/30 px-2.5 py-0.5 rounded-lg font-mono whitespace-nowrap">
+                  Dual-Pane POS
                 </span>
               </h2>
+              <p className="text-[11px] text-purple-200/80 truncate mt-0.5">
+                مسح متواصل بالوقت الفعلي مع إضافة فورية للسلة
+              </p>
             </div>
           </div>
 
-          {/* Quick Controls */}
-          <div className="flex items-center gap-3">
-            <label className="hidden md:flex items-center gap-2 bg-white/15 hover:bg-white/25 px-3 py-1 rounded-xl cursor-pointer transition-all border border-white/20 text-xs font-bold">
+          {/* Quick Session Controls (No duplicate camera/sound buttons here) */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <label className="flex items-center gap-2 bg-purple-950/50 hover:bg-purple-900/60 px-3 py-1.5 rounded-xl cursor-pointer transition-all border border-purple-400/30 text-xs font-bold whitespace-nowrap">
               <input
                 type="checkbox"
                 checked={autoAdd}
                 onChange={(e) => setAutoAdd(e.target.checked)}
-                className="w-4 h-4 rounded text-blue-600 accent-blue-400 cursor-pointer"
+                className="w-4 h-4 rounded text-purple-600 accent-purple-400 cursor-pointer"
               />
               <span>إضافة آلية للسلة 🛒</span>
             </label>
 
-            <div className="hidden sm:flex items-center gap-1.5 bg-white/15 px-2.5 py-1 rounded-xl border border-white/20 text-xs font-bold">
-              <span className="text-blue-200">المهلة:</span>
+            <div className="hidden sm:flex items-center gap-1.5 bg-purple-950/50 px-3 py-1.5 rounded-xl border border-purple-400/30 text-xs font-bold whitespace-nowrap">
+              <span className="text-purple-200">المهلة:</span>
               <select
                 value={cooldownMs}
                 onChange={(e) => setCooldownMs(Number(e.target.value))}
@@ -634,20 +637,12 @@ export default function DualPaneFastScanner({
             </div>
 
             <button
-              onClick={() => setSoundEnabled(!soundEnabled)}
-              className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm transition-all border ${
-                soundEnabled ? "bg-white/20 border-white/30 text-yellow-300" : "bg-white/5 border-white/10 text-gray-400"
-              }`}
-            >
-              {soundEnabled ? "🔊" : "🔇"}
-            </button>
-
-            <button
               onClick={() => {
                 stopCamera();
                 onClose();
               }}
-              className="w-8 h-8 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center text-white font-bold transition-all"
+              className="w-9 h-9 rounded-xl bg-white/10 hover:bg-red-500/80 border border-white/15 flex items-center justify-center text-white font-bold transition-all shrink-0 cursor-pointer"
+              title="إغلاق"
             >
               ✕
             </button>
@@ -657,9 +652,9 @@ export default function DualPaneFastScanner({
         {/* Flash Message Toast */}
         {flashMessage && (
           <div
-            className={`px-4 py-1.5 text-xs font-bold text-center transition-all animate-fadeIn shrink-0 ${
+            className={`px-4 py-2 text-xs font-bold text-center transition-all animate-fadeIn shrink-0 ${
               flashMessage.type === "success"
-                ? "bg-green-600 text-white"
+                ? "bg-emerald-600 text-white"
                 : flashMessage.type === "warning"
                 ? "bg-amber-600 text-white"
                 : "bg-red-600 text-white"
@@ -670,31 +665,35 @@ export default function DualPaneFastScanner({
         )}
 
         {/* ── التخطيط ثنائي الجانب الدائم: الكاميرا في اليمين والمنتج في اليسار جنباً إلى جنب ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 flex-1 min-h-0 divide-y lg:divide-y-0 lg:divide-x lg:divide-x-reverse divide-gray-200 dark:divide-gray-800 overflow-hidden bg-gray-50 dark:bg-gray-900">
+        <div className="grid grid-cols-1 lg:grid-cols-2 flex-1 min-h-0 divide-y lg:divide-y-0 lg:divide-x lg:divide-x-reverse divide-purple-500/20 overflow-hidden bg-[#130924]">
 
           {/* ════════════════════════════════════════════════════════════════
-              الجانب الأيمن (PANEL A): الكاميرا الحية النشطة مع كافة التبويبات الأصلية
+              الجانب الأيمن (PANEL A): الكاميرا الحية النشطة مع شريط التحكم الموحد
              ════════════════════════════════════════════════════════════════ */}
-          <div className="p-4 flex flex-col bg-gray-950 text-white min-h-0 overflow-y-auto">
+          <div className="p-4 flex flex-col bg-[#0e061a] text-white min-h-0 overflow-y-auto">
 
-            {/* Scanner Tab Selectors (كامل الميزات الأصلية) */}
-            <div className="flex items-center gap-2 mb-3 shrink-0">
+            {/* Scanner Tab Selectors */}
+            <div className="grid grid-cols-3 gap-2 mb-3 shrink-0 bg-[#1a0d2e] p-1.5 rounded-2xl border border-purple-500/20">
               {canUseCamera && (
                 <button
                   onClick={() => setActiveTab("camera")}
-                  className={`flex-1 py-1.5 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 ${
-                    activeTab === "camera" ? "bg-blue-600 text-white shadow-md" : "bg-gray-800 text-gray-300"
+                  className={`py-2 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                    activeTab === "camera"
+                      ? "bg-gradient-to-l from-[#6d28d9] to-[#7c3aed] text-white shadow-md border border-purple-400/30"
+                      : "text-purple-200/75 hover:text-white hover:bg-purple-900/30"
                   }`}
                 >
                   <span>📷</span>
-                  <span>كاميرا حية دائمة</span>
+                  <span>كاميرا حية</span>
                 </button>
               )}
               {canUseImageUpload && (
                 <button
                   onClick={() => { stopCamera(); setActiveTab("upload"); }}
-                  className={`flex-1 py-1.5 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 ${
-                    activeTab === "upload" ? "bg-blue-600 text-white shadow-md" : "bg-gray-800 text-gray-300"
+                  className={`py-2 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                    activeTab === "upload"
+                      ? "bg-gradient-to-l from-[#6d28d9] to-[#7c3aed] text-white shadow-md border border-purple-400/30"
+                      : "text-purple-200/75 hover:text-white hover:bg-purple-900/30"
                   }`}
                 >
                   <span>🖼</span>
@@ -704,8 +703,10 @@ export default function DualPaneFastScanner({
               {canUseManualEntry && (
                 <button
                   onClick={() => { stopCamera(); setActiveTab("manual"); }}
-                  className={`flex-1 py-1.5 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 ${
-                    activeTab === "manual" ? "bg-blue-600 text-white shadow-md" : "bg-gray-800 text-gray-300"
+                  className={`py-2 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer ${
+                    activeTab === "manual"
+                      ? "bg-gradient-to-l from-[#6d28d9] to-[#7c3aed] text-white shadow-md border border-purple-400/30"
+                      : "text-purple-200/75 hover:text-white hover:bg-purple-900/30"
                   }`}
                 >
                   <span>⌨</span>
@@ -716,19 +717,94 @@ export default function DualPaneFastScanner({
 
             {/* Camera Stream Display */}
             {activeTab === "camera" && (
-              <div className="barcode-scanner-container flex-1 flex flex-col items-center justify-center relative min-h-[260px]">
+              <div className="barcode-scanner-container flex-1 flex flex-col min-h-[280px] gap-2.5">
+                {/* ── Unified Camera Control Toolbar (Outside Video) ── */}
+                <div className="bg-[#1b0e30] border border-purple-500/25 rounded-2xl p-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0 shadow-inner">
+                  {/* Live Status Indicator */}
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-purple-950/60 border border-purple-500/20">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                    <span className="text-[11px] font-bold text-emerald-300 whitespace-nowrap">
+                      مسح مستمر نشط
+                    </span>
+                  </div>
+
+                  {/* Unified Action Buttons */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {/* Flip Camera */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = facingMode === "environment" ? "user" : "environment";
+                        setFacingMode(next);
+                        startCamera(cameraSettings, next);
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-[#2a1747] hover:bg-[#3b2163] text-purple-100 border border-purple-400/25 text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap active:scale-95 cursor-pointer"
+                      title="تبديل الكاميرا (أمامية / خلفية)"
+                    >
+                      <span>🔄</span>
+                      <span>{facingMode === "environment" ? "خلفية" : "أمامية"}</span>
+                    </button>
+
+                    {/* Sensory Feedback (Sound & Vibration) Single Toggle */}
+                    <button
+                      type="button"
+                      onClick={toggleSensoryFeedback}
+                      className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap active:scale-95 cursor-pointer ${
+                        soundEnabled
+                          ? "bg-emerald-600/25 border-emerald-400/40 text-emerald-200 hover:bg-emerald-600/35"
+                          : "bg-[#24133d] border-purple-500/20 text-purple-300/70 hover:text-purple-200"
+                      }`}
+                      title={soundEnabled ? "الصوت والاهتزاز مفعل - اضغط للإيقاف" : "الصوت والاهتزاز صامت - اضغط للتفعيل"}
+                    >
+                      <span>{soundEnabled ? "🔊" : "🔇"}</span>
+                      <span>{soundEnabled ? "صوت واهتزاز" : "صامت"}</span>
+                    </button>
+
+                    {/* Torch / Flash */}
+                    {torchSupported && (
+                      <button
+                        type="button"
+                        onClick={toggleTorch}
+                        className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap active:scale-95 cursor-pointer ${
+                          torchOn
+                            ? "bg-amber-500 text-amber-950 border-amber-300 shadow-sm"
+                            : "bg-[#24133d] border-purple-500/20 text-purple-200 hover:bg-[#311b52]"
+                        }`}
+                      >
+                        <span>{torchOn ? "🔦 فلاش مفعل" : "💡 الفلاش"}</span>
+                      </button>
+                    )}
+
+                    {/* Camera Resolution & FPS Settings */}
+                    <button
+                      type="button"
+                      onClick={() => setIsSettingsOpen(true)}
+                      className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap active:scale-95 cursor-pointer ${
+                        cameraSettings.resolution === "480p" && cameraSettings.fps === 15
+                          ? "bg-amber-500/25 border-amber-400/50 text-amber-200"
+                          : "bg-[#2a1747] hover:bg-[#3b2163] border-purple-400/25 text-purple-100"
+                      }`}
+                      title="إعدادات دقة وسرعة الكاميرا"
+                    >
+                      <span>⚙️</span>
+                      <span>{cameraSettings.resolution} • {cameraSettings.fps}fps</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── Clean Video Viewport (Zero Floating Controls Inside) ── */}
                 {cameraError ? (
-                  <div className="bg-red-950/60 border border-red-800 rounded-2xl p-5 text-center max-w-sm my-auto">
-                    <p className="text-red-400 font-bold text-xs mb-3">{cameraError}</p>
+                  <div className="bg-red-950/50 border border-red-500/40 rounded-2xl p-5 text-center max-w-sm m-auto">
+                    <p className="text-red-300 font-bold text-xs mb-3 leading-relaxed">{cameraError}</p>
                     <button
                       onClick={() => startCamera()}
-                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all"
+                      className="px-4 py-2 bg-[#7c3aed] hover:bg-[#6d28d9] text-white font-bold rounded-xl text-xs transition-all cursor-pointer"
                     >
                       إعادة محاولة الاتصال بالكاميرا
                     </button>
                   </div>
                 ) : (
-                  <div className="relative w-full h-full rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-gray-800 shadow-inner">
+                  <div className="relative flex-1 w-full rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-purple-500/30 shadow-inner min-h-[220px]">
                     <video
                       ref={videoRef}
                       className={`w-full h-full object-cover transition-transform ${facingMode === "user" ? "-scale-x-100" : ""}`}
@@ -738,78 +814,25 @@ export default function DualPaneFastScanner({
                     />
                     <canvas ref={canvasRef} className="hidden" />
 
+                    {/* Clean Reticle Overlay */}
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="w-56 h-36 border-2 border-blue-400/90 rounded-2xl relative shadow-[0_0_15px_rgba(59,130,246,0.3)]">
-                        <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-blue-400 rounded-tl-lg" />
-                        <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-blue-400 rounded-tr-lg" />
-                        <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-blue-400 rounded-bl-lg" />
-                        <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-blue-400 rounded-br-lg" />
-                        <div className="absolute inset-x-2 h-0.5 bg-gradient-to-r from-transparent via-blue-400 to-transparent shadow-[0_0_8px_#60a5fa] animate-pulse" style={{ top: "50%" }} />
+                      <div className="w-56 h-36 border-2 border-purple-400/90 rounded-2xl relative shadow-[0_0_25px_rgba(168,85,247,0.35)]">
+                        <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-purple-400 rounded-tl-lg" />
+                        <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-purple-400 rounded-tr-lg" />
+                        <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-purple-400 rounded-bl-lg" />
+                        <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-purple-400 rounded-br-lg" />
+                        <div
+                          className="absolute inset-x-2 h-0.5 bg-gradient-to-r from-transparent via-purple-400 to-transparent shadow-[0_0_8px_#c084fc] animate-pulse"
+                          style={{ top: "50%" }}
+                        />
                       </div>
                     </div>
 
-                    <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-md text-emerald-400 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                      <span>الكاميرا حية ومستمرة</span>
-                    </div>
-
-                    <div className="absolute bottom-2 left-2 right-2 flex flex-wrap items-center justify-between gap-1.5 pointer-events-auto">
-                      <button
-                        onClick={() => {
-                          const next = facingMode === "environment" ? "user" : "environment";
-                          setFacingMode(next);
-                          startCamera(cameraSettings, next);
-                        }}
-                        className="bg-black/70 hover:bg-black/90 active:scale-95 backdrop-blur-md text-white text-xs font-bold px-3 py-1.5 rounded-xl border border-white/20 transition-all flex items-center gap-1.5 shadow-md"
-                        title="تبديل الكاميرا (أمامية / خلفية)"
-                      >
-                        <span className="text-sm">🔄</span>
-                        <span>{facingMode === "environment" ? "الكاميرا الخلفية 📷 (اضغط للتبديل)" : "الكاميرا الأمامية 🤳 (اضغط للتبديل)"}</span>
-                      </button>
-
-                      {/* Camera Resolution & FPS Settings Button */}
-                      <button
-                        type="button"
-                        onClick={() => setIsSettingsOpen(true)}
-                        className={`text-xs font-bold px-3 py-1.5 rounded-xl border backdrop-blur-md transition-all flex items-center gap-1.5 shadow-md active:scale-95 ${
-                          cameraSettings.resolution === "480p" && cameraSettings.fps === 15
-                            ? "bg-amber-600/90 hover:bg-amber-600 text-white border-amber-400"
-                            : "bg-black/70 hover:bg-black/90 text-gray-200 border-white/20"
-                        }`}
-                        title="إعدادات دقة وسرعة الكاميرا (Resolution & FPS) - مخصص للأجهزة الضعيفة"
-                      >
-                        <span>⚙️</span>
-                        <span>إعدادات الكاميرا ({cameraSettings.resolution} • {cameraSettings.fps}fps)</span>
-                        {cameraSettings.resolution === "480p" && cameraSettings.fps === 15 && (
-                          <span className="text-[9px] bg-amber-400 text-amber-950 font-bold px-1 rounded">خفيف ❄️</span>
-                        )}
-                      </button>
-
-                      {/* Sensory Feedback (Sound & Vibration) Toggle Button on Screen */}
-                      <button
-                        type="button"
-                        onClick={toggleSensoryFeedback}
-                        className={`text-xs font-bold px-3 py-1.5 rounded-xl border backdrop-blur-md transition-all flex items-center gap-1.5 shadow-md active:scale-95 ${
-                          soundEnabled
-                            ? "bg-emerald-600/90 hover:bg-emerald-600 text-white border-emerald-400"
-                            : "bg-black/70 hover:bg-black/90 text-gray-300 border-white/20"
-                        }`}
-                        title={soundEnabled ? "الملاحظات الحسية (صوت واهتزاز) مفعّلة - انقر للإيقاف" : "الملاحظات الحسية معطلة - انقر للتفعيل"}
-                      >
-                        <span>{soundEnabled ? "🔊📳" : "🔇"}</span>
-                        <span>{soundEnabled ? "صوت واهتزاز: مفعّل" : "صامت"}</span>
-                      </button>
-
-                      {torchSupported && (
-                        <button
-                          onClick={toggleTorch}
-                          className={`text-[11px] font-bold px-2.5 py-1 rounded-xl border backdrop-blur-md transition-all ${
-                            torchOn ? "bg-yellow-400 text-yellow-950 border-yellow-300" : "bg-black/60 hover:bg-black/80 text-white border-white/20"
-                          }`}
-                        >
-                          <span>{torchOn ? "🔦 إيقاف الفلاش" : "💡 تشغيل الفلاش"}</span>
-                        </button>
-                      )}
+                    {/* Subtle Instruction Caption */}
+                    <div className="absolute bottom-2.5 inset-x-0 flex justify-center pointer-events-none px-3">
+                      <span className="bg-black/65 backdrop-blur-xs text-purple-100 text-[11px] font-medium px-3 py-1 rounded-lg border border-purple-400/20">
+                        ضع الباركود أو رمز QR داخل الإطار البنفسجي للمسح الفوري
+                      </span>
                     </div>
                   </div>
                 )}
@@ -818,13 +841,13 @@ export default function DualPaneFastScanner({
 
             {/* Image Upload Tab */}
             {activeTab === "upload" && (
-              <div className="flex-1 flex flex-col items-center justify-center p-5 text-center border-2 border-dashed border-gray-800 rounded-2xl bg-gray-900/50">
+              <div className="flex-1 flex flex-col items-center justify-center p-6 text-center border-2 border-dashed border-purple-500/30 rounded-2xl bg-[#1a0d2e]/60">
                 <span className="text-4xl mb-2">🖼</span>
-                <h4 className="font-bold text-xs text-gray-200 mb-1">تحميل صورة باركود أو QR</h4>
-                <p className="text-[11px] text-gray-400 mb-3">اختر صورة واضحة من جهازك لفحصها</p>
+                <h4 className="font-bold text-sm text-purple-100 mb-1">تحميل صورة باركود أو QR</h4>
+                <p className="text-xs text-purple-300/75 mb-4">اختر صورة واضحة من جهازك لفحصها وإضافتها للسلة</p>
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all shadow-md"
+                  className="px-5 py-2.5 bg-gradient-to-l from-[#6d28d9] to-[#7c3aed] hover:from-[#5b21b6] hover:to-[#6d28d9] text-white font-bold rounded-xl text-xs transition-all shadow-md cursor-pointer"
                 >
                   اختر ملف صورة
                 </button>
@@ -838,15 +861,15 @@ export default function DualPaneFastScanner({
                     if (file) handleImageFile(file);
                   }}
                 />
-                {imageDecoding && <p className="text-xs text-blue-400 animate-pulse mt-2">جاري فك شفرة الصورة...</p>}
+                {imageDecoding && <p className="text-xs text-purple-300 animate-pulse mt-3">جاري فك شفرة الصورة...</p>}
               </div>
             )}
 
             {/* Manual Entry Tab */}
             {activeTab === "manual" && (
-              <div className="flex-1 flex flex-col items-center justify-center p-5 bg-gray-900/50 rounded-2xl border border-gray-800">
-                <h4 className="font-bold text-xs text-gray-200 mb-3">أدخل الكود أو الباركود يدوياً</h4>
-                <div className="w-full max-w-xs flex flex-col gap-2.5">
+              <div className="flex-1 flex flex-col items-center justify-center p-6 bg-[#1a0d2e]/60 rounded-2xl border border-purple-500/25">
+                <h4 className="font-bold text-sm text-purple-100 mb-3">أدخل الكود أو الباركود يدوياً</h4>
+                <div className="w-full max-w-xs flex flex-col gap-3">
                   <input
                     type="text"
                     value={manualCode}
@@ -858,7 +881,7 @@ export default function DualPaneFastScanner({
                       }
                     }}
                     placeholder="رمز الباركود..."
-                    className="w-full px-3 py-2.5 bg-gray-950 border border-gray-700 rounded-xl text-white font-mono text-center text-xs focus:outline-none focus:border-blue-500"
+                    className="w-full px-3.5 py-2.5 bg-[#0e061a] border border-purple-500/35 rounded-xl text-white font-mono text-center text-xs focus:outline-none focus:border-purple-400"
                     autoFocus
                   />
                   <button
@@ -869,7 +892,7 @@ export default function DualPaneFastScanner({
                       }
                     }}
                     disabled={!manualCode.trim()}
-                    className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all shadow-md"
+                    className="w-full py-2.5 bg-gradient-to-l from-[#6d28d9] to-[#7c3aed] hover:from-[#5b21b6] hover:to-[#6d28d9] disabled:opacity-40 text-white font-bold rounded-xl text-xs transition-all shadow-md cursor-pointer"
                   >
                     معالجة الكود 🔍
                   </button>
@@ -881,31 +904,31 @@ export default function DualPaneFastScanner({
           {/* ════════════════════════════════════════════════════════════════
               الجانب الأيسر (PANEL B): تفاصيل المنتج المقروء وسجل الجلسة والسلة
              ════════════════════════════════════════════════════════════════ */}
-          <div className="p-4 flex flex-col bg-white dark:bg-gray-900 min-h-0 overflow-y-auto">
+          <div className="p-4 flex flex-col bg-[#160b2b] text-white min-h-0 overflow-y-auto">
 
             {/* Current Scanned Product Card */}
-            <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-3.5 shadow-xs border border-gray-200 dark:border-gray-700 mb-3 shrink-0">
-              <div className="flex items-center justify-between border-b border-gray-200/60 dark:border-gray-700 pb-2 mb-2.5">
-                <span className="text-[11px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            <div className="bg-[#1f103a] rounded-2xl p-3.5 shadow-md border border-purple-500/25 mb-3 shrink-0">
+              <div className="flex items-center justify-between border-b border-purple-500/20 pb-2 mb-2.5">
+                <span className="text-[11px] font-extrabold text-purple-300 uppercase tracking-wider">
                   المنتج المقروء حالياً
                 </span>
                 {currentCode && (
-                  <span className="font-mono text-[11px] font-bold bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800">
+                  <span className="font-mono text-[11px] font-bold bg-purple-950/80 text-purple-200 px-2.5 py-0.5 rounded-lg border border-purple-400/30">
                     📷 {currentCode}
                   </span>
                 )}
               </div>
 
               {!currentProduct ? (
-                <div className="py-6 text-center text-gray-400">
-                  <span className="text-3xl block mb-1 opacity-50">📦</span>
-                  <p className="text-xs font-bold text-gray-500 dark:text-gray-400">
+                <div className="py-6 text-center text-purple-300/60">
+                  <span className="text-3xl block mb-1.5 opacity-60">📦</span>
+                  <p className="text-xs font-bold text-purple-200/80">
                     ضع الباركود أمام الكاميرا لمسحه وتحديث السلة فوراً
                   </p>
                   {currentCode && onRequestLink && (
                     <button
                       onClick={() => onRequestLink(currentCode)}
-                      className="mt-2 px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-all"
+                      className="mt-3 px-4 py-1.5 bg-[#7c3aed] hover:bg-[#6d28d9] text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
                     >
                       🔗 ربط بمنتج جديد
                     </button>
@@ -913,7 +936,7 @@ export default function DualPaneFastScanner({
                 </div>
               ) : (
                 <div className="flex items-center gap-3">
-                  <div className="relative w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-xl overflow-hidden shrink-0 border border-gray-200 dark:border-gray-600">
+                  <div className="relative w-16 h-16 bg-[#2a174c] rounded-xl overflow-hidden shrink-0 border border-purple-400/30">
                     {currentProduct.image ? (
                       <Image
                         src={currentProduct.image}
@@ -928,34 +951,34 @@ export default function DualPaneFastScanner({
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-extrabold text-xs text-gray-900 dark:text-white truncate mb-1">
+                    <h3 className="font-extrabold text-xs text-white truncate mb-1">
                       {currentProduct.name}
                     </h3>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-sm font-extrabold text-blue-600 dark:text-blue-400">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <span className="text-sm font-extrabold text-purple-300">
                         {currentDisplayPrice.toLocaleString()} د.ع
                       </span>
                       {currentTierBadge && (
-                        <span className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-bold px-2 py-0.5 rounded-full">
+                        <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-400/30 font-bold px-2 py-0.5 rounded-lg">
                           {currentTierBadge}
                         </span>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-xl overflow-hidden bg-white dark:bg-gray-700">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center border border-purple-400/30 rounded-xl overflow-hidden bg-[#130924]">
                         <button
                           onClick={() => setCurrentQty((q) => Math.max(1, q - 1))}
-                          className="px-2 py-0.5 text-xs font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-100"
+                          className="px-2.5 py-1 text-xs font-bold text-purple-200 hover:bg-purple-900/50 cursor-pointer"
                         >
                           −
                         </button>
-                        <span className="px-2 font-mono font-extrabold text-xs text-gray-900 dark:text-white">
+                        <span className="px-2.5 font-mono font-extrabold text-xs text-white">
                           {currentQty}
                         </span>
                         <button
                           onClick={() => setCurrentQty((q) => q + 1)}
-                          className="px-2 py-0.5 text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50"
+                          className="px-2.5 py-1 text-xs font-bold text-purple-300 hover:bg-purple-900/50 cursor-pointer"
                         >
                           +
                         </button>
@@ -964,7 +987,7 @@ export default function DualPaneFastScanner({
                       <button
                         onClick={() => executeAddToCart(currentProduct, currentQty)}
                         disabled={currentProduct.stock <= 0}
-                        className="flex-1 py-1.5 px-3 bg-gradient-to-l from-blue-600 to-indigo-600 hover:from-blue-700 disabled:opacity-40 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1"
+                        className="flex-1 py-1.5 px-3 bg-gradient-to-l from-[#6d28d9] to-[#7c3aed] hover:from-[#5b21b6] hover:to-[#6d28d9] disabled:opacity-40 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-1 whitespace-nowrap cursor-pointer"
                       >
                         <span>🛒</span>
                         <span>أضف للسلة ({(currentDisplayPrice * currentQty).toLocaleString()} د.ع)</span>
@@ -976,20 +999,20 @@ export default function DualPaneFastScanner({
             </div>
 
             {/* Session History Stream */}
-            <div className="flex-1 flex flex-col min-h-0 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <div className="px-3.5 py-2 bg-gray-100 dark:bg-gray-750 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 shrink-0">
+            <div className="flex-1 flex flex-col min-h-0 bg-[#1f103a] rounded-2xl border border-purple-500/25 overflow-hidden">
+              <div className="px-3.5 py-2.5 bg-[#271547] flex items-center justify-between border-b border-purple-500/20 shrink-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-xs text-gray-700 dark:text-gray-300">
+                  <span className="font-extrabold text-xs text-purple-100">
                     سجل عمليات الجلسة الحالية
                   </span>
-                  <span className="bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                  <span className="bg-[#7c3aed] text-white text-[10px] font-bold px-2 py-0.5 rounded-lg">
                     {totalScannedCount}
                   </span>
                 </div>
                 {scanLogs.length > 0 && (
                   <button
                     onClick={() => setScanLogs([])}
-                    className="text-[11px] font-bold text-gray-500 hover:text-red-500 transition-colors"
+                    className="text-[11px] font-bold text-purple-300 hover:text-red-400 transition-colors cursor-pointer"
                   >
                     مسح السجل 🗑
                   </button>
@@ -998,19 +1021,19 @@ export default function DualPaneFastScanner({
 
               <div className="flex-1 overflow-y-auto p-2.5 space-y-2 min-h-0">
                 {scanLogs.length === 0 ? (
-                  <div className="py-8 text-center text-gray-400 text-xs">
+                  <div className="py-8 text-center text-purple-300/50 text-xs">
                     لم تتم أي عملية مسح في هذه الجلسة بعد
                   </div>
                 ) : (
                   scanLogs.map((log) => (
                     <div
                       key={log.id}
-                      className={`p-2 rounded-xl border text-xs flex items-center justify-between transition-all ${
+                      className={`p-2.5 rounded-xl border text-xs flex items-center justify-between gap-2 transition-all ${
                         log.status === "success"
-                          ? "bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-800/40"
+                          ? "bg-emerald-950/30 border-emerald-500/30 text-emerald-100"
                           : log.status === "ignored_url"
-                          ? "bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/40"
-                          : "bg-red-50/50 dark:bg-red-950/20 border-red-200 dark:border-red-800/40"
+                          ? "bg-amber-950/30 border-amber-500/30 text-amber-100"
+                          : "bg-red-950/30 border-red-500/30 text-red-100"
                       }`}
                     >
                       <div className="flex items-center gap-2 min-w-0">
@@ -1018,10 +1041,10 @@ export default function DualPaneFastScanner({
                           {log.status === "success" ? "✅" : log.status === "ignored_url" ? "⚠️" : "❌"}
                         </span>
                         <div className="min-w-0">
-                          <p className="font-bold text-gray-900 dark:text-white truncate text-xs">
+                          <p className="font-bold text-white truncate text-xs">
                             {log.product ? log.product.name : log.message || log.code}
                           </p>
-                          <span className="text-[10px] text-gray-500 dark:text-gray-400 font-mono">{log.timestamp}</span>
+                          <span className="text-[10px] text-purple-300/70 font-mono">{log.timestamp}</span>
                         </div>
                       </div>
 
@@ -1029,7 +1052,7 @@ export default function DualPaneFastScanner({
                         <button
                           onClick={() => executeAddToCart(log.product!, 1)}
                           disabled={log.product.stock <= 0}
-                          className="px-2 py-1 bg-white dark:bg-gray-700 hover:bg-blue-50 text-blue-600 dark:text-blue-300 border border-gray-200 dark:border-gray-600 rounded-lg font-bold text-[10px] shrink-0 transition-all"
+                          className="px-2.5 py-1 bg-[#2d1854] hover:bg-[#3d2270] text-purple-200 border border-purple-400/30 rounded-lg font-bold text-[10px] shrink-0 transition-all cursor-pointer"
                         >
                           +1 للسلة
                         </button>
@@ -1040,14 +1063,14 @@ export default function DualPaneFastScanner({
               </div>
 
               {/* Footer Summary Bar */}
-              <div className="p-2.5 bg-gray-100 dark:bg-gray-850 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between shrink-0 text-xs font-bold text-gray-700 dark:text-gray-300">
-                <span>إجمالي السلة: <span className="text-blue-600 dark:text-blue-400 font-extrabold">{cartItemCount}</span> قطعة</span>
+              <div className="p-3 bg-[#271547] border-t border-purple-500/20 flex items-center justify-between shrink-0 text-xs font-bold text-purple-100">
+                <span>إجمالي السلة: <span className="text-purple-300 font-extrabold">{cartItemCount}</span> قطعة</span>
                 <button
                   onClick={() => {
                     stopCamera();
                     onClose();
                   }}
-                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-all text-xs"
+                  className="px-4 py-1.5 bg-gradient-to-l from-[#6d28d9] to-[#7c3aed] hover:from-[#5b21b6] hover:to-[#6d28d9] text-white rounded-xl font-bold transition-all text-xs cursor-pointer shadow-sm"
                 >
                   إتمام الشراء / إغلاق
                 </button>

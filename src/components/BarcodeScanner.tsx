@@ -477,75 +477,89 @@ export default function BarcodeScanner({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-2 sm:p-4 overflow-y-auto" dir="rtl">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto" dir="rtl">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-black/75 backdrop-blur-md transition-opacity"
         onClick={onClose}
       />
 
       {/* Modal */}
-      <div className="relative bg-white dark:bg-gray-900 rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-200 dark:border-gray-800 animate-fadeIn my-auto">
+      <div className="relative bg-[#150b2a] text-white rounded-3xl shadow-2xl shadow-purple-950/70 w-full max-w-md overflow-hidden border border-purple-500/30 animate-fadeIn my-auto">
 
         {/* Header */}
-        <div className="bg-gradient-to-l from-blue-600 via-indigo-600 to-purple-700 px-4 py-3 sm:px-5 sm:py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <span className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center text-xl shrink-0">📷</span>
-            <div>
-              <h2 className="text-white font-extrabold text-sm sm:text-base leading-tight">ماسح الباركود والـ QR</h2>
-              <p className="text-blue-100 text-[11px]">امسح بالكاميرا أو ابحث بأي طريقة</p>
+        <div className="bg-gradient-to-l from-[#5b21b6] via-[#6d28d9] to-[#4c1d95] px-4 py-3.5 sm:px-5 sm:py-4 flex items-center justify-between border-b border-purple-400/20">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="w-10 h-10 rounded-2xl bg-white/15 border border-white/20 flex items-center justify-center text-xl shrink-0 shadow-inner">
+              📷
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-white font-extrabold text-sm sm:text-base leading-tight truncate">
+                ماسح الباركود والـ QR
+              </h2>
+              <p className="text-purple-200 text-[11px] truncate mt-0.5">
+                امسح بالكاميرا أو ابحث بأي طريقة بسرعة ودقة
+              </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors shrink-0"
+            className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold transition-all shrink-0 active:scale-95 border border-white/15"
             title="إغلاق"
           >
             ✕
           </button>
         </div>
 
-        {/* Tabs */}
+        {/* Mode Selector Tabs */}
         {availableTabs.length > 1 && (
-          <div className="flex border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950">
-            {availableTabs.map((tab) => (
-              <button
-                key={tab}
-                onClick={() => { stopCamera(); setActiveTab(tab); }}
-                className={`flex-1 min-h-[44px] flex items-center justify-center gap-1.5 py-2.5 sm:py-3 px-2 text-xs font-bold transition-all whitespace-nowrap ${
-                  activeTab === tab
-                    ? "border-b-2 border-blue-600 text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-900"
-                    : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-                }`}
-              >
-                <span className="shrink-0">{tabLabels[tab].icon}</span>
-                <span className="whitespace-nowrap">{tabLabels[tab].label}</span>
-              </button>
-            ))}
+          <div className="grid grid-cols-3 border-b border-purple-500/25 bg-[#1a0e33] p-1.5 gap-1.5">
+            {availableTabs.map((tab) => {
+              const isActive = activeTab === tab;
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => {
+                    stopCamera();
+                    setActiveTab(tab);
+                  }}
+                  className={`min-h-[44px] flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl text-xs font-extrabold transition-all whitespace-nowrap shrink-0 ${
+                    isActive
+                      ? "bg-[#5b21b6] text-white shadow-md shadow-purple-900/50 border border-purple-400/40"
+                      : "text-purple-200/75 hover:text-white hover:bg-purple-900/35 border border-transparent"
+                  }`}
+                >
+                  <span className="shrink-0 text-sm">{tabLabels[tab].icon}</span>
+                  <span className="whitespace-nowrap">{tabLabels[tab].label}</span>
+                </button>
+              );
+            })}
           </div>
         )}
 
-        <div className="p-3 sm:p-5">
+        <div className="p-3.5 sm:p-5">
 
           {/* ── Camera Tab ── */}
           {activeTab === "camera" && (
-            <div className="barcode-scanner-container flex flex-col items-center gap-2.5 sm:gap-3 w-full">
-              {/* ── Mobile-Optimized Compact Control Strip ── */}
-              <div className="w-full flex flex-col gap-2">
-                <div className="w-full flex items-center justify-between gap-1.5 p-1.5 sm:p-2 bg-gray-100/90 dark:bg-gray-800/80 backdrop-blur-md rounded-2xl border border-gray-200 dark:border-gray-700/60 shadow-xs">
+            <div className="barcode-scanner-container flex flex-col items-center gap-3 w-full">
+              {/* ── Single Unified Camera Control Toolbar (Outside Video) ── */}
+              <div className="w-full flex flex-col gap-2.5">
+                <div className="w-full flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 p-2 bg-[#1e1136] rounded-2xl border border-purple-500/30 shadow-inner">
                   {/* Action 1: Flip Camera Button */}
                   <button
                     type="button"
                     onClick={toggleCameraFacing}
-                    className={`flex-1 min-h-[42px] sm:min-h-[44px] flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl font-bold text-xs transition-all shadow-sm active:scale-95 border ${
+                    className={`flex-1 min-w-[100px] min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-extrabold text-xs whitespace-nowrap shrink-0 transition-all shadow-sm active:scale-95 border ${
                       facingMode === "environment"
-                        ? "bg-blue-600 hover:bg-blue-700 text-white border-blue-500 shadow-blue-500/20"
-                        : "bg-purple-600 hover:bg-purple-700 text-white border-purple-500 shadow-purple-500/20"
+                        ? "bg-[#5b21b6] hover:bg-[#6d28d9] text-white border-purple-400/50 shadow-purple-900/30"
+                        : "bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-400/50 shadow-indigo-900/30"
                     }`}
                     title="تبديل الكاميرا بين الخلفية والأمامية"
                   >
-                    <span className="text-base shrink-0">🔄</span>
-                    <span className="whitespace-nowrap text-[11px] sm:text-xs">
+                    <span className="text-sm shrink-0">🔄</span>
+                    <span className="whitespace-nowrap">
                       {facingMode === "environment" ? "خلفية 📷" : "أمامية 🤳"}
                     </span>
                   </button>
@@ -554,67 +568,76 @@ export default function BarcodeScanner({
                   <button
                     type="button"
                     onClick={toggleSensoryFeedback}
-                    className={`flex-1 min-h-[42px] sm:min-h-[44px] flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl font-bold text-xs transition-all shadow-sm active:scale-95 border ${
+                    className={`flex-1 min-w-[110px] min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-extrabold text-xs whitespace-nowrap shrink-0 transition-all shadow-sm active:scale-95 border ${
                       sensoryFeedbackEnabled
-                        ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 shadow-emerald-500/20"
-                        : "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600"
+                        ? "bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400/50 shadow-emerald-900/30"
+                        : "bg-[#2a174a] hover:bg-[#351e5c] text-purple-200 border-purple-500/30"
                     }`}
                     title={sensoryFeedbackEnabled ? "الملاحظات الحسية مفعّلة - انقر للكتم" : "الملاحظات الحسية معطلة - انقر للتفعيل"}
                   >
-                    <span className="text-base shrink-0">{sensoryFeedbackEnabled ? "🔊" : "🔇"}</span>
-                    <span className="whitespace-nowrap text-[11px] sm:text-xs">
+                    <span className="text-sm shrink-0">{sensoryFeedbackEnabled ? "🔊" : "🔇"}</span>
+                    <span className="whitespace-nowrap">
                       {sensoryFeedbackEnabled ? "صوت واهتزاز" : "صامت"}
                     </span>
                   </button>
 
-                  {/* Action 3: Expandable Options Dropdown/Drawer Button */}
+                  {/* Action 3: Expandable Options Drawer Trigger */}
                   <button
                     type="button"
                     onClick={() => setOptionsDrawerOpen(!optionsDrawerOpen)}
-                    className={`min-h-[42px] sm:min-h-[44px] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl font-bold text-xs transition-all shadow-sm active:scale-95 border ${
-                      optionsDrawerOpen || thermalMode || cameraSettings.resolution === "480p"
-                        ? "bg-amber-600 hover:bg-amber-700 text-white border-amber-500 shadow-amber-500/20"
-                        : "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600"
+                    className={`flex-1 sm:flex-initial min-w-[95px] min-h-[44px] flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl font-extrabold text-xs whitespace-nowrap shrink-0 transition-all shadow-sm active:scale-95 border ${
+                      optionsDrawerOpen
+                        ? "bg-amber-600 hover:bg-amber-500 text-white border-amber-400/60 shadow-amber-900/30"
+                        : "bg-[#2a174a] hover:bg-[#351e5c] text-purple-100 border-purple-500/30"
                     }`}
                     title="خيارات إضافية: جودة الكاميرا، الملصقات الحرارية، واختيار العدسة"
                   >
-                    <span className="text-base shrink-0">⚙️</span>
-                    <span className="whitespace-nowrap text-[11px] sm:text-xs">خيارات</span>
-                    <span className="text-[10px] opacity-75">{optionsDrawerOpen ? "▲" : "▼"}</span>
+                    <span className="text-sm shrink-0">⚙️</span>
+                    <span className="whitespace-nowrap">خيارات</span>
+                    <span className="text-[10px] opacity-80">{optionsDrawerOpen ? "▲" : "▼"}</span>
                   </button>
                 </div>
 
                 {/* Collapsible Secondary Options Panel */}
                 {optionsDrawerOpen && (
-                  <div className="w-full bg-gray-50 dark:bg-gray-850 p-3 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-md space-y-2.5 animate-in fade-in slide-in-from-top-2 duration-200">
-                    <div className="flex items-center justify-between text-xs pb-1.5 border-b border-gray-200 dark:border-gray-750 font-bold text-gray-700 dark:text-gray-200">
-                      <span>إعدادات وخيارات الكاميرا</span>
+                  <div className="w-full bg-[#1e1136] p-3.5 rounded-2xl border border-purple-500/35 shadow-lg space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="flex items-center justify-between text-xs pb-2 border-b border-purple-500/20 font-extrabold text-purple-100">
+                      <span className="flex items-center gap-1.5">
+                        <span>🛠️</span>
+                        <span>إعدادات وخيارات الكاميرا المتقدمة</span>
+                      </span>
                       <button
                         type="button"
                         onClick={() => setOptionsDrawerOpen(false)}
-                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs font-bold"
+                        className="text-purple-300 hover:text-white text-xs font-bold px-2 py-0.5 rounded-lg hover:bg-purple-800/40 transition-colors whitespace-nowrap"
                       >
                         إغلاق ✕
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
                       {/* Thermal Label Mode Toggle */}
                       <button
                         type="button"
                         onClick={() => setThermalMode(!thermalMode)}
-                        className={`flex items-center justify-between p-2.5 rounded-xl border font-bold transition-all ${
+                        className={`min-h-[44px] flex items-center justify-between p-2.5 rounded-xl border font-bold transition-all whitespace-nowrap ${
                           thermalMode
-                            ? "bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300"
-                            : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"
+                            ? "bg-amber-500/20 border-amber-400/60 text-amber-200"
+                            : "bg-[#150b2a] border-purple-500/30 text-purple-200 hover:bg-[#251444]"
                         }`}
                         title="خوارزمية تباين فائقة لمسح ملصقات الطابعات الحرارية"
                       >
-                        <span className="flex items-center gap-1.5">
+                        <span className="flex items-center gap-1.5 whitespace-nowrap">
                           <span>⚡</span>
                           <span>ملصقات حرارية</span>
                         </span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-extrabold bg-amber-500/20">
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-lg font-extrabold whitespace-nowrap ${
+                            thermalMode
+                              ? "bg-amber-500/30 text-amber-200 border border-amber-400/40"
+                              : "bg-purple-900/50 text-purple-300"
+                          }`}
+                        >
                           {thermalMode ? "مفعّل 🔥" : "إيقاف"}
                         </span>
                       </button>
@@ -626,14 +649,14 @@ export default function BarcodeScanner({
                           setIsSettingsOpen(true);
                           setOptionsDrawerOpen(false);
                         }}
-                        className="flex items-center justify-between p-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-bold hover:bg-gray-100 dark:hover:bg-gray-750 transition-all"
+                        className="min-h-[44px] flex items-center justify-between p-2.5 rounded-xl border border-purple-500/30 bg-[#150b2a] text-purple-100 font-bold hover:bg-[#251444] transition-all whitespace-nowrap"
                         title="تغيير دقة الكاميرا ومعدل الإطارات"
                       >
-                        <span className="flex items-center gap-1.5">
-                          <span>⚙️</span>
+                        <span className="flex items-center gap-1.5 whitespace-nowrap">
+                          <span>🎞️</span>
                           <span>دقة وسرعة الكاميرا</span>
                         </span>
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-600 dark:text-blue-400 font-bold">
+                        <span className="text-[10px] font-mono tabular-nums px-2 py-0.5 rounded-lg bg-[#5b21b6]/50 text-purple-200 border border-purple-400/30 font-bold whitespace-nowrap">
                           {cameraSettings.resolution} • {cameraSettings.fps}fps
                         </span>
                       </button>
@@ -641,12 +664,12 @@ export default function BarcodeScanner({
 
                     {/* Multi-Camera Device Selector (when more than 1 camera exists) */}
                     {availableCameras.length > 1 && (
-                      <div className="flex items-center gap-2 pt-1 border-t border-gray-200 dark:border-gray-750">
-                        <span className="text-[11px] font-bold text-gray-500 shrink-0">العدسة:</span>
+                      <div className="flex items-center gap-2 pt-2 border-t border-purple-500/20">
+                        <span className="text-xs font-bold text-purple-200 shrink-0 whitespace-nowrap">العدسة النشطة:</span>
                         <select
                           value={selectedCameraId}
                           onChange={(e) => handleSelectCamera(e.target.value)}
-                          className="flex-1 px-2.5 py-1.5 rounded-xl text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 font-medium focus:ring-2 focus:ring-blue-500"
+                          className="flex-1 min-h-[38px] px-3 py-1.5 rounded-xl text-xs bg-[#150b2a] border border-purple-500/40 text-purple-100 font-bold focus:outline-none focus:ring-2 focus:ring-purple-500"
                         >
                           <option value="">تلقائي ({facingMode === "environment" ? "خلفية" : "أمامية"})</option>
                           {availableCameras.map((cam, idx) => (
@@ -665,33 +688,33 @@ export default function BarcodeScanner({
               {cameraError ? (
                 <div className="w-full animate-in fade-in duration-200">
                   {cameraErrorType === "permission_denied" ? (
-                    <div className="w-full bg-gradient-to-b from-gray-900 via-gray-900 to-purple-950/80 border border-purple-500/40 rounded-2xl sm:rounded-3xl p-4 sm:p-5 text-right space-y-3.5 shadow-xl text-xs">
-                      <div className="flex items-center justify-between pb-2 border-b border-purple-900/60">
-                        <div className="flex items-center gap-2 text-amber-400 font-extrabold text-sm">
-                          <span className="text-xl">🔒</span>
-                          <span>إذن الكاميرا محظور في المتصفح</span>
+                    <div className="w-full bg-[#1e1136] border border-purple-500/40 rounded-2xl p-4 sm:p-5 text-right space-y-3.5 shadow-xl text-xs">
+                      <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-purple-500/25">
+                        <div className="flex items-center gap-2 text-amber-300 font-extrabold text-sm min-w-0">
+                          <span className="text-lg shrink-0">🔒</span>
+                          <span className="truncate">إذن الكاميرا محظور في المتصفح</span>
                         </div>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-950/80 border border-red-500/40 text-red-300 font-bold">
+                        <span className="text-[10px] px-2.5 py-0.5 rounded-lg bg-red-950/90 border border-red-500/40 text-red-300 font-bold whitespace-nowrap shrink-0">
                           تم الرفض
                         </span>
                       </div>
 
                       <p className="text-purple-200 leading-relaxed text-xs">
-                        قام متصفح هاتفك بحظر تشغيل الكاميرا. يمكنك تفعيلها بخطوات بسيطة لمواصلة المسح:
+                        قام متصفح جهازك بحظر تشغيل الكاميرا. يمكنك تفعيلها بخطوات سريعة لمواصلة المسح:
                       </p>
 
-                      <div className="bg-purple-950/50 rounded-2xl p-3 border border-purple-500/20 space-y-2 text-purple-100 text-[11px] leading-relaxed">
-                        <div className="flex items-start gap-2">
-                          <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 text-xs">1</span>
+                      <div className="bg-[#150b2a] rounded-2xl p-3.5 border border-purple-500/25 space-y-2.5 text-purple-100 text-[11px] leading-relaxed">
+                        <div className="flex items-start gap-2.5">
+                          <span className="w-5 h-5 rounded-full bg-[#5b21b6] text-white font-bold flex items-center justify-center shrink-0 text-xs">1</span>
                           <span>اضغط على أيقونة <strong>القفل 🔒</strong> أو <strong>الإعدادات ⚙️</strong> بجانب رابط الموقع في شريط العناوين بالأعلى.</span>
                         </div>
-                        <div className="flex items-start gap-2">
-                          <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 text-xs">2</span>
-                          <span>اختر <strong>أذونات الموقع (Site settings / Permissions)</strong> ثم غيّر <strong>الكاميرا (Camera)</strong> إلى <strong>سماح (Allow)</strong>.</span>
+                        <div className="flex items-start gap-2.5">
+                          <span className="w-5 h-5 rounded-full bg-[#5b21b6] text-white font-bold flex items-center justify-center shrink-0 text-xs">2</span>
+                          <span>اختر <strong>أذونات الموقع (Permissions)</strong> ثم غيّر <strong>الكاميرا (Camera)</strong> إلى <strong>سماح (Allow)</strong>.</span>
                         </div>
-                        <div className="flex items-start gap-2">
-                          <span className="w-5 h-5 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center shrink-0 text-xs">3</span>
-                          <span>اضغط على زر <strong>إعادة المحاولة</strong> أدناه للبدء في المسح فوراً.</span>
+                        <div className="flex items-start gap-2.5">
+                          <span className="w-5 h-5 rounded-full bg-[#5b21b6] text-white font-bold flex items-center justify-center shrink-0 text-xs">3</span>
+                          <span>اضغط على زر <strong>إعادة طلب الإذن</strong> أدناه للبدء في المسح فوراً.</span>
                         </div>
                       </div>
 
@@ -700,7 +723,7 @@ export default function BarcodeScanner({
                         <button
                           type="button"
                           onClick={() => startCamera()}
-                          className="w-full min-h-[44px] py-2.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold rounded-xl shadow-lg shadow-blue-600/30 active:scale-95 transition-all text-xs flex items-center justify-center gap-2"
+                          className="w-full min-h-[44px] py-2.5 px-4 bg-gradient-to-l from-[#5b21b6] to-[#7c3aed] hover:from-[#6d28d9] hover:to-[#8b5cf6] text-white font-extrabold rounded-xl shadow-lg shadow-purple-900/40 active:scale-95 transition-all text-xs flex items-center justify-center gap-2 whitespace-nowrap"
                         >
                           <span>🔄</span>
                           <span>إعادة طلب الإذن ومحاولة الفتح</span>
@@ -709,7 +732,7 @@ export default function BarcodeScanner({
                           <button
                             type="button"
                             onClick={() => { stopCamera(); setActiveTab("image"); }}
-                            className="min-h-[42px] py-2 px-3 bg-purple-900/60 hover:bg-purple-900 text-purple-200 font-bold rounded-xl border border-purple-500/40 active:scale-95 transition-all text-xs flex items-center justify-center gap-1.5"
+                            className="min-h-[44px] py-2 px-3 bg-[#2a174a] hover:bg-[#351e5c] text-purple-100 font-bold rounded-xl border border-purple-500/35 active:scale-95 transition-all text-xs flex items-center justify-center gap-1.5 whitespace-nowrap"
                           >
                             <span>🖼️</span>
                             <span>مسح من صورة</span>
@@ -717,7 +740,7 @@ export default function BarcodeScanner({
                           <button
                             type="button"
                             onClick={() => { stopCamera(); setActiveTab("manual"); }}
-                            className="min-h-[42px] py-2 px-3 bg-purple-900/60 hover:bg-purple-900 text-purple-200 font-bold rounded-xl border border-purple-500/40 active:scale-95 transition-all text-xs flex items-center justify-center gap-1.5"
+                            className="min-h-[44px] py-2 px-3 bg-[#2a174a] hover:bg-[#351e5c] text-purple-100 font-bold rounded-xl border border-purple-500/35 active:scale-95 transition-all text-xs flex items-center justify-center gap-1.5 whitespace-nowrap"
                           >
                             <span>⌨️</span>
                             <span>إدخال يدوي</span>
@@ -726,35 +749,35 @@ export default function BarcodeScanner({
                       </div>
                     </div>
                   ) : cameraErrorType === "insecure_context" ? (
-                    <div className="w-full bg-amber-950/80 border border-amber-600/50 rounded-2xl sm:rounded-3xl p-4 text-center space-y-2 text-xs">
-                      <span className="text-3xl">⚠️</span>
-                      <h4 className="font-extrabold text-amber-300 text-sm">اتصال غير مشفر (Insecure Context)</h4>
-                      <p className="text-amber-200 leading-relaxed text-[11px]">
-                        تمنع متصفحات الهواتف المحمولة فتح الكاميرا عبر روابط HTTP العادية لحماية خصوصيتك. يرجى فتح الموقع عبر بروتوكول مشفر (HTTPS) أو استخدام الإدخال اليدوي.
+                    <div className="w-full bg-[#1e1136] border border-amber-500/40 rounded-2xl p-4 text-center space-y-2.5 text-xs">
+                      <span className="text-3xl block">⚠️</span>
+                      <h4 className="font-extrabold text-amber-300 text-sm">اتصال غير مشفر (HTTPS مطلوب)</h4>
+                      <p className="text-purple-200 leading-relaxed text-[11px]">
+                        تمنع متصفحات الهواتف فتح الكاميرا عبر روابط HTTP غير المشفرة لحماية خصوصيتك. يرجى فتح الموقع عبر HTTPS أو استخدام الإدخال اليدوي.
                       </p>
                       <button
                         type="button"
                         onClick={() => { stopCamera(); setActiveTab("manual"); }}
-                        className="mt-2 min-h-[44px] px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs active:scale-95 transition-all"
+                        className="mt-2 min-h-[44px] px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs active:scale-95 transition-all whitespace-nowrap"
                       >
                         ⌨️ الانتقال للإدخال اليدوي
                       </button>
                     </div>
                   ) : (
-                    <div className="w-full bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-2xl p-4 text-center space-y-2">
-                      <p className="text-red-600 dark:text-red-400 text-xs sm:text-sm font-medium leading-relaxed">{cameraError}</p>
+                    <div className="w-full bg-[#1e1136] border border-red-500/40 rounded-2xl p-4 text-center space-y-3">
+                      <p className="text-red-300 text-xs sm:text-sm font-bold leading-relaxed">{cameraError}</p>
                       <div className="flex items-center justify-center gap-2 pt-1">
                         <button
                           type="button"
                           onClick={() => startCamera()}
-                          className="min-h-[40px] px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all active:scale-95"
+                          className="min-h-[44px] px-4 py-2 bg-[#5b21b6] hover:bg-[#6d28d9] text-white font-bold rounded-xl text-xs transition-all active:scale-95 whitespace-nowrap"
                         >
                           إعادة المحاولة 🔄
                         </button>
                         <button
                           type="button"
                           onClick={() => { stopCamera(); setActiveTab("manual"); }}
-                          className="min-h-[40px] px-3 py-1.5 bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold rounded-xl text-xs"
+                          className="min-h-[44px] px-4 py-2 bg-[#2a174a] hover:bg-[#351e5c] text-purple-100 font-bold rounded-xl text-xs border border-purple-500/30 whitespace-nowrap"
                         >
                           إدخال يدوي ⌨️
                         </button>
@@ -763,7 +786,8 @@ export default function BarcodeScanner({
                   )}
                 </div>
               ) : (
-                <div className="relative w-full rounded-2xl overflow-hidden bg-black aspect-[4/3] shadow-lg border border-gray-800">
+                /* ── Clean Video Viewport (Free of Duplicate Floating Buttons) ── */
+                <div className="relative w-full rounded-2xl overflow-hidden bg-black aspect-[4/3] shadow-xl border border-purple-500/35">
                   <video
                     ref={videoRef}
                     className={`w-full h-full object-cover transition-transform ${facingMode === "user" ? "-scale-x-100" : ""}`}
@@ -775,22 +799,34 @@ export default function BarcodeScanner({
 
                   {/* Scan viewfinder overlay */}
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className={`w-64 h-48 border-2 rounded-2xl relative transition-all ${
-                      thermalMode ? "border-amber-400 shadow-[0_0_15px_rgba(251,191,36,0.3)]" : "border-blue-400"
-                    }`}>
+                    <div
+                      className={`w-60 sm:w-64 h-44 sm:h-48 border-2 rounded-2xl relative transition-all ${
+                        thermalMode
+                          ? "border-amber-400/90 shadow-[0_0_20px_rgba(251,191,36,0.25)]"
+                          : "border-purple-400/90 shadow-[0_0_20px_rgba(168,85,247,0.25)]"
+                      }`}
+                    >
                       {/* Corner accents */}
-                      <div className={`absolute top-0 left-0 w-7 h-7 border-t-4 border-l-4 rounded-tl-xl ${
-                        thermalMode ? "border-amber-400" : "border-blue-400"
-                      }`} />
-                      <div className={`absolute top-0 right-0 w-7 h-7 border-t-4 border-r-4 rounded-tr-xl ${
-                        thermalMode ? "border-amber-400" : "border-blue-400"
-                      }`} />
-                      <div className={`absolute bottom-0 left-0 w-7 h-7 border-b-4 border-l-4 rounded-bl-xl ${
-                        thermalMode ? "border-amber-400" : "border-blue-400"
-                      }`} />
-                      <div className={`absolute bottom-0 right-0 w-7 h-7 border-b-4 border-r-4 rounded-br-xl ${
-                        thermalMode ? "border-amber-400" : "border-blue-400"
-                      }`} />
+                      <div
+                        className={`absolute top-0 left-0 w-7 h-7 border-t-4 border-l-4 rounded-tl-xl ${
+                          thermalMode ? "border-amber-400" : "border-purple-400"
+                        }`}
+                      />
+                      <div
+                        className={`absolute top-0 right-0 w-7 h-7 border-t-4 border-r-4 rounded-tr-xl ${
+                          thermalMode ? "border-amber-400" : "border-purple-400"
+                        }`}
+                      />
+                      <div
+                        className={`absolute bottom-0 left-0 w-7 h-7 border-b-4 border-l-4 rounded-bl-xl ${
+                          thermalMode ? "border-amber-400" : "border-purple-400"
+                        }`}
+                      />
+                      <div
+                        className={`absolute bottom-0 right-0 w-7 h-7 border-b-4 border-r-4 rounded-br-xl ${
+                          thermalMode ? "border-amber-400" : "border-purple-400"
+                        }`}
+                      />
 
                       {/* Center Crosshairs for Small Thermal Codes */}
                       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 pointer-events-none opacity-40">
@@ -800,120 +836,74 @@ export default function BarcodeScanner({
 
                       {/* Scan line animation */}
                       <div
-                        className={`absolute inset-x-2 h-0.5 animate-[scan_1.6s_ease-in-out_infinite] ${
-                          thermalMode ? "bg-amber-400 shadow-[0_0_8px_#fbbf24]" : "bg-blue-400/90 shadow-[0_0_8px_#60a5fa]"
+                        className={`absolute inset-x-2 h-0.5 ${
+                          thermalMode
+                            ? "bg-amber-400 shadow-[0_0_8px_#fbbf24]"
+                            : "bg-purple-400 shadow-[0_0_8px_#c084fc]"
                         }`}
                         style={{ top: "50%", animation: "scan 1.6s ease-in-out infinite" }}
                       />
                     </div>
                   </div>
 
-                  {/* Status Indicator Pill */}
-                  <div className="absolute top-3 left-3 flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] text-white font-mono">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>{thermalMode ? "Thermal OCR ⚡" : "Standard QR"}</span>
-                  </div>
-
-                  {/* Floating Controls on Video (Top Right) */}
-                  <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 pointer-events-auto">
-                    {/* Floating Camera Settings Button on Video */}
-                    <button
-                      type="button"
-                      onClick={() => setIsSettingsOpen(true)}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-bold backdrop-blur-md border shadow-md transition-all active:scale-95 ${
-                        cameraSettings.resolution === "480p" && cameraSettings.fps === 15
-                          ? "bg-amber-600/85 hover:bg-amber-600 text-white border-amber-400/60 shadow-amber-500/20"
-                          : "bg-black/60 hover:bg-black/80 text-gray-200 border-white/20"
-                      }`}
-                      title="إعدادات دقة وسرعة الكاميرا (Resolution & FPS)"
-                    >
-                      <span>⚙️</span>
-                      <span className="hidden sm:inline">{cameraSettings.resolution}</span>
-                    </button>
-
-                    {/* Floating Sensory Feedback Toggle on Screen */}
-                    <button
-                      type="button"
-                      onClick={toggleSensoryFeedback}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-bold backdrop-blur-md border shadow-md transition-all active:scale-95 ${
-                        sensoryFeedbackEnabled
-                          ? "bg-emerald-600/85 hover:bg-emerald-600 text-white border-emerald-400/60 shadow-emerald-500/20"
-                          : "bg-black/60 hover:bg-black/80 text-gray-300 border-white/20"
-                      }`}
-                      title={sensoryFeedbackEnabled ? "الملاحظات الحسية (صوت واهتزاز) مفعّلة - اضغط للإيقاف" : "الملاحظات الحسية معطلة - اضغط للتفعيل"}
-                    >
-                      <span>{sensoryFeedbackEnabled ? "🔊📳" : "🔇"}</span>
-                      <span className="hidden sm:inline">{sensoryFeedbackEnabled ? "صوت واهتزاز" : "صامت"}</span>
-                    </button>
-
-                    {/* Floating Camera Switch Button on Video */}
-                    <button
-                      type="button"
-                      onClick={toggleCameraFacing}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/60 hover:bg-black/80 active:scale-95 text-white text-[11px] font-bold backdrop-blur-md border border-white/20 shadow-md transition-all"
-                      title="تبديل الكاميرا (أمامية / خلفية)"
-                    >
-                      <span>🔄</span>
-                      <span>{facingMode === "environment" ? "أمامية" : "خلفية"}</span>
-                    </button>
-                  </div>
-
                   {isScanning && (
-                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/70 text-white text-xs px-3.5 py-1 rounded-full backdrop-blur-sm border border-white/10 font-bold flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping" />
+                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-[#150b2a]/85 text-purple-100 text-xs px-3.5 py-1.5 rounded-xl backdrop-blur-md border border-purple-400/30 font-bold flex items-center gap-2 whitespace-nowrap shadow-lg">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
                       <span>ضع الملصق أو الباركود داخل الإطار</span>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Bottom Quick Tools (Torch & Zoom) */}
-              <div className="w-full flex items-center justify-between gap-2 pt-1">
-                {/* Flashlight Toggle */}
-                {streamRef.current && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const track = streamRef.current?.getVideoTracks()[0];
-                      if (!track) return;
-                      try {
-                        await (track as MediaStreamTrack & { applyConstraints: (c: object) => Promise<void> })
-                          .applyConstraints({ advanced: [{ torch: !torchOn } as object] } as object);
-                        setTorchOn(!torchOn);
-                      } catch { /* torch not supported */ }
-                    }}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
-                      torchOn
-                        ? "bg-yellow-400/20 border-yellow-400/50 text-yellow-800 dark:text-yellow-300"
-                        : "bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300"
-                    }`}
-                  >
-                    <span>{torchOn ? "🔦" : "💡"}</span>
-                    <span>{torchOn ? "إيقاف الفلاش" : "تشغيل الفلاش"}</span>
-                  </button>
-                )}
+              {/* Bottom Quick Hardware Strip (Torch & Zoom - Outside Video) */}
+              {(streamRef.current || supportsZoom) && !cameraError && (
+                <div className="w-full flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                  {/* Flashlight Toggle */}
+                  {streamRef.current && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const track = streamRef.current?.getVideoTracks()[0];
+                        if (!track) return;
+                        try {
+                          await (track as MediaStreamTrack & { applyConstraints: (c: object) => Promise<void> })
+                            .applyConstraints({ advanced: [{ torch: !torchOn } as object] } as object);
+                          setTorchOn(!torchOn);
+                        } catch { /* torch not supported */ }
+                      }}
+                      className={`min-h-[40px] flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border whitespace-nowrap ${
+                        torchOn
+                          ? "bg-amber-500/25 border-amber-400/60 text-amber-200"
+                          : "bg-[#1e1136] border-purple-500/30 text-purple-200 hover:bg-[#2a174a]"
+                      }`}
+                    >
+                      <span>{torchOn ? "🔦" : "💡"}</span>
+                      <span>{torchOn ? "إيقاف الفلاش" : "تشغيل الفلاش"}</span>
+                    </button>
+                  )}
 
-                {/* Digital Zoom Stepper for Small Thermal Stickers */}
-                {supportsZoom && (
-                  <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl border border-gray-200 dark:border-gray-700 text-xs">
-                    <span className="text-[10px] text-gray-500 font-bold px-1">تقريب:</span>
-                    {[1, 1.5, 2].map((z) => (
-                      <button
-                        key={z}
-                        type="button"
-                        onClick={() => handleSetZoom(z)}
-                        className={`px-2 py-0.5 rounded-lg text-xs font-bold font-mono transition-all ${
-                          Math.abs(zoomLevel - z) < 0.1
-                            ? "bg-blue-600 text-white shadow-2xs"
-                            : "text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
-                        }`}
-                      >
-                        {z}×
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+                  {/* Digital Zoom Stepper for Small Thermal Stickers */}
+                  {supportsZoom && (
+                    <div className="flex items-center gap-1 bg-[#1e1136] p-1 rounded-xl border border-purple-500/30 text-xs">
+                      <span className="text-[11px] text-purple-300 font-bold px-1.5 whitespace-nowrap">تقريب:</span>
+                      {[1, 1.5, 2].map((z) => (
+                        <button
+                          key={z}
+                          type="button"
+                          onClick={() => handleSetZoom(z)}
+                          className={`min-h-[32px] px-2.5 py-0.5 rounded-lg text-xs font-bold font-mono tabular-nums transition-all whitespace-nowrap ${
+                            Math.abs(zoomLevel - z) < 0.1
+                              ? "bg-[#5b21b6] text-white border border-purple-400/40 shadow-xs"
+                              : "text-purple-200 hover:bg-purple-900/40"
+                          }`}
+                        >
+                          {z}×
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -921,7 +911,7 @@ export default function BarcodeScanner({
           {activeTab === "image" && (
             <div className="flex flex-col items-center gap-4">
               <div
-                className="w-full border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-2xl p-8 text-center cursor-pointer hover:border-blue-400 dark:hover:border-blue-600 hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-all"
+                className="w-full border-2 border-dashed border-purple-500/40 bg-[#1e1136]/70 rounded-2xl p-8 text-center cursor-pointer hover:border-purple-400 hover:bg-[#251542] transition-all"
                 onClick={() => fileInputRef.current?.click()}
                 onDragOver={(e) => { e.preventDefault(); }}
                 onDrop={(e) => {
@@ -935,15 +925,15 @@ export default function BarcodeScanner({
                     <img
                       src={URL.createObjectURL(imageFile)}
                       alt="صورة الباركود"
-                      className="max-h-32 rounded-xl object-contain"
+                      className="max-h-36 rounded-xl object-contain border border-purple-500/30"
                     />
-                    <p className="text-xs text-gray-500">{imageFile.name}</p>
+                    <p className="text-xs text-purple-200 font-mono truncate max-w-full">{imageFile.name}</p>
                   </div>
                 ) : (
                   <>
-                    <span className="text-4xl mb-2 block">🖼</span>
-                    <p className="text-sm font-bold text-gray-700 dark:text-gray-300">اسحب صورة هنا أو انقر للاختيار</p>
-                    <p className="text-xs text-gray-400 mt-1">يدعم: JPG، PNG، WebP</p>
+                    <span className="text-4xl mb-2.5 block">🖼️</span>
+                    <p className="text-sm font-extrabold text-white">اسحب صورة الباركود هنا أو انقر للاختيار</p>
+                    <p className="text-xs text-purple-300/80 mt-1">يدعم الصيغ: JPG، PNG، WebP</p>
                   </>
                 )}
               </div>
@@ -958,12 +948,15 @@ export default function BarcodeScanner({
                 }}
               />
               {imageDecoding && (
-                <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 text-sm font-medium animate-pulse">
-                  <span>🔍</span><span>جاري فك شيفرة الباركود...</span>
+                <div className="flex items-center gap-2 text-purple-300 text-sm font-bold animate-pulse">
+                  <span>🔍</span>
+                  <span>جاري فك شيفرة الباركود من الصورة...</span>
                 </div>
               )}
               {imageError && (
-                <p className="text-red-600 dark:text-red-400 text-sm text-center">{imageError}</p>
+                <p className="text-red-300 bg-red-950/50 border border-red-500/30 px-4 py-2.5 rounded-xl text-xs font-bold text-center w-full">
+                  {imageError}
+                </p>
               )}
             </div>
           )}
@@ -971,9 +964,9 @@ export default function BarcodeScanner({
           {/* ── Manual Entry Tab ── */}
           {activeTab === "manual" && (
             <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-bold text-gray-700 dark:text-gray-300">
-                  أدخل رقم الباركود أو QR يدوياً
+              <div className="flex flex-col gap-2.5">
+                <label className="text-sm font-extrabold text-purple-100">
+                  أدخل رقم الباركود أو كود QR يدوياً
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -981,24 +974,25 @@ export default function BarcodeScanner({
                     value={manualCode}
                     onChange={(e) => setManualCode(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter" && manualCode.trim().length >= 4) {
+                      if (e.key === "Enter" && manualCode.trim().length >= 1) {
                         handleScannedCode(manualCode);
                       }
                     }}
                     placeholder="مثال: 6221234560001"
-                    className="flex-1 px-4 py-3 rounded-2xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-base font-mono tracking-wider focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                    className="flex-1 px-4 py-3 rounded-2xl border border-purple-500/40 bg-[#1e1136] text-white placeholder-purple-300/40 text-base font-mono tabular-nums tracking-wider focus:outline-none focus:ring-2 focus:ring-purple-500 text-center"
                     inputMode="text"
                     autoFocus
                   />
                 </div>
-                <p className="text-xs text-gray-400 text-center">
-                  اكتب الرقم ثم اضغط Enter أو زر البحث
+                <p className="text-xs text-purple-300/80 text-center">
+                  اكتب الرقم ثم اضغط Enter أو زر البحث أدناه
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => manualCode.trim().length >= 1 && handleScannedCode(manualCode)}
                 disabled={manualCode.trim().length < 1}
-                className="w-full py-3 rounded-2xl bg-gradient-to-l from-blue-600 to-indigo-600 text-white font-extrabold text-base hover:from-blue-700 hover:to-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg"
+                className="w-full min-h-[48px] py-3 rounded-2xl bg-gradient-to-l from-[#5b21b6] to-[#7c3aed] hover:from-[#6d28d9] hover:to-[#8b5cf6] text-white font-extrabold text-sm sm:text-base disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-purple-950/60 whitespace-nowrap"
               >
                 🔍 بحث عن المنتج
               </button>
