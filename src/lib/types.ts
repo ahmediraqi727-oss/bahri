@@ -183,12 +183,17 @@ export interface SiteSettings {
   // AI & Gemini Engine Configuration
   geminiApiKey?: string;
 
+  // Out-of-Stock Storefront Visibility Policy
+  outOfStockVisibility?: OutOfStockVisibility;
+
   roleThemes: {
     manager: RoleTheme;
     admin: RoleTheme;
     customer: RoleTheme;
   };
 }
+
+export type OutOfStockVisibility = "everyone" | "staff_only" | "none";
 
 export interface CustomerNotificationCategorySettings {
   allowReplies: boolean;
@@ -290,6 +295,7 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   importMarkupPct: 10,
   importWholesaleReductionPct: 10,
   geminiApiKey: "",
+  outOfStockVisibility: "staff_only",
   roleThemes: {
     manager: { primary: "#1e40af", secondary: "#7c3aed", accent: "#f59e0b" },
     admin: { primary: "#059669", secondary: "#0891b2", accent: "#f97316" },
@@ -335,6 +341,7 @@ export interface Product {
   profitMargin: number;
   retailPrice: number;
   stock: number;
+  batchStock?: number;
   supplierId: string;
   notes: string;
   createdAt: string;
@@ -370,6 +377,7 @@ export interface BackupProductItem {
   profitMargin?: number;
   stockQuantity?: number;
   stock?: number;
+  batchStock?: number;
   barcode?: string | null;
   qrCodeData?: string | null;
   qrCode?: string | null;

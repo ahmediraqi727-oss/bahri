@@ -1117,6 +1117,115 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      {/* === Section 5.4: Out-of-Stock Products Visibility Management === */}
+      <section className="bg-white dark:bg-[#150b2a] rounded-2xl border border-purple-200 dark:border-purple-700/40 p-6 space-y-5 shadow-sm" dir="rtl">
+        <div className="flex items-center justify-between flex-wrap gap-3 pb-3 border-b border-gray-100 dark:border-purple-800/40">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-red-600 to-purple-700 text-white flex items-center justify-center text-xl shadow-md shrink-0">
+              📦
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-extrabold text-gray-900 dark:text-white">
+                إدارة عرض المنتجات النافدة من المخزون
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-purple-200/75 mt-0.5">
+                التحكم بكيفية ظهور المنتجات التي وصلت كميتها إلى صفر (0) في واجهة المتجر والأقسام (مع إطار التنبيه الأحمر)
+              </p>
+            </div>
+          </div>
+
+          <Link
+            href="/dashboard/inventory"
+            className="px-3.5 py-2 rounded-xl bg-purple-100 dark:bg-purple-900/50 hover:bg-purple-200 dark:hover:bg-purple-800/70 text-purple-800 dark:text-purple-200 text-xs font-extrabold transition-colors whitespace-nowrap"
+          >
+            فتح إدارة المخزون ←
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+          {[
+            {
+              value: "everyone" as const,
+              title: "عرض منتجات للجميع",
+              subtitle: "تظهر لجميع الزوار والزبائن محاطة بإطار أحمر بارز مع شارة (نفدت الكمية)",
+            },
+            {
+              value: "staff_only" as const,
+              title: "عرض للمدير والإدارة",
+              subtitle: "تظهر للمدير والإداريين فقط (بالإطار الأحمر للمتابعة) وتختفي تلقائياً عن الزبائن",
+            },
+            {
+              value: "none" as const,
+              title: "عدم عرض",
+              subtitle: "إخفاء المنتجات النافدة تماماً من واجهة المتجر للجميع مع بقائها في صدارة قسم الجرد",
+            },
+          ].map((opt) => {
+            const currentPolicy = formData.outOfStockVisibility || "staff_only";
+            const isSelected = currentPolicy === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={async () => {
+                  handleChange({ outOfStockVisibility: opt.value });
+                  try {
+                    await updateSettings({ outOfStockVisibility: opt.value });
+                    setSavedSuccess(true);
+                    setTimeout(() => setSavedSuccess(false), 3000);
+                  } catch {
+                    /* handled by settings context */
+                  }
+                }}
+                className={`text-right p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                  isSelected
+                    ? "bg-gradient-to-br from-purple-900/90 via-[#221142] to-indigo-950 text-white border-purple-400 shadow-lg shadow-purple-500/20"
+                    : "bg-gray-50 dark:bg-[#1c1036]/70 text-gray-800 dark:text-gray-200 border-gray-200 dark:border-purple-800/40 hover:border-purple-400/60"
+                }`}
+              >
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-extrabold text-sm">{opt.title}</span>
+                    <span
+                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center text-[11px] font-black shrink-0 ${
+                        isSelected
+                          ? "border-white bg-purple-500 text-white"
+                          : "border-gray-400 dark:border-purple-500/50"
+                      }`}
+                    >
+                      {isSelected ? "✓" : ""}
+                    </span>
+                  </div>
+                  <p
+                    className={`text-xs leading-relaxed ${
+                      isSelected ? "text-purple-100/90" : "text-gray-500 dark:text-purple-300/70"
+                    }`}
+                  >
+                    {opt.subtitle}
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px] font-bold">
+                  <span className={isSelected ? "text-emerald-300" : "text-gray-400"}>
+                    {isSelected ? "مفعّل حالياً" : "اضغط للتفعيل الفوري"}
+                  </span>
+                  {opt.value === "staff_only" && (
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] ${
+                        isSelected
+                          ? "bg-white/20 text-white"
+                          : "bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300"
+                      }`}
+                    >
+                      موصى به
+                    </span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
       {/* === Section 5.5: Dynamic Footer System Management === */}
       <FooterSettingsManager />
 

@@ -104,12 +104,17 @@ export default function ProductCard({
 
   // SEO-optimized image alt text
   const productAlt = generateProductAltText(product, selectedCategory);
+  const isOutOfStock = (product.stock ?? 0) <= 0;
 
   return (
     <article
-      className="group bg-white dark:bg-gray-900 rounded-2xl border border-gray-200/90 dark:border-gray-800/90 overflow-hidden hover:-translate-y-2 hover:shadow-2xl hover:shadow-violet-500/10 hover:border-violet-400/60 dark:hover:border-violet-600/60 transition-all duration-300 ease-out flex flex-col justify-between relative max-w-full transform-gpu will-change-transform"
+      className={`group rounded-2xl overflow-hidden hover:-translate-y-1.5 transition-all duration-200 ease-out flex flex-col justify-between relative max-w-full transform-gpu will-change-transform ${
+        isOutOfStock
+          ? "bg-white dark:bg-[#1a0b1e] border-2 border-red-500 dark:border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.28)] ring-1 ring-red-500/40"
+          : "bg-white dark:bg-gray-900 border border-gray-200/90 dark:border-gray-800/90 hover:shadow-2xl hover:shadow-violet-500/10 hover:border-violet-400/60 dark:hover:border-violet-600/60"
+      }`}
       dir="rtl"
-      aria-label={`منتج: ${product.name}`}
+      aria-label={`منتج: ${product.name}${isOutOfStock ? " (نفدت الكمية)" : ""}`}
     >
       {/* Product Image Box */}
       <div
@@ -122,9 +127,12 @@ export default function ProductCard({
             alt={productAlt}
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-            className="object-cover group-hover:scale-110 transition-transform duration-700 ease-out will-change-transform"
+            className={`object-cover group-hover:scale-110 transition-transform duration-700 ease-out will-change-transform ${
+              isOutOfStock ? "opacity-85 saturate-75" : ""
+            }`}
             priority={priorityImage}
             loading={priorityImage ? undefined : "lazy"}
+            referrerPolicy="no-referrer"
           />
         ) : (
           <div
@@ -132,6 +140,15 @@ export default function ProductCard({
             aria-hidden="true"
           >
             📦
+          </div>
+        )}
+
+        {/* Out-of-Stock Top Banner / Frame Indicator */}
+        {isOutOfStock && (
+          <div className="absolute top-2.5 left-2.5 z-10">
+            <span className="px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-red-600/95 text-white border border-red-400/60 shadow-lg backdrop-blur-xs whitespace-nowrap">
+              نفدت الكمية
+            </span>
           </div>
         )}
 
@@ -143,7 +160,7 @@ export default function ProductCard({
         </div>
 
         {/* Tier Mode Discount Badge */}
-        {hasDiscount && qty > 1 && (
+        {hasDiscount && qty > 1 && !isOutOfStock && (
           <div className="absolute top-2 right-2 z-10 animate-popIn">
             <span className="px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-red-600 text-white shadow-md">
               -{activeTier.discountPct}%
@@ -181,7 +198,7 @@ export default function ProductCard({
         </div>
 
         {/* Dual Price Display */}
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 tabular-nums">
           {qty === 1 || !hasDiscount ? (
             wholesalePriceVal < product.retailPrice ? (
               <div className="flex items-baseline gap-1.5 flex-wrap">
@@ -237,32 +254,38 @@ export default function ProductCard({
           {/* Stepper */}
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] font-bold text-gray-400 flex-shrink-0">الكمية:</span>
-            <div className="flex items-center bg-gray-100 dark:bg-gray-800/90 rounded-xl overflow-hidden flex-1 border border-gray-200/50 dark:border-gray-700/50 shadow-2xs">
+            <div
+              className={`flex items-center bg-gray-100 dark:bg-gray-800/90 rounded-xl overflow-hidden flex-1 border border-gray-200/50 dark:border-gray-700/50 shadow-2xs ${
+                isOutOfStock ? "opacity-50 pointer-events-none" : ""
+              }`}
+            >
               <button
                 type="button"
+                disabled={isOutOfStock}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleQtyUpdate(qty - 1);
                 }}
-                className="w-7 h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-violet-100 dark:hover:bg-violet-950/60 hover:text-violet-700 dark:hover:text-violet-300 active:scale-90 font-bold text-sm transition-all duration-150 flex-shrink-0 cursor-pointer"
+                className="w-7 h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-violet-100 dark:hover:bg-violet-950/60 hover:text-violet-700 dark:hover:text-violet-300 active:scale-90 font-bold text-sm transition-all duration-150 flex-shrink-0 cursor-pointer disabled:cursor-not-allowed"
                 aria-label={`تقليل الكمية لـ ${product.name}`}
               >
                 −
               </button>
               <span
                 key={qty}
-                className="flex-1 text-center text-xs font-extrabold text-gray-900 dark:text-white transition-all duration-150 animate-popIn"
+                className="flex-1 text-center text-xs font-extrabold text-gray-900 dark:text-white transition-all duration-150 animate-popIn tabular-nums"
                 aria-live="polite"
               >
-                {qty}
+                {isOutOfStock ? 0 : qty}
               </span>
               <button
                 type="button"
+                disabled={isOutOfStock}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleQtyUpdate(qty + 1);
                 }}
-                className="w-7 h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-violet-100 dark:hover:bg-violet-950/60 hover:text-violet-700 dark:hover:text-violet-300 active:scale-90 font-bold text-sm transition-all duration-150 flex-shrink-0 cursor-pointer"
+                className="w-7 h-7 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:bg-violet-100 dark:hover:bg-violet-950/60 hover:text-violet-700 dark:hover:text-violet-300 active:scale-90 font-bold text-sm transition-all duration-150 flex-shrink-0 cursor-pointer disabled:cursor-not-allowed"
                 aria-label={`زيادة الكمية لـ ${product.name}`}
               >
                 +
@@ -270,7 +293,7 @@ export default function ProductCard({
             </div>
           </div>
 
-          {/* Action Row: Wishlist Heart -> Staff Gear Button -> Add to Cart */}
+          {/* Action Row: Wishlist Heart -> Staff Gear Button -> Add to Cart / Out-of-Stock Badge */}
           <div className="flex items-center gap-2">
             {onToggleFavorite && (
               <button
@@ -316,31 +339,43 @@ export default function ProductCard({
               </button>
             )}
 
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onAddToCart?.(product, qty);
-              }}
-              disabled={isAdded}
-              className="flex-1 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold text-white transition-all duration-200 hover:scale-[1.03] active:scale-[0.97] disabled:scale-100 shadow-md hover:shadow-lg min-h-[36px] sm:min-h-[40px] flex items-center justify-center gap-1 cursor-pointer transform-gpu"
-              style={{ backgroundColor: isAdded ? "#10b981" : theme.primary }}
-              aria-label={`إضافة ${product.name} إلى السلة`}
-            >
-              {isAdded ? (
-                <span className="flex items-center gap-1 animate-popIn">
-                  <span>✓</span>
-                  <span>تم الإضافة</span>
-                </span>
-              ) : (
-                <span>
-                  أضف {qty > 1 ? `${qty} قطع` : ""} للسلة 🛒
-                  {hasDiscount && (
-                    <span className="mr-1 opacity-80">(-{activeTier.discountPct}%)</span>
-                  )}
-                </span>
-              )}
-            </button>
+            {isOutOfStock ? (
+              <button
+                type="button"
+                disabled
+                onClick={(e) => e.stopPropagation()}
+                className="flex-1 px-3 py-2 rounded-xl text-xs sm:text-sm font-extrabold bg-red-600/15 dark:bg-red-950/80 border border-red-500/60 text-red-600 dark:text-red-400 min-h-[36px] sm:min-h-[40px] flex items-center justify-center gap-1.5 cursor-not-allowed whitespace-nowrap shrink-0"
+                aria-label={`${product.name} نفدت الكمية`}
+              >
+                <span>نفدت الكمية</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddToCart?.(product, qty);
+                }}
+                disabled={isAdded}
+                className="flex-1 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold text-white transition-all duration-200 hover:scale-[1.03] active:scale-[0.97] disabled:scale-100 shadow-md hover:shadow-lg min-h-[36px] sm:min-h-[40px] flex items-center justify-center gap-1 cursor-pointer transform-gpu whitespace-nowrap"
+                style={{ backgroundColor: isAdded ? "#10b981" : theme.primary }}
+                aria-label={`إضافة ${product.name} إلى السلة`}
+              >
+                {isAdded ? (
+                  <span className="flex items-center gap-1 animate-popIn">
+                    <span>✓</span>
+                    <span>تم الإضافة</span>
+                  </span>
+                ) : (
+                  <span>
+                    أضف {qty > 1 ? `${qty} قطع` : ""} للسلة 🛒
+                    {hasDiscount && (
+                      <span className="mr-1 opacity-80">(-{activeTier.discountPct}%)</span>
+                    )}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </div>

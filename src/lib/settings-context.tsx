@@ -156,6 +156,17 @@ function rowToSettings(row: Record<string, unknown>): SiteSettings {
     importMarkupPct: row.import_markup_pct != null ? Number(row.import_markup_pct) : 10,
     importWholesaleReductionPct: row.import_wholesale_reduction_pct != null ? Number(row.import_wholesale_reduction_pct) : 10,
     geminiApiKey: (row.gemini_api_key as string) || (row.geminiApiKey as string) || "",
+    outOfStockVisibility: (() => {
+      const raw = (row.out_of_stock_visibility as string) || (row.outOfStockVisibility as string);
+      if (raw === "everyone" || raw === "staff_only" || raw === "none") return raw;
+      if (typeof window !== "undefined") {
+        const localVal = localStorage.getItem("ahmed_bahri_out_of_stock_visibility");
+        if (localVal === "everyone" || localVal === "staff_only" || localVal === "none") {
+          return localVal;
+        }
+      }
+      return "staff_only";
+    })(),
 
     currentRole: "manager",
     roleThemes: {
@@ -267,6 +278,7 @@ function settingsToRow(settings: SiteSettings): Record<string, unknown> {
     import_markup_pct: settings.importMarkupPct ?? 10,
     import_wholesale_reduction_pct: settings.importWholesaleReductionPct ?? 10,
     gemini_api_key: settings.geminiApiKey || "",
+    out_of_stock_visibility: settings.outOfStockVisibility || "staff_only",
 
     notification_sound_url: settings.notificationSoundUrl || "/sounds/chime.mp3",
     notification_volume: settings.notificationVolume ?? 0.8,
@@ -374,47 +386,59 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     async (updates: Partial<SiteSettings>) => {
       // 1. دمج الإعدادات الجديدة مع الحالة الحالية
       const mergedSettings: SiteSettings = { ...settings, ...updates };
+      if (typeof window !== "undefined" && mergedSettings.outOfStockVisibility) {
+        localStorage.setItem("ahmed_bahri_out_of_stock_visibility", mergedSettings.outOfStockVisibility);
+      }
       const payload = settingsToRow(mergedSettings);
 
-      try {
+      const executeUpdateOrInsert = async (rowPayload: Record<string, unknown>) => {
         let savedRow: Record<string, unknown> | null = null;
-
-        // 2. محاولة التحديث باستخدام المعرف الحالي إن وجد
         if (settingsId) {
           const { data, error } = await supabase
             .from("settings")
-            .update(payload)
+            .update(rowPayload)
             .eq("id", settingsId)
             .select()
             .maybeSingle();
-
           if (error) throw new Error(error.message);
           savedRow = data;
         }
-
-        // 3. في حال عدم وجود معرف أو عدم تعديل أي صف (Fallback to First Row / Insert)
         if (!savedRow) {
           const existing = await supabase.from("settings").select("id").limit(1).maybeSingle();
-
           if (existing.data?.id) {
             const { data, error } = await supabase
               .from("settings")
-              .update(payload)
+              .update(rowPayload)
               .eq("id", existing.data.id)
               .select()
               .maybeSingle();
-
             if (error) throw new Error(error.message);
             savedRow = data;
           } else {
             const { data, error } = await supabase
               .from("settings")
-              .insert(payload)
+              .insert(rowPayload)
               .select()
               .maybeSingle();
-
             if (error) throw new Error(error.message);
             savedRow = data;
+          }
+        }
+        return savedRow;
+      };
+
+      try {
+        let savedRow: Record<string, unknown> | null = null;
+        try {
+          savedRow = await executeUpdateOrInsert(payload);
+        } catch (firstErr: unknown) {
+          const msg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+          if (msg.includes("out_of_stock_visibility")) {
+            const fallbackPayload = { ...payload };
+            delete fallbackPayload.out_of_stock_visibility;
+            savedRow = await executeUpdateOrInsert(fallbackPayload);
+          } else {
+            throw firstErr;
           }
         }
 
@@ -425,7 +449,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
         // 5. المزامنة الرسمية فقط بعد تأكيد استجابة Supabase
         if (savedRow.id) setSettingsId(String(savedRow.id));
-        const freshlyParsed = rowToSettings(savedRow);
+        const freshlyParsed = {
+          ...rowToSettings(savedRow),
+          outOfStockVisibility: mergedSettings.outOfStockVisibility || "staff_only",
+        };
         setSettings(freshlyParsed);
 
         if (typeof window !== "undefined") {

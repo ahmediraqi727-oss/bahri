@@ -211,8 +211,15 @@ export default function HomeClient() {
   const categoriesRef = useRef<HTMLDivElement>(null);
 
   const isManager = user?.role === "manager" || user?.role === "admin";
+  const outOfStockPolicy = settings?.outOfStockVisibility || "staff_only";
+  const canSeeOutOfStock =
+    outOfStockPolicy === "everyone" ||
+    (outOfStockPolicy === "staff_only" && isManager);
 
-  const allAvailableProducts = useMemo(() => products, [products]);
+  const allAvailableProducts = useMemo(() => {
+    if (canSeeOutOfStock) return products;
+    return products.filter((p) => (p.stock ?? 0) > 0);
+  }, [products, canSeeOutOfStock]);
 
   // Extract all categories dynamically from categories context and product notes (excluding universal "جميع الاقسام")
   const categoriesList = useMemo(() => {
@@ -239,11 +246,15 @@ export default function HomeClient() {
   } = useAdaptiveProducts({
     searchQuery: search,
     selectedCategory: selectedCategory,
-    initialProducts: products,
+    initialProducts: allAvailableProducts,
   });
 
   const textFilteredProducts = useMemo(() => {
     let result = streamingProducts.length > 0 ? streamingProducts : allAvailableProducts;
+
+    if (!canSeeOutOfStock) {
+      result = result.filter((p) => (p.stock ?? 0) > 0);
+    }
 
     if (selectedCategory) {
       const seenIds = new Set(result.map((p) => p.id));
@@ -272,17 +283,17 @@ export default function HomeClient() {
     }
 
     return result;
-  }, [allAvailableProducts, streamingProducts, search, selectedCategory, suppliers]);
+  }, [allAvailableProducts, streamingProducts, search, selectedCategory, suppliers, canSeeOutOfStock]);
 
   const similarProducts = useMemo(() => {
     if (!search || textFilteredProducts.length > 0 || !searchSubmitted) return [];
     const q = search.toLowerCase();
     const words = q.split(/\s+/).filter(Boolean);
-    return products.filter((p) => {
+    return allAvailableProducts.filter((p) => {
       const name = p.name.toLowerCase();
       return words.some((w) => name.includes(w));
     }).slice(0, 4);
-  }, [search, textFilteredProducts, searchSubmitted, products]);
+  }, [search, textFilteredProducts, searchSubmitted, allAvailableProducts]);
 
   const availableProducts = useMemo(() => {
     if (!imageResults || imageResults.length === 0) return textFilteredProducts;
@@ -301,7 +312,7 @@ export default function HomeClient() {
     if (value.trim().length >= 1) {
       const q = value.toLowerCase();
       setSuggestions(
-        products.filter((p) => {
+        allAvailableProducts.filter((p) => {
           const supplier = suppliers.find((s) => s.id === p.supplierId);
           return p.name.toLowerCase().includes(q) || (supplier?.name.toLowerCase().includes(q));
         }).slice(0, 5)

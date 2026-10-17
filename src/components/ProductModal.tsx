@@ -67,6 +67,9 @@ export default function ProductModal({
   const [profitMargin, setProfitMargin] = useState("");
   const [retailPrice, setRetailPrice] = useState("");
   const [stock, setStock] = useState("");
+  const [batchStock, setBatchStock] = useState("");
+  const [batchManuallyEdited, setBatchManuallyEdited] = useState(false);
+  const [incomingBatchQty, setIncomingBatchQty] = useState("");
   const [supplierId, setSupplierId] = useState("");
   const [notes, setNotes] = useState("");
   // Barcode & QR Code fields
@@ -89,6 +92,7 @@ export default function ProductModal({
   useEffect(() => {
     setError("");
     setSubmitting(false);
+    setIncomingBatchQty("");
     if (product) {
       setName(product.name);
       setImage(product.image);
@@ -97,6 +101,9 @@ export default function ProductModal({
       setProfitMargin(product.profitMargin.toString());
       setRetailPrice(product.retailPrice.toString());
       setStock(product.stock.toString());
+      const initialBatch = Math.max(product.batchStock ?? product.stock ?? 0, product.stock ?? 0);
+      setBatchStock(initialBatch.toString());
+      setBatchManuallyEdited(true);
       setSupplierId(product.supplierId);
       setNotes(product.notes);
       setBarcode(product.barcode || initialBarcode || "");
@@ -111,7 +118,8 @@ export default function ProductModal({
       setNewSupplierName("");
     } else {
       setName(""); setImage(""); setCostPrice(""); setWholesalePrice("");
-      setProfitMargin(""); setRetailPrice(""); setStock(""); setSupplierId("");
+      setProfitMargin(""); setRetailPrice(""); setStock(""); setBatchStock("");
+      setBatchManuallyEdited(false); setSupplierId("");
       setNotes(""); setSelectedCategoryName(""); setCategoryQuery(""); setShowNewSupplier(false); setNewSupplierName("");
       setBarcode(initialBarcode || "");
       setQrCode(initialQrCode || "");
@@ -286,6 +294,9 @@ export default function ProductModal({
 
       const finalNotes = updateNotesWithCategory(notes, finalCategoryName);
 
+      const parsedStock = Math.max(0, parseInt(stock) || 0);
+      const parsedBatch = Math.max(parsedStock, parseInt(batchStock) || parsedStock);
+
       const data = {
         name: name.trim(),
         image,
@@ -293,7 +304,8 @@ export default function ProductModal({
         wholesalePrice: parseFloat(wholesalePrice) || 0,
         profitMargin: parseFloat(profitMargin) || 0,
         retailPrice: parseFloat(retailPrice) || 0,
-        stock: parseInt(stock) || 0,
+        stock: parsedStock,
+        batchStock: parsedBatch,
         supplierId: finalSupplierId,
         notes: finalNotes,
         categoryName: finalCategoryName || null,
@@ -660,15 +672,198 @@ export default function ProductModal({
             </div>
           </div>
 
-          {/* Stock */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">الكمية المتوفرة</label>
-            <input
-              type="number" min="0" value={stock}
-              onChange={(e) => setStock(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none"
-              placeholder="0"
-            />
+          {/* Advanced Quantity & Import / Batch Tracking */}
+          <div className="p-4 rounded-2xl bg-purple-50/50 dark:bg-[#160b2e] border border-purple-200/80 dark:border-purple-500/30 space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h3 className="text-sm font-extrabold text-gray-900 dark:text-white">
+                  إدارة الكمية المتوفرة وإجمالي وجبة الاستيراد
+                </h3>
+                <p className="text-[11px] text-gray-500 dark:text-purple-300/75 mt-0.5">
+                  تُحسب نسبة توفر المخزون بناءً على الكمية المتوفرة حالياً مقسومة على إجمالي كمية الوجبة المستوردة
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentS = Math.max(0, parseInt(stock) || 0);
+                    setBatchStock(currentS.toString());
+                    setBatchManuallyEdited(true);
+                  }}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-200 hover:bg-purple-200 dark:hover:bg-purple-800/70 transition-colors cursor-pointer whitespace-nowrap"
+                  title="جعل إجمالي الوجبة مساوياً للكمية المتوفرة حالياً (100%)"
+                >
+                  مساواة الوجبة بالمتوفر
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStock("0")}
+                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/70 transition-colors cursor-pointer whitespace-nowrap"
+                  title="تصفير الكمية المتوفرة لإظهار المنتج كنافد من المخزون"
+                >
+                  تصفير الكمية
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-bold text-gray-700 dark:text-gray-200 block mb-1.5">
+                  الكمية المتوفرة حالياً بالمخزن *
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={stock}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setStock(val);
+                    const num = parseInt(val) || 0;
+                    const curBatch = parseInt(batchStock) || 0;
+                    if (!batchManuallyEdited || num > curBatch) {
+                      setBatchStock(val);
+                    }
+                  }}
+                  className="w-full px-3.5 py-2.5 border border-purple-300 dark:border-purple-600/50 rounded-xl bg-white dark:bg-[#1f113d] text-gray-900 dark:text-white font-extrabold tabular-nums focus:ring-2 focus:ring-purple-500 outline-none"
+                  placeholder="0"
+                />
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                  عند الوصول إلى 0 يُحاط المنتج بإطار أحمر تلقائياً
+                </p>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-700 dark:text-gray-200 block mb-1.5">
+                  إجمالي كمية الاستيراد / الوجبة الكلية
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={batchStock}
+                  onChange={(e) => {
+                    setBatchStock(e.target.value);
+                    setBatchManuallyEdited(true);
+                  }}
+                  className="w-full px-3.5 py-2.5 border border-purple-300 dark:border-purple-600/50 rounded-xl bg-white dark:bg-[#1f113d] text-gray-900 dark:text-white font-extrabold tabular-nums focus:ring-2 focus:ring-purple-500 outline-none"
+                  placeholder="مثال: 100"
+                />
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                  العدد الكلي للوجبة لحساب النسبة المئوية المتبقية بدقة
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Add Incoming Import Batch Tool */}
+            <div className="p-3 rounded-xl bg-white/80 dark:bg-[#1f123b]/90 border border-purple-200/60 dark:border-purple-700/40 space-y-2">
+              <label className="text-xs font-bold text-purple-900 dark:text-purple-200 block">
+                إضافة وجبة استيراد واردة جديدة (تحديث سريع للكمية):
+              </label>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  value={incomingBatchQty}
+                  onChange={(e) => setIncomingBatchQty(e.target.value)}
+                  placeholder="أدخل عدد القطع الواردة بالوجبة الجديدة..."
+                  className="flex-1 px-3 py-2 border border-purple-200 dark:border-purple-600/50 rounded-xl bg-gray-50 dark:bg-[#140a28] text-gray-900 dark:text-white text-xs font-bold tabular-nums focus:ring-2 focus:ring-purple-500 outline-none"
+                />
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    disabled={!incomingBatchQty || (parseInt(incomingBatchQty) || 0) <= 0}
+                    onClick={() => {
+                      const addQty = Math.max(0, parseInt(incomingBatchQty) || 0);
+                      if (addQty <= 0) return;
+                      const curStock = Math.max(0, parseInt(stock) || 0);
+                      const curBatch = Math.max(curStock, parseInt(batchStock) || 0);
+                      const newStock = curStock + addQty;
+                      const newBatch = curBatch + addQty;
+                      setStock(newStock.toString());
+                      setBatchStock(newBatch.toString());
+                      setBatchManuallyEdited(true);
+                      setIncomingBatchQty("");
+                    }}
+                    className="flex-1 sm:flex-initial px-3 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap"
+                  >
+                    + جمع مع المخزون والوجبة
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!incomingBatchQty || (parseInt(incomingBatchQty) || 0) <= 0}
+                    onClick={() => {
+                      const addQty = Math.max(0, parseInt(incomingBatchQty) || 0);
+                      if (addQty <= 0) return;
+                      const curStock = Math.max(0, parseInt(stock) || 0);
+                      const newTotal = curStock + addQty;
+                      setStock(newTotal.toString());
+                      setBatchStock(newTotal.toString());
+                      setBatchManuallyEdited(true);
+                      setIncomingBatchQty("");
+                    }}
+                    className="flex-1 sm:flex-initial px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-extrabold transition-all cursor-pointer whitespace-nowrap"
+                    title="إضافة الكمية للمتوفر واعتماد المجموع الجديد كوجبة قياسية بنسبة 100%"
+                  >
+                    اعتماد كوجبة كاملة (100%)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Live Stock Ratio & Status Indicator */}
+            {(() => {
+              const curStock = Math.max(0, parseInt(stock) || 0);
+              const curBatch = Math.max(curStock, parseInt(batchStock) || 0);
+              const ratioPct = curBatch > 0 ? Math.round((curStock / curBatch) * 100) : 0;
+              const isZero = curStock <= 0;
+              const barColor = isZero
+                ? "#ef4444"
+                : ratioPct >= 75
+                ? "#10b981"
+                : ratioPct >= 40
+                ? "#f59e0b"
+                : "#ef4444";
+              const statusText = isZero
+                ? "نفدت الكمية (إطار أحمر)"
+                : ratioPct >= 75
+                ? "مخزون ممتاز"
+                : ratioPct >= 40
+                ? "مخزون متوسط"
+                : "مخزون منخفض";
+
+              return (
+                <div className="pt-1 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs font-bold tabular-nums">
+                    <span className="text-gray-700 dark:text-purple-200">
+                      المتوفر: <strong>{curStock}</strong> من أصل <strong>{curBatch}</strong> قطعة
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[11px] font-extrabold ${
+                        isZero
+                          ? "bg-red-100 text-red-700 dark:bg-red-950/80 dark:text-red-300 border border-red-400/40"
+                          : ratioPct >= 75
+                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300"
+                          : ratioPct >= 40
+                          ? "bg-amber-100 text-amber-700 dark:bg-amber-950/80 dark:text-amber-300"
+                          : "bg-red-100 text-red-700 dark:bg-red-950/80 dark:text-red-300"
+                      }`}
+                    >
+                      {statusText} • {ratioPct}%
+                    </span>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-gray-200 dark:bg-purple-950 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-200"
+                      style={{
+                        width: `${isZero ? 100 : Math.min(100, ratioPct)}%`,
+                        backgroundColor: barColor,
+                        opacity: isZero ? 0.35 : 1,
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Supplier */}

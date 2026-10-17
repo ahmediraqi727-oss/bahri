@@ -102,6 +102,8 @@ export default function ProductDetailModal({
     ? extractCategoryFromNotes(product.notes)
     : product.categoryName || null;
 
+  const isOutOfStock = (product.stock ?? 0) <= 0;
+
   return (
     <>
       <StructuredData
@@ -124,7 +126,11 @@ export default function ProductDetailModal({
       >
         {/* Main Modal Card: Deep Violet / Dark Purple Theme with Smooth Scale-Up Motion */}
         <div
-          className="bg-[#120a22] text-white border border-purple-500/30 rounded-t-3xl sm:rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.9)] w-full max-w-xl max-h-[92vh] sm:max-h-[88vh] flex flex-col overflow-hidden animate-scaleUp transform-gpu"
+          className={`bg-[#120a22] text-white rounded-t-3xl sm:rounded-3xl w-full max-w-xl max-h-[92vh] sm:max-h-[88vh] flex flex-col overflow-hidden animate-scaleUp transform-gpu ${
+            isOutOfStock
+              ? "border-2 border-red-500 shadow-[0_0_32px_rgba(239,68,68,0.35)]"
+              : "border border-purple-500/30 shadow-[0_25px_60px_rgba(0,0,0,0.9)]"
+          }`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Scrollable Content Container */}
@@ -161,8 +167,12 @@ export default function ProductDetailModal({
                 <span className="px-3 py-1 rounded-xl text-xs font-black bg-purple-950/90 text-purple-200 backdrop-blur-md border border-purple-500/40 shadow-lg">
                   {buildTierBadgeText(tiers)}
                 </span>
-                {product.stock > 0 && (
-                  <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-950/90 text-emerald-300 backdrop-blur-md border border-emerald-600/40 shadow-lg">
+                {isOutOfStock ? (
+                  <span className="px-3 py-1 rounded-xl text-xs font-extrabold bg-red-600/95 text-white backdrop-blur-md border border-red-400/60 shadow-lg">
+                    نفدت الكمية
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-950/90 text-emerald-300 backdrop-blur-md border border-emerald-600/40 shadow-lg tabular-nums">
                     متوفر: {product.stock} قطعة
                   </span>
                 )}
@@ -411,31 +421,41 @@ export default function ProductDetailModal({
               </div>
 
               {/* Add to Cart CTA Button */}
-              <button
-                type="button"
-                onClick={handleAddToCart}
-                disabled={addedSuccess}
-                className={`flex-1 py-3 sm:py-3.5 px-4 rounded-2xl font-black text-sm sm:text-base text-white transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-xl hover:shadow-purple-500/30 cursor-pointer transform-gpu flex items-center justify-center gap-2 ${
-                  addedSuccess
-                    ? "bg-emerald-600 shadow-emerald-500/30 animate-popIn"
-                    : "bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500"
-                }`}
-                aria-label={`إضافة ${qty} إلى السلة`}
-              >
-                {addedSuccess ? (
-                  <span className="flex items-center gap-2 animate-popIn">
-                    <span>✅</span>
-                    <span>تمت الإضافة إلى السلة!</span>
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-2 truncate">
-                    <span>🛒</span>
-                    <span className="truncate">
-                      أضف {qty > 1 ? `${qty} قطع` : "للسلة"} • {totalPrice.toLocaleString()} {t.dinar}
+              {isOutOfStock ? (
+                <button
+                  type="button"
+                  disabled
+                  className="flex-1 py-3 sm:py-3.5 px-4 rounded-2xl font-black text-sm sm:text-base bg-red-950/80 border border-red-500/60 text-red-400 cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <span>نفدت الكمية</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleAddToCart}
+                  disabled={addedSuccess}
+                  className={`flex-1 py-3 sm:py-3.5 px-4 rounded-2xl font-black text-sm sm:text-base text-white transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] shadow-xl hover:shadow-purple-500/30 cursor-pointer transform-gpu flex items-center justify-center gap-2 ${
+                    addedSuccess
+                      ? "bg-emerald-600 shadow-emerald-500/30 animate-popIn"
+                      : "bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500"
+                  }`}
+                  aria-label={`إضافة ${qty} إلى السلة`}
+                >
+                  {addedSuccess ? (
+                    <span className="flex items-center gap-2 animate-popIn">
+                      <span>✅</span>
+                      <span>تمت الإضافة إلى السلة!</span>
                     </span>
-                  </span>
-                )}
-              </button>
+                  ) : (
+                    <span className="flex items-center gap-2 truncate">
+                      <span>🛒</span>
+                      <span className="truncate">
+                        أضف {qty > 1 ? `${qty} قطع` : "للسلة"} • {totalPrice.toLocaleString()} {t.dinar}
+                      </span>
+                    </span>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -32,19 +32,60 @@ function saveThresholds(t: StockThresholds) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(t));
 }
 
-function getStockLevel(stock: number, maxStock: number, thresholds: StockThresholds) {
-  if (maxStock === 0) return "empty";
-  const pct = (stock / maxStock) * 100;
+function getEffectiveBatchStock(product: Product): number {
+  return Math.max(product.batchStock ?? 0, product.stock ?? 0);
+}
+
+function getProductStockPct(product: Product): number {
+  if ((product.stock ?? 0) <= 0) return 0;
+  const batch = Math.max(getEffectiveBatchStock(product), 1);
+  return Math.min(100, Math.round(((product.stock ?? 0) / batch) * 100));
+}
+
+function getStockLevel(product: Product, thresholds: StockThresholds) {
+  if ((product.stock ?? 0) <= 0) return "empty";
+  const pct = getProductStockPct(product);
   if (pct >= thresholds.excellent) return "excellent";
   if (pct >= thresholds.medium) return "medium";
   return "low";
 }
 
+const LEVEL_PRIORITY: Record<"empty" | "low" | "medium" | "excellent", number> = {
+  empty: 0,
+  low: 1,
+  medium: 2,
+  excellent: 3,
+};
+
 const LEVEL_STYLES = {
-  excellent: { bg: "bg-emerald-50 dark:bg-emerald-900/20", border: "border-emerald-300 dark:border-emerald-800", badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400", label: "ممتاز", barColor: "#10b981" },
-  medium: { bg: "bg-amber-50 dark:bg-amber-900/20", border: "border-amber-300 dark:border-amber-800", badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400", label: "متوسط", barColor: "#f59e0b" },
-  low: { bg: "bg-red-50 dark:bg-red-900/20", border: "border-red-300 dark:border-red-800", badge: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400", label: "منخفض", barColor: "#ef4444" },
-  empty: { bg: "bg-gray-50 dark:bg-gray-800/50", border: "border-gray-300 dark:border-gray-700", badge: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400", label: "نفذ", barColor: "#9ca3af" },
+  excellent: {
+    bg: "bg-emerald-50/70 dark:bg-emerald-950/20",
+    border: "border-emerald-300 dark:border-emerald-800/70",
+    badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+    label: "ممتاز",
+    barColor: "#10b981",
+  },
+  medium: {
+    bg: "bg-amber-50/70 dark:bg-amber-950/20",
+    border: "border-amber-300 dark:border-amber-800/70",
+    badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+    label: "متوسط",
+    barColor: "#f59e0b",
+  },
+  low: {
+    bg: "bg-orange-50/80 dark:bg-orange-950/25",
+    border: "border-orange-400 dark:border-orange-700/80",
+    badge: "bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-300",
+    label: "منخفض",
+    barColor: "#f97316",
+  },
+  empty: {
+    bg: "bg-red-50/90 dark:bg-red-950/35",
+    border: "border-red-500 dark:border-red-500",
+    badge: "bg-red-600 text-white dark:bg-red-600 dark:text-white",
+    label: "نفد (0)",
+    barColor: "#dc2626",
+  },
 };
 
 export default function InventoryPage() {
@@ -128,53 +169,77 @@ export default function InventoryPage() {
     saveThresholds(thresholds);
   }, [thresholds]);
 
-  const maxStock = useMemo(() => {
-    if (products.length === 0) return 1;
-    return Math.max(...products.map((p) => p.stock), 1);
-  }, [products]);
-
   useEffect(() => {
     products.forEach((p) => {
-      const level = getStockLevel(p.stock, maxStock, thresholds);
-      if ((level === "low" || p.stock === 0) && !notifiedRef.current.has(p.id)) {
+      const level = getStockLevel(p, thresholds);
+      if ((level === "low" || p.stock <= 0) && !notifiedRef.current.has(p.id)) {
         notifiedRef.current.add(p.id);
         addNotification({
-          type: p.stock === 0 ? "out_of_stock" : "low_stock",
-          title: p.stock === 0 ? "المنتج نفد!" : "كمية منخفضة",
-          message: `المنتج "${p.name}" كميته ${p.stock} - يحتاج إعادة تعبئة`,
+          type: p.stock <= 0 ? "out_of_stock" : "low_stock",
+          title: p.stock <= 0 ? "المنتج نفد!" : "كمية منخفضة",
+          message: `المنتج "${p.name}" كميته ${p.stock} من أصل ${getEffectiveBatchStock(p)} - يحتاج إعادة تعبئة`,
           productId: p.id,
         });
       }
     });
-  }, [products, maxStock, thresholds, addNotification]);
+  }, [products, thresholds, addNotification]);
 
+  // Always prioritize out-of-stock ("empty") and low-stock ("low") items at the very top of the list
   const filtered = useMemo(() => {
-    return products.filter((p) => {
+    const base = products.filter((p) => {
       if (filterLevel === "all") return true;
-      return getStockLevel(p.stock, maxStock, thresholds) === filterLevel;
+      return getStockLevel(p, thresholds) === filterLevel;
     });
-  }, [products, filterLevel, maxStock, thresholds]);
+
+    return [...base].sort((a, b) => {
+      const levelA = getStockLevel(a, thresholds);
+      const levelB = getStockLevel(b, thresholds);
+      const prioDiff = LEVEL_PRIORITY[levelA] - LEVEL_PRIORITY[levelB];
+      if (prioDiff !== 0) return prioDiff;
+
+      const pctA = getProductStockPct(a);
+      const pctB = getProductStockPct(b);
+      if (pctA !== pctB) return pctA - pctB;
+
+      return (a.stock ?? 0) - (b.stock ?? 0);
+    });
+  }, [products, filterLevel, thresholds]);
 
   const levelCounts = useMemo(() => {
     const counts = { excellent: 0, medium: 0, low: 0, empty: 0 };
     products.forEach((p) => {
-      const level = getStockLevel(p.stock, maxStock, thresholds);
+      const level = getStockLevel(p, thresholds);
       counts[level as keyof typeof counts]++;
     });
     return counts;
-  }, [products, maxStock, thresholds]);
+  }, [products, thresholds]);
 
   const getSupplier = (id: string) => suppliers.find((s) => s.id === id);
 
   const handleInlineStock = async (id: string, value: number) => {
     const product = products.find((p) => p.id === id);
-    await updateProduct(id, { stock: value });
+    const currentBatch = product ? getEffectiveBatchStock(product) : value;
+    const nextBatch = Math.max(currentBatch, value);
+    await updateProduct(id, { stock: value, batchStock: nextBatch });
     await logActivity({
       user: settings.currentRole,
       action: "update",
       entity: "مخزون",
       entityId: id,
-      details: `تعديل كمية "${product?.name}" إلى ${value}`,
+      details: `تعديل الكمية المتوفرة لـ "${product?.name}" إلى ${value} (من أصل وجبة ${nextBatch})`,
+    });
+  };
+
+  const handleInlineBatchStock = async (id: string, batchValue: number) => {
+    const product = products.find((p) => p.id === id);
+    const safeBatch = Math.max(product?.stock ?? 0, batchValue);
+    await updateProduct(id, { batchStock: safeBatch });
+    await logActivity({
+      user: settings.currentRole,
+      action: "update",
+      entity: "مخزون",
+      entityId: id,
+      details: `تعديل إجمالي كمية الوجبة لـ "${product?.name}" إلى ${safeBatch}`,
     });
   };
 
@@ -379,24 +444,28 @@ export default function InventoryPage() {
                       <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">التكاليف</th>
                       <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الجملة</th>
                       <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المفرد</th>
-                      <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">الكمية</th>
+                      <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المتوفر / الوجبة</th>
                       <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المستوى</th>
                       <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">القيمة</th>
                       <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-gray-400">المورد</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800 tabular-nums">
                     {filtered.map((product) => {
-                      const level = getStockLevel(product.stock, maxStock, thresholds);
+                      const level = getStockLevel(product, thresholds);
                       const style = LEVEL_STYLES[level];
                       const supplier = getSupplier(product.supplierId);
-                      const pct = maxStock > 0 ? Math.round((product.stock / maxStock) * 100) : 0;
+                      const batchVal = getEffectiveBatchStock(product);
+                      const pct = getProductStockPct(product);
                       const isSelected = selectedProductIds.has(product.id);
+                      const isOutOfStock = (product.stock ?? 0) <= 0;
 
                       return (
                         <tr
                           key={product.id}
-                          className={`${style.bg} border-l-4 ${style.border} ${
+                          className={`${style.bg} ${
+                            isOutOfStock ? "outline-2 -outline-offset-2 outline-red-500/80" : ""
+                          } ${
                             isSelected ? "ring-2 ring-blue-500/30 bg-blue-50/50 dark:bg-blue-950/40" : ""
                           } transition-colors`}
                         >
@@ -412,36 +481,65 @@ export default function InventoryPage() {
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
                               {product.image ? (
-                                <img src={product.image} alt="" className="w-9 h-9 rounded-lg object-cover" />
+                                <img
+                                  src={product.image}
+                                  alt=""
+                                  className={`w-9 h-9 rounded-lg object-cover ${
+                                    isOutOfStock ? "ring-2 ring-red-500" : ""
+                                  }`}
+                                />
                               ) : (
                                 <div className="w-9 h-9 rounded-lg bg-white dark:bg-gray-800 flex items-center justify-center text-gray-400 border border-gray-200 dark:border-gray-700">📦</div>
                               )}
-                              <span className="font-medium text-gray-900 dark:text-white">{product.name}</span>
+                              <div>
+                                <span className="font-bold text-gray-900 dark:text-white block">{product.name}</span>
+                                {isOutOfStock && (
+                                  <span className="text-[11px] font-extrabold text-red-600 dark:text-red-400">
+                                    نفدت الكمية - أولوية تعبئة قصوى
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </td>
                           <td className="px-4 py-3 text-gray-900 dark:text-white">{product.costPrice.toLocaleString()}</td>
                           <td className="px-4 py-3 text-gray-900 dark:text-white">{product.wholesalePrice.toLocaleString()}</td>
                           <td className="px-4 py-3 font-bold text-gray-900 dark:text-white">{product.retailPrice.toLocaleString()}</td>
-                          <td className="px-4 py-3">
-                            <InlineStock value={product.stock} onSave={(v) => handleInlineStock(product.id, v)} />
-                            <div className="mt-1 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
-                              <div className="h-1.5 rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: style.barColor }} />
+                          <td className="px-4 py-3 min-w-[160px]">
+                            <div className="flex items-center justify-between gap-1 text-xs">
+                              <div className="flex items-center gap-1" title="الكمية المتوفرة / إجمالي كمية الوجبة">
+                                <InlineStock value={product.stock} onSave={(v) => handleInlineStock(product.id, v)} />
+                                <span className="text-gray-400">/</span>
+                                <InlineStock value={batchVal} onSave={(v) => handleInlineBatchStock(product.id, v)} />
+                              </div>
+                              <span className="text-[11px] font-extrabold text-gray-600 dark:text-gray-300">
+                                {pct}%
+                              </span>
+                            </div>
+                            <div className="mt-1.5 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                              <div
+                                className="h-1.5 rounded-full transition-all"
+                                style={{
+                                  width: `${isOutOfStock ? 100 : Math.min(pct, 100)}%`,
+                                  backgroundColor: style.barColor,
+                                  opacity: isOutOfStock ? 0.35 : 1,
+                                }}
+                              />
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${style.badge}`}>
+                            <span className={`px-2.5 py-1 rounded-lg text-xs font-extrabold whitespace-nowrap ${style.badge}`}>
                               {style.label}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-gray-900 dark:text-white font-medium">
+                          <td className="px-4 py-3 text-gray-900 dark:text-white font-medium whitespace-nowrap">
                             {(product.retailPrice * product.stock).toLocaleString()} د.ع
                           </td>
                           <td className="px-4 py-3">
                             {supplier && (level === "low" || level === "empty") ? (
                               <button
                                 onClick={() => setContactModal({ supplier: supplier!, product })}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white rounded-lg hover:opacity-90 transition-opacity"
-                                style={{ backgroundColor: level === "empty" ? "#ef4444" : "#f59e0b" }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white rounded-lg hover:opacity-90 transition-opacity whitespace-nowrap cursor-pointer"
+                                style={{ backgroundColor: level === "empty" ? "#dc2626" : "#f59e0b" }}
                               >
                                 📨 مراسلة
                               </button>
@@ -460,18 +558,24 @@ export default function InventoryPage() {
             </div>
 
             {/* Mobile Cards List View */}
-            <div className="block md:hidden space-y-3.5 p-3">
+            <div className="block md:hidden space-y-3.5 p-3 tabular-nums">
               {filtered.map((product) => {
-                const level = getStockLevel(product.stock, maxStock, thresholds);
+                const level = getStockLevel(product, thresholds);
                 const style = LEVEL_STYLES[level];
                 const supplier = getSupplier(product.supplierId);
-                const pct = maxStock > 0 ? Math.round((product.stock / maxStock) * 100) : 0;
+                const batchVal = getEffectiveBatchStock(product);
+                const pct = getProductStockPct(product);
                 const isSelected = selectedProductIds.has(product.id);
+                const isOutOfStock = (product.stock ?? 0) <= 0;
 
                 return (
                   <div
                     key={product.id}
-                    className={`bg-white dark:bg-gray-900 rounded-2xl border ${style.border} ${
+                    className={`bg-white dark:bg-gray-900 rounded-2xl ${
+                      isOutOfStock
+                        ? "border-2 border-red-500 shadow-[0_0_16px_rgba(239,68,68,0.25)]"
+                        : `border ${style.border}`
+                    } ${
                       isSelected ? "ring-2 ring-blue-500/40 border-blue-500" : ""
                     } p-4 shadow-sm space-y-3 transition-all`}
                   >
@@ -490,8 +594,8 @@ export default function InventoryPage() {
                         </h3>
                       </div>
 
-                      <span className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap flex-shrink-0 ${style.badge}`}>
-                        {style.label}
+                      <span className={`px-2.5 py-1 rounded-lg text-xs font-extrabold whitespace-nowrap flex-shrink-0 ${style.badge}`}>
+                        {style.label} • {pct}%
                       </span>
                     </div>
 
@@ -501,7 +605,9 @@ export default function InventoryPage() {
                         <img
                           src={product.image}
                           alt={product.name}
-                          className="w-16 h-16 rounded-xl object-cover flex-shrink-0 border border-gray-200 dark:border-gray-700 shadow-sm"
+                          className={`w-16 h-16 rounded-xl object-cover flex-shrink-0 border shadow-sm ${
+                            isOutOfStock ? "border-red-500 ring-1 ring-red-500" : "border-gray-200 dark:border-gray-700"
+                          }`}
                         />
                       ) : (
                         <div className="w-16 h-16 rounded-xl bg-white dark:bg-gray-800 flex items-center justify-center text-gray-400 text-2xl flex-shrink-0 border border-gray-200 dark:border-gray-700 shadow-sm">
@@ -522,14 +628,25 @@ export default function InventoryPage() {
                       </div>
                     </div>
 
-                    {/* Stock Progress & Edit */}
+                    {/* Stock & Batch Progress & Inline Edit */}
                     <div className="bg-gray-50 dark:bg-gray-800/60 p-3 rounded-xl border border-gray-100 dark:border-gray-800/80 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-gray-700 dark:text-gray-300">الكمية بالمخزن:</span>
-                        <InlineStock value={product.stock} onSave={(v) => handleInlineStock(product.id, v)} />
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-gray-700 dark:text-gray-300">الكمية المتوفرة / إجمالي الوجبة:</span>
+                        <div className="flex items-center gap-1">
+                          <InlineStock value={product.stock} onSave={(v) => handleInlineStock(product.id, v)} />
+                          <span className="text-gray-400 font-bold">/</span>
+                          <InlineStock value={batchVal} onSave={(v) => handleInlineBatchStock(product.id, v)} />
+                        </div>
                       </div>
-                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                        <div className="h-2 rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: style.barColor }} />
+                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                        <div
+                          className="h-2 rounded-full transition-all"
+                          style={{
+                            width: `${isOutOfStock ? 100 : Math.min(pct, 100)}%`,
+                            backgroundColor: style.barColor,
+                            opacity: isOutOfStock ? 0.35 : 1,
+                          }}
+                        />
                       </div>
                     </div>
 
@@ -568,8 +685,8 @@ export default function InventoryPage() {
                     {supplier && (level === "low" || level === "empty") && (
                       <button
                         onClick={() => setContactModal({ supplier: supplier!, product })}
-                        className="w-full py-2.5 px-4 text-xs font-bold text-white rounded-xl shadow-sm hover:opacity-90 transition-all min-h-[40px] flex items-center justify-center gap-2 whitespace-nowrap active:scale-95 shrink-0"
-                        style={{ backgroundColor: level === "empty" ? "#ef4444" : "#f59e0b" }}
+                        className="w-full py-2.5 px-4 text-xs font-bold text-white rounded-xl shadow-sm hover:opacity-90 transition-all min-h-[40px] flex items-center justify-center gap-2 whitespace-nowrap active:scale-95 shrink-0 cursor-pointer"
+                        style={{ backgroundColor: level === "empty" ? "#dc2626" : "#f59e0b" }}
                       >
                         <span>📨</span>
                         <span className="whitespace-nowrap">مراسلة المورد لتسجيل طلبية تزويد</span>

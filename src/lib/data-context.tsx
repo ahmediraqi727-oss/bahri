@@ -116,7 +116,34 @@ export function isUUID(str: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 }
 
+const BATCH_STOCK_STORAGE_KEY = "ahmed_bahri_batch_stock_map";
+
+function getLocalBatchStock(productId: string): number | undefined {
+  if (typeof window === "undefined" || !productId) return undefined;
+  try {
+    const raw = localStorage.getItem(BATCH_STOCK_STORAGE_KEY);
+    if (!raw) return undefined;
+    const map = JSON.parse(raw) as Record<string, number>;
+    return typeof map[productId] === "number" ? map[productId] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function setLocalBatchStock(productId: string, batchStock: number) {
+  if (typeof window === "undefined" || !productId) return;
+  try {
+    const raw = localStorage.getItem(BATCH_STOCK_STORAGE_KEY);
+    const map: Record<string, number> = raw ? JSON.parse(raw) : {};
+    map[productId] = Math.max(0, Number(batchStock) || 0);
+    localStorage.setItem(BATCH_STOCK_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    /* ignore */
+  }
+}
+
 export function rowToProduct(row: Record<string, unknown>): Product {
+  const idStr = (row.id as string) || "";
   const image = (row.image as string) || "";
   const origImage = (row.original_image_url as string) || image || "";
   const costP = Number(row.cost_price ?? row.costPrice) || 0;
@@ -124,6 +151,14 @@ export function rowToProduct(row: Record<string, unknown>): Product {
   const wholesaleP = Number(row.wholesale_price ?? row.wholesalePrice) || 0;
   const profitM = Number(row.profit_margin ?? row.profitMargin) || 0;
   const stockVal = Number(row.stock ?? row.stockQuantity ?? row.stock_quantity) || 0;
+  const dbBatchVal = row.batch_stock ?? row.batchStock;
+  const localBatchVal = getLocalBatchStock(idStr);
+  const resolvedBatch =
+    dbBatchVal !== undefined && dbBatchVal !== null && Number(dbBatchVal) > 0
+      ? Math.max(Number(dbBatchVal), stockVal)
+      : localBatchVal !== undefined && localBatchVal > 0
+      ? Math.max(localBatchVal, stockVal)
+      : Math.max(stockVal, 0);
   const qrVal = (row.qr_code as string | null) ?? (row.qrCodeData as string | null) ?? (row.qr_code_data as string | null) ?? (row.qrCode as string | null) ?? null;
   const barcodeVal = (row.barcode as string | null) ?? null;
   const skuVal = (row.sku as string | null) ?? (row.id as string | null) ?? null;
@@ -141,7 +176,7 @@ export function rowToProduct(row: Record<string, unknown>): Product {
   const catName = isAllCats ? ALL_CATEGORIES_LABEL : rawCatName;
 
   return {
-    id: row.id as string,
+    id: idStr,
     name: (row.name as string) || "",
     image,
     originalImageUrl: origImage,
@@ -150,6 +185,7 @@ export function rowToProduct(row: Record<string, unknown>): Product {
     profitMargin: profitM,
     retailPrice: retailP,
     stock: stockVal,
+    batchStock: resolvedBatch,
     supplierId: (row.supplier_id as string) || "",
     notes: rawNotes,
     createdAt: (row.created_at as string) || new Date().toISOString(),
@@ -188,20 +224,27 @@ export function productToRow(product: Record<string, unknown>): Record<string, u
     row.original_image_url = product.image;
   }
 
-  // Cost, Wholesale, Retail, Profit Margin
-  const costPrice = Number(product.costPrice ?? product.cost_price) || 0;
-  const retailPrice = Number(product.price ?? product.retailPrice ?? product.retail_price) || 0;
-  const wholesalePrice = Number(product.wholesalePrice ?? product.wholesale_price) || 0;
-  const profitMargin = Number(product.profitMargin ?? product.profit_margin) || 0;
+  // Cost, Wholesale, Retail, Profit Margin — only set when present so partial updates never wipe existing columns
+  if ("costPrice" in product || "cost_price" in product) {
+    row.cost_price = Number(product.costPrice ?? product.cost_price) || 0;
+  }
+  if ("price" in product || "retailPrice" in product || "retail_price" in product) {
+    row.retail_price = Number(product.price ?? product.retailPrice ?? product.retail_price) || 0;
+  }
+  if ("wholesalePrice" in product || "wholesale_price" in product) {
+    row.wholesale_price = Number(product.wholesalePrice ?? product.wholesale_price) || 0;
+  }
+  if ("profitMargin" in product || "profit_margin" in product) {
+    row.profit_margin = Number(product.profitMargin ?? product.profit_margin) || 0;
+  }
 
-  row.cost_price = costPrice;
-  row.retail_price = retailPrice;
-  row.wholesale_price = wholesalePrice;
-  row.profit_margin = profitMargin;
-
-  // Stock Quantity
-  const stockVal = Number(product.stockQuantity ?? product.stock_quantity ?? product.stock) || 0;
-  row.stock = stockVal;
+  // Stock & Batch Stock Quantity
+  if ("stock" in product || "stockQuantity" in product || "stock_quantity" in product) {
+    row.stock = Number(product.stockQuantity ?? product.stock_quantity ?? product.stock) || 0;
+  }
+  if ("batchStock" in product || "batch_stock" in product) {
+    row.batch_stock = Math.max(0, Number(product.batchStock ?? product.batch_stock) || 0);
+  }
 
   if ("supplierId" in product || "supplier_id" in product) {
     const sid = String(product.supplierId ?? product.supplier_id ?? "").trim();
@@ -480,24 +523,39 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       finalImageUrl = await applyWatermarkIfNeeded(finalImageUrl);
     }
 
+    const effectiveBatch = Math.max(Number(product.batchStock ?? product.stock) || 0, Number(product.stock) || 0);
     const row = productToRow({
       ...product,
+      batchStock: effectiveBatch,
       image: finalImageUrl,
       originalImageUrl: originalImageUrl,
     } as Record<string, unknown>);
 
-    const { data: created, error } = await supabase.from("products").insert(row).select().single();
+    let { data: created, error } = await supabase.from("products").insert(row).select().single();
+    if (error && error.message?.includes("batch_stock")) {
+      const fallbackRow = { ...row };
+      delete fallbackRow.batch_stock;
+      const retry = await supabase.from("products").insert(fallbackRow).select().single();
+      created = retry.data;
+      error = retry.error;
+    }
     if (error) throw error;
-    const newProduct = rowToProduct(created);
+    if (created?.id) {
+      setLocalBatchStock(String(created.id), effectiveBatch);
+    }
+    const newProduct: Product = {
+      ...rowToProduct(created),
+      batchStock: effectiveBatch,
+    };
     setProducts((prev) => [newProduct, ...prev]);
     return newProduct;
   }, []);
 
   const updateProduct = useCallback(async (id: string, updates: Partial<Product>) => {
     let finalUpdates = { ...updates };
+    const existingProduct = products.find((p) => p.id === id);
 
     if (updates.image) {
-      const existingProduct = products.find((p) => p.id === id);
       const originalToKeep = updates.originalImageUrl || existingProduct?.originalImageUrl || updates.image;
       const watermarkedImg = await applyWatermarkIfNeeded(updates.image);
 
@@ -505,11 +563,35 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       finalUpdates.originalImageUrl = originalToKeep;
     }
 
+    if (finalUpdates.batchStock !== undefined) {
+      setLocalBatchStock(id, finalUpdates.batchStock);
+    } else if (finalUpdates.stock !== undefined && existingProduct) {
+      const currentBatch = existingProduct.batchStock ?? existingProduct.stock ?? 0;
+      if (finalUpdates.stock > currentBatch) {
+        finalUpdates.batchStock = finalUpdates.stock;
+        setLocalBatchStock(id, finalUpdates.stock);
+      }
+    }
+
     const row = productToRow(finalUpdates as Record<string, unknown>);
 
-    const { data: updated, error } = await supabase.from("products").update(row).eq("id", id).select().single();
+    let { data: updated, error } = await supabase.from("products").update(row).eq("id", id).select().single();
+    if (error && error.message?.includes("batch_stock")) {
+      const fallbackRow = { ...row };
+      delete fallbackRow.batch_stock;
+      const retry = await supabase.from("products").update(fallbackRow).eq("id", id).select().single();
+      updated = retry.data;
+      error = retry.error;
+    }
     if (error) throw error;
-    const product = rowToProduct(updated);
+    const resolvedBatch =
+      finalUpdates.batchStock !== undefined
+        ? finalUpdates.batchStock
+        : rowToProduct(updated).batchStock;
+    const product: Product = {
+      ...rowToProduct(updated),
+      batchStock: resolvedBatch,
+    };
     setProducts((prev) => prev.map((p) => (p.id === id ? product : p)));
   }, [products]);
 
@@ -521,7 +603,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);
-      const { data: updated, error } = await supabase.from("products").update(row).in("id", chunk).select();
+      let { data: updated, error } = await supabase.from("products").update(row).in("id", chunk).select();
+      if (error && error.message?.includes("batch_stock")) {
+        const fallbackRow = { ...row };
+        delete fallbackRow.batch_stock;
+        const retry = await supabase.from("products").update(fallbackRow).in("id", chunk).select();
+        updated = retry.data;
+        error = retry.error;
+      }
       if (error) throw error;
       if (updated) updatedRows.push(...updated);
     }

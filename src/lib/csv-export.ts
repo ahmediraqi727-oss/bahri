@@ -131,15 +131,22 @@ export function exportInventoryToCSV(
   const today = new Date().toISOString().split("T")[0];
   const filename = customFilename || `مخزون-متجر-أحمد-بحري-${today}.csv`;
 
-  const maxStock = products.length > 0 ? Math.max(...products.map((p) => p.stock), 1) : 1;
   const t = thresholds || { excellent: 75, medium: 40 };
 
-  const getStockLevelLabel = (stock: number) => {
-    if (stock === 0) return "نفد من المخزون";
-    const pct = (stock / maxStock) * 100;
-    if (pct >= t.excellent) return "ممتاز";
-    if (pct >= t.medium) return "متوسط";
-    return "منخفض (يحتاج تعبئة)";
+  const getProductBatch = (prod: Product) =>
+    Math.max(prod.batchStock ?? 0, prod.stock ?? 0, 1);
+
+  const getProductPct = (prod: Product) => {
+    if ((prod.stock ?? 0) <= 0) return 0;
+    return Math.min(100, Math.round(((prod.stock ?? 0) / getProductBatch(prod)) * 100));
+  };
+
+  const getStockLevelLabel = (prod: Product) => {
+    if ((prod.stock ?? 0) <= 0) return "نفد من المخزون (0%)";
+    const pct = getProductPct(prod);
+    if (pct >= t.excellent) return `ممتاز (${pct}%)`;
+    if (pct >= t.medium) return `متوسط (${pct}%)`;
+    return `منخفض - يحتاج تعبئة (${pct}%)`;
   };
 
   const headers = [
@@ -147,6 +154,8 @@ export function exportInventoryToCSV(
     "اسم المنتج / قطعة الغيار",
     "الملاحظات / التصنيف",
     "الكمية المتوفرة",
+    "إجمالي كمية الوجبة المستوردة",
+    "نسبة التوفر %",
     "مستوى المخزون",
     "سعر التكلفة (د.ع)",
     "سعر الجملة (د.ع)",
@@ -161,7 +170,9 @@ export function exportInventoryToCSV(
 
   const rows = products.map((prod) => {
     const supplier = suppliers.find((s) => s.id === prod.supplierId);
-    const stockLevel = getStockLevelLabel(prod.stock);
+    const batchVal = Math.max(prod.batchStock ?? 0, prod.stock ?? 0);
+    const pctVal = getProductPct(prod);
+    const stockLevel = getStockLevelLabel(prod);
     const unitProfit = Math.max(0, (prod.retailPrice || 0) - (prod.costPrice || 0));
     const totalRetailVal = (prod.retailPrice || 0) * (prod.stock || 0);
     const totalCostVal = (prod.costPrice || 0) * (prod.stock || 0);
@@ -170,7 +181,9 @@ export function exportInventoryToCSV(
       prod.id,
       prod.name,
       prod.notes || "—",
-      prod.stock,
+      prod.stock ?? 0,
+      batchVal,
+      `${pctVal}%`,
       stockLevel,
       prod.costPrice || 0,
       prod.wholesalePrice || 0,
