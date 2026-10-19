@@ -872,6 +872,8 @@ export default function InventoryPage() {
           supplier={contactModal.supplier}
           productName={contactModal.product.name}
           currentStock={contactModal.product.stock}
+          productImage={contactModal.product.image}
+          product={contactModal.product}
           isOpen={true}
           onClose={() => setContactModal(null)}
         />
