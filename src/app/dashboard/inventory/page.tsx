@@ -9,6 +9,7 @@ import DataTableWrapper from "@/components/DataTableWrapper";
 import SupplierContactModal from "@/components/SupplierContactModal";
 import { Product, Supplier } from "@/lib/types";
 import { exportInventoryToCSV } from "@/lib/csv-export";
+import { useDashboardPagination, useDebouncedValue } from "@/lib/useDashboardPagination";
 
 interface StockThresholds {
   excellent: number;
@@ -89,7 +90,7 @@ const LEVEL_STYLES = {
 };
 
 export default function InventoryPage() {
-  const { products, suppliers, updateProduct } = useData();
+  const { products, suppliers, updateProduct, hydrateProductImages } = useData();
   const { settings } = useSettings();
   const { logActivity } = useActivityLog();
   const { addNotification } = useNotifications();
@@ -98,6 +99,7 @@ export default function InventoryPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [contactModal, setContactModal] = useState<{ supplier: Supplier; product: Product } | null>(null);
   const [filterLevel, setFilterLevel] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState<string>("");
   const notifiedRef = useRef<Set<string>>(new Set());
 
   // Bulk Selection & CSV Export State
@@ -170,10 +172,13 @@ export default function InventoryPage() {
   }, [thresholds]);
 
   useEffect(() => {
-    products.forEach((p) => {
+    let addedCount = 0;
+    for (const p of products) {
+      if (addedCount >= 5) break;
       const level = getStockLevel(p, thresholds);
       if ((level === "low" || p.stock <= 0) && !notifiedRef.current.has(p.id)) {
         notifiedRef.current.add(p.id);
+        addedCount++;
         addNotification({
           type: p.stock <= 0 ? "out_of_stock" : "low_stock",
           title: p.stock <= 0 ? "المنتج نفد!" : "كمية منخفضة",
@@ -181,14 +186,34 @@ export default function InventoryPage() {
           productId: p.id,
         });
       }
-    });
+    }
   }, [products, thresholds, addNotification]);
+
+  const supplierNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    suppliers.forEach((s) => {
+      if (s.id && s.name) map.set(s.id, s.name.toLowerCase());
+    });
+    return map;
+  }, [suppliers]);
+
+  const debouncedSearch = useDebouncedValue(searchQuery, 180);
 
   // Always prioritize out-of-stock ("empty") and low-stock ("low") items at the very top of the list
   const filtered = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
     const base = products.filter((p) => {
-      if (filterLevel === "all") return true;
-      return getStockLevel(p, thresholds) === filterLevel;
+      if (filterLevel !== "all" && getStockLevel(p, thresholds) !== filterLevel) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        p.name.toLowerCase().includes(q) ||
+        (p.notes && p.notes.toLowerCase().includes(q)) ||
+        (p.categoryName && p.categoryName.toLowerCase().includes(q)) ||
+        (p.barcode && p.barcode.toLowerCase().includes(q)) ||
+        (p.supplierId && (supplierNameMap.get(p.supplierId) || "").includes(q))
+      );
     });
 
     return [...base].sort((a, b) => {
@@ -203,7 +228,17 @@ export default function InventoryPage() {
 
       return (a.stock ?? 0) - (b.stock ?? 0);
     });
-  }, [products, filterLevel, thresholds]);
+  }, [products, filterLevel, thresholds, debouncedSearch, supplierNameMap]);
+
+  const {
+    visibleItems: visibleProducts,
+    totalFilteredCount,
+    hasMore,
+    isFastScrolling,
+    effectiveBatchSize,
+    sentinelRef,
+    loadMore,
+  } = useDashboardPagination(filtered, hydrateProductImages);
 
   const levelCounts = useMemo(() => {
     const counts = { excellent: 0, medium: 0, low: 0, empty: 0 };
@@ -359,6 +394,32 @@ export default function InventoryPage() {
         })}
       </div>
 
+      {/* Instant Search Bar for Inventory */}
+      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-3.5 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="relative flex-1 w-full">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="🔍 بحث فوري في المخزون بالاسم، الكود، القسم أو المورد..."
+            className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none text-sm"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute left-3 top-2.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm cursor-pointer"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-2 text-xs font-extrabold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 px-3 py-2 rounded-xl border border-purple-200 dark:border-purple-800/50 whitespace-nowrap">
+          <span>المعروض حالياً: {visibleProducts.length}</span>
+          <span>من أصل {totalFilteredCount}</span>
+        </div>
+      </div>
+
       {/* Bulk Selection Toolbar */}
       {filtered.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-gray-900 px-4 py-3 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm text-sm">
@@ -370,7 +431,7 @@ export default function InventoryPage() {
                 onChange={handleToggleSelectAll}
                 className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-700 cursor-pointer"
               />
-              <span>تحديد كل المعروض ({filtered.length})</span>
+              <span>تحديد كافة المطابقة للفلتر ({filtered.length})</span>
             </label>
 
             {selectedProductIds.size > 0 && (
@@ -451,7 +512,7 @@ export default function InventoryPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-800 tabular-nums">
-                    {filtered.map((product) => {
+                    {visibleProducts.map((product) => {
                       const level = getStockLevel(product, thresholds);
                       const style = LEVEL_STYLES[level];
                       const supplier = getSupplier(product.supplierId);
@@ -559,7 +620,7 @@ export default function InventoryPage() {
 
             {/* Mobile Cards List View */}
             <div className="block md:hidden space-y-3.5 p-3 tabular-nums">
-              {filtered.map((product) => {
+              {visibleProducts.map((product) => {
                 const level = getStockLevel(product, thresholds);
                 const style = LEVEL_STYLES[level];
                 const supplier = getSupplier(product.supplierId);
@@ -695,6 +756,40 @@ export default function InventoryPage() {
                   </div>
                 );
               })}
+            </div>
+
+            {/* مؤشر التحميل التدريجي الذكي (Adaptive Infinite Scroll Sentinel) */}
+            <div
+              ref={sentinelRef}
+              className="py-5 px-4 text-center text-xs border-t border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-900/80 flex flex-col sm:flex-row items-center justify-between gap-2"
+            >
+              <span className="font-bold text-gray-600 dark:text-gray-300">
+                يتم عرض <strong className="text-purple-600 dark:text-purple-400">{visibleProducts.length}</strong> من أصل{" "}
+                <strong>{totalFilteredCount}</strong> منتج في المخزون
+              </span>
+              {hasMore ? (
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 font-extrabold text-purple-600 dark:text-purple-400">
+                    <span className="w-3.5 h-3.5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                    <span>
+                      {isFastScrolling
+                        ? `⚡ تمرير سريع: مضاعفة الدفعة تلقائياً (+${effectiveBatchSize} منتج)...`
+                        : `جاري تحميل الدفعة التالية تلقائياً (+${effectiveBatchSize})...`}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={loadMore}
+                    className="px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-[11px] transition-colors cursor-pointer"
+                  >
+                    تحميل المزيد الآن
+                  </button>
+                </div>
+              ) : (
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                  ✓ تم عرض كافة منتجات المخزون المطابقة ({totalFilteredCount} منتج)
+                </span>
+              )}
             </div>
           </>
         )}

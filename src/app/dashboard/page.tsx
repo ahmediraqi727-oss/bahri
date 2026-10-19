@@ -1,11 +1,14 @@
 "use client";
 
+import { useMemo } from "react";
 import { useSettings } from "@/lib/settings-context";
 import { useActivityLog } from "@/lib/activity-log";
 import { useTrash } from "@/lib/trash";
 import { useData } from "@/lib/data-context";
 import { useAuth } from "@/lib/auth-context";
 import { hasPermission } from "@/lib/permissions";
+import { getCategoryDisplayImage } from "@/lib/types";
+import { isProductInAllCategories } from "@/lib/seo";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -20,12 +23,40 @@ export default function DashboardPage() {
   const currentRole = settings?.currentRole || user?.role || "manager";
   const theme = settings?.roleThemes?.[currentRole] || { primary: "#1e40af", secondary: "#7c3aed", accent: "#f59e0b" };
 
-  const totalValue = products.reduce((sum, p) => sum + p.retailPrice * p.stock, 0);
+  const totalValue = useMemo(() => products.reduce((sum, p) => sum + p.retailPrice * p.stock, 0), [products]);
 
   // Count products assigned to categories
-  const categorisedProductsCount = products.filter(
-    (p) => p.notes && (p.notes.toLowerCase().includes("فئة") || p.notes.toLowerCase().includes("قسم"))
-  ).length;
+  const categorisedProductsCount = useMemo(
+    () =>
+      products.filter(
+        (p) =>
+          isProductInAllCategories(p) ||
+          Boolean(p.categoryId) ||
+          Boolean(p.categoryName) ||
+          Boolean(p.notes && (p.notes.toLowerCase().includes("فئة") || p.notes.toLowerCase().includes("قسم")))
+      ).length,
+    [products]
+  );
+
+  const categoryCountsMap = useMemo(() => {
+    const map = new Map<string, number>();
+    categories.forEach((c) => {
+      const cName = c.name.trim().toLowerCase();
+      let count = 0;
+      for (const p of products) {
+        if (
+          isProductInAllCategories(p) ||
+          (p.categoryId && p.categoryId === c.id) ||
+          (p.categoryName && p.categoryName.trim().toLowerCase() === cName) ||
+          (p.notes && p.notes.toLowerCase().includes(cName))
+        ) {
+          count++;
+        }
+      }
+      map.set(c.id, count);
+    });
+    return map;
+  }, [categories, products]);
 
   const canManageCategories = hasPermission(currentRole, "categories.manage");
 
@@ -34,7 +65,7 @@ export default function DashboardPage() {
       e.preventDefault();
       alert("⚠️ عذراً! لا تملك صلاحية تعديل وإدارة الأقسام. يرجى طلب التفعيل من مدير النظام في قسم الصلاحيات.");
     } else {
-      router.push("/dashboard/settings");
+      router.push("/dashboard/categories");
     }
   };
 
@@ -136,7 +167,7 @@ export default function DashboardPage() {
             <p className="text-[11px] font-bold text-blue-300">تفاصيل عدد المنتجات المندرجة تحت كل قسم:</p>
             <div className="flex items-center gap-2 flex-wrap">
               {categories.map((c) => {
-                const count = products.filter((p) => p.notes && p.notes.toLowerCase().includes(c.name.toLowerCase())).length;
+                const count = categoryCountsMap.get(c.id) ?? 0;
                 return (
                   <span key={c.id} className="px-2 py-1 rounded-lg bg-white/10 text-white border border-white/10 text-[11px] font-bold flex items-center gap-1.5">
                     <span>📁 {c.name}:</span>
@@ -161,23 +192,34 @@ export default function DashboardPage() {
               {categories.length} قسم
             </span>
           </div>
-          {/* تم تعديل الشبكة لتكون ملائمة جداً للهواتف والشاشات الصغيرة مع تصغير وتحديد حجم الأيقونات */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 overflow-x-auto p-1 scrollbar-thin">
-            {categories.map((cat) => (
-              <div
-                key={cat.id}
-                onClick={handleCategoriesEditClick}
-                className="flex flex-col items-center justify-between bg-gray-50 dark:bg-gray-900/90 p-2.5 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-blue-500/50 hover:shadow-md transition-all cursor-group cursor-pointer min-h-[90px]"
-              >
-                {cat.image ? (
-                  <img src={cat.image} alt={cat.name} className="w-10 h-10 object-cover rounded-lg shadow-sm group-hover:scale-105 transition-transform" />
-                ) : (
-                  <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 text-lg font-bold">📂</div>
-                )}
-                <span className="text-[11px] font-bold text-gray-900 dark:text-white text-center truncate w-full mt-1">{cat.name}</span>
-                <span className="text-[9px] font-bold text-cyan-600 dark:text-cyan-400">أولوية: {cat.priority || 1}</span>
-              </div>
-            ))}
+            {categories.map((cat) => {
+              const displayImg = getCategoryDisplayImage(cat, products);
+              const count = categoryCountsMap.get(cat.id) ?? 0;
+              return (
+                <div
+                  key={cat.id}
+                  onClick={handleCategoriesEditClick}
+                  className="flex flex-col items-center justify-between bg-gray-50 dark:bg-gray-900/90 p-2.5 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-purple-500/50 hover:shadow-md transition-all cursor-pointer min-h-[96px] min-w-0"
+                >
+                  {displayImg ? (
+                    <img src={displayImg} alt={cat.name} className="w-10 h-10 object-cover rounded-lg shadow-sm transition-transform" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center text-blue-600 dark:text-blue-400 text-lg font-bold">📂</div>
+                  )}
+                  <div
+                    className="w-full overflow-x-auto whitespace-nowrap no-scrollbar text-center mt-1 px-1"
+                    style={{ scrollbarWidth: "none" }}
+                    title={cat.name}
+                  >
+                    <span className="text-[11px] font-bold text-gray-900 dark:text-white inline-block">{cat.name}</span>
+                  </div>
+                  <span className="text-[9px] font-bold text-cyan-600 dark:text-cyan-400">
+                    أولوية: {cat.priority || 1} • ({count})
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

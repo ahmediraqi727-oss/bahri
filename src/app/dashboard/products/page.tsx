@@ -18,9 +18,10 @@ import {
   isUniversalCategory,
   isProductInAllCategories,
 } from "@/lib/seo";
+import { useDashboardPagination, useDebouncedValue } from "@/lib/useDashboardPagination";
 
 export default function ProductsPage() {
-  const { products, suppliers, categories, addCategory, deleteProduct, updateProduct, bulkUpdateProducts, bulkDeleteProducts, persistAllCategoriesAndProducts, reloadAllData } = useData();
+  const { products, suppliers, categories, addCategory, deleteProduct, updateProduct, bulkUpdateProducts, bulkDeleteProducts, persistAllCategoriesAndProducts, reloadAllData, hydrateProductImages } = useData();
   const { settings } = useSettings();
   const { logActivity } = useActivityLog();
   const { softDelete, bulkSoftDelete } = useTrash();
@@ -96,21 +97,44 @@ export default function ProductsPage() {
   const canDelete = hasPermission(settings.currentRole, "products.delete", config);
   const canCreate = hasPermission(settings.currentRole, "products.create", config);
 
+  const supplierNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    suppliers.forEach((s) => {
+      if (s.id && s.name) map.set(s.id, s.name.toLowerCase());
+    });
+    return map;
+  }, [suppliers]);
+
+  const debouncedSearch = useDebouncedValue(searchQuery, 180);
+
   const filtered = useMemo(() => {
-    if (!searchQuery) return products;
-    const q = searchQuery.toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
+    if (!q) return products;
     return products.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
-        p.notes.toLowerCase().includes(q) ||
-        suppliers.find((s) => s.id === p.supplierId)?.name.toLowerCase().includes(q)
+        (p.notes && p.notes.toLowerCase().includes(q)) ||
+        (p.categoryName && p.categoryName.toLowerCase().includes(q)) ||
+        (p.barcode && p.barcode.toLowerCase().includes(q)) ||
+        (p.supplierId && (supplierNameMap.get(p.supplierId) || "").includes(q))
     );
-  }, [products, searchQuery, suppliers]);
+  }, [products, debouncedSearch, supplierNameMap]);
+
+  const {
+    visibleItems: visibleProducts,
+    totalFilteredCount,
+    hasMore,
+    isFastScrolling,
+    effectiveBatchSize,
+    sentinelRef,
+    loadMore,
+  } = useDashboardPagination(filtered, hydrateProductImages);
 
   const getSupplierName = (id: string) => suppliers.find((s) => s.id === id)?.name || "—";
 
-  // Checkboxes Selection logic
-  const isAllSelected = filtered.length > 0 && filtered.every((p) => selectedIds.includes(p.id));
+  // Checkboxes Selection logic (Selects all matching products in database)
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const isAllSelected = filtered.length > 0 && filtered.every((p) => selectedIdSet.has(p.id));
 
   const toggleSelectAll = () => {
     if (isAllSelected) {
@@ -810,12 +834,15 @@ export default function ProductsPage() {
         </div>
 
         {isAdminOrManager && filtered.length > 0 && (
-          <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+          <div className="flex items-center gap-2 w-full md:w-auto justify-end flex-wrap">
+            <span className="px-3 py-1.5 rounded-lg bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/50 text-purple-700 dark:text-purple-300 text-xs font-extrabold whitespace-nowrap">
+              المعروض: {visibleProducts.length} من {totalFilteredCount}
+            </span>
             <button
               onClick={toggleSelectAll}
-              className="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              className="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors whitespace-nowrap"
             >
-              {isAllSelected ? "إلغاء تحديد الكل" : "تحديد كافة نتائج البحث"}
+              {isAllSelected ? "إلغاء تحديد الكل" : `تحديد كافة المطابقة (${filtered.length})`}
             </button>
           </div>
         )}
@@ -866,8 +893,8 @@ export default function ProductsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {filtered.map((product) => {
-                      const isSelected = selectedIds.includes(product.id);
+                    {visibleProducts.map((product) => {
+                      const isSelected = selectedIdSet.has(product.id);
                       const rowBg = isSelected
                         ? "bg-blue-50/90 dark:bg-blue-900/40"
                         : "bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800/50";
@@ -1007,8 +1034,8 @@ export default function ProductsPage() {
 
             {/* Mobile Cards List View */}
             <div className="block md:hidden space-y-3.5 p-3">
-              {filtered.map((product) => {
-                const isSelected = selectedIds.includes(product.id);
+              {visibleProducts.map((product) => {
+                const isSelected = selectedIdSet.has(product.id);
                 const isUniversal = isProductInAllCategories(product);
                 const match = product.notes ? product.notes.match(/الفئة:\s*([^|,\n]+)/) : null;
                 const catName = isUniversal
@@ -1155,6 +1182,40 @@ export default function ProductsPage() {
                 );
               })}
             </div>
+
+            {/* مؤشر التحميل التدريجي الذكي (Adaptive Infinite Scroll Sentinel) */}
+            <div
+              ref={sentinelRef}
+              className="py-5 px-4 text-center text-xs border-t border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-900/80 flex flex-col sm:flex-row items-center justify-between gap-2"
+            >
+              <span className="font-bold text-gray-600 dark:text-gray-300">
+                يتم عرض <strong className="text-purple-600 dark:text-purple-400">{visibleProducts.length}</strong> من أصل{" "}
+                <strong>{totalFilteredCount}</strong> منتج
+              </span>
+              {hasMore ? (
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 font-extrabold text-purple-600 dark:text-purple-400">
+                    <span className="w-3.5 h-3.5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                    <span>
+                      {isFastScrolling
+                        ? `⚡ تمرير سريع: مضاعفة الدفعة تلقائياً (+${effectiveBatchSize} منتج)...`
+                        : `جاري تحميل الدفعة التالية تلقائياً (+${effectiveBatchSize})...`}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={loadMore}
+                    className="px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-[11px] transition-colors cursor-pointer"
+                  >
+                    تحميل المزيد الآن
+                  </button>
+                </div>
+              ) : (
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                  ✓ تم عرض كافة المنتجات المطابقة ({totalFilteredCount} منتج)
+                </span>
+              )}
+            </div>
           </>
         )}
       </div>
@@ -1167,7 +1228,7 @@ export default function ProductsPage() {
           setEditingProduct(null);
           setReturnUrl(null);
         }}
-        product={editingProduct}
+        product={editingProduct ? products.find((p) => p.id === editingProduct.id) || editingProduct : null}
         returnUrl={returnUrl}
       />
 

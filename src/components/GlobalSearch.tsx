@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { useData } from "@/lib/data-context";
 import { useSettings } from "@/lib/settings-context";
 import { useRouter } from "next/navigation";
+import { useDebouncedValue } from "@/lib/useDashboardPagination";
 
 interface SearchResult {
   type: "product" | "supplier" | "order";
@@ -18,6 +19,7 @@ export default function GlobalSearch() {
   const { settings } = useSettings();
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 180);
   const [isOpen, setIsOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -44,11 +46,18 @@ export default function GlobalSearch() {
   }, []);
 
   const results = useMemo<SearchResult[]>(() => {
-    if (!query.trim()) return [];
-    const q = query.toLowerCase();
+    const q = debouncedQuery.trim().toLowerCase();
+    if (!q) return [];
 
     const productResults: SearchResult[] = products
-      .filter((p) => p.name.toLowerCase().includes(q) || p.notes.toLowerCase().includes(q))
+      .filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          (p.notes && p.notes.toLowerCase().includes(q)) ||
+          (p.categoryName && p.categoryName.toLowerCase().includes(q)) ||
+          (p.barcode && p.barcode.toLowerCase().includes(q))
+      )
+      .slice(0, 8)
       .map((p) => ({
         type: "product" as const,
         title: p.name,
@@ -59,6 +68,7 @@ export default function GlobalSearch() {
 
     const supplierResults: SearchResult[] = suppliers
       .filter((s) => s.name.toLowerCase().includes(q) || s.phone.includes(q) || s.email.toLowerCase().includes(q))
+      .slice(0, 4)
       .map((s) => ({
         type: "supplier" as const,
         title: s.name,
@@ -68,7 +78,7 @@ export default function GlobalSearch() {
       }));
 
     return [...productResults, ...supplierResults].slice(0, 10);
-  }, [query, products, suppliers]);
+  }, [debouncedQuery, products, suppliers]);
 
   const handleSelect = (href: string) => {
     router.push(href);

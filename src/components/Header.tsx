@@ -68,28 +68,28 @@ export default function Header() {
 
   return (
     <>
-      <header className="min-h-16 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center justify-between px-4 sm:px-6 transition-colors shadow-xs max-w-full overflow-x-auto min-w-0 gap-2 flex-wrap sm:flex-nowrap">
-        <div className="flex items-center gap-3 min-w-0">
+      <header className="min-h-16 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center justify-between pl-3 pr-16 sm:pl-6 md:px-6 py-2 transition-colors shadow-xs max-w-full overflow-x-auto min-w-0 gap-2 flex-wrap sm:flex-nowrap">
+        <div className="flex items-center gap-2.5 min-w-0 shrink-0">
           <div className="flex items-center gap-2 shrink-0">
             {settings.homeIcon ? (
               <img src={settings.homeIcon} alt="القائمة" style={{ width: settings.homeIconSize || 28, height: settings.homeIconSize || 28 }} className="object-contain" />
             ) : (
               <span style={{ fontSize: (settings.homeIconSize || 28) * 0.8 }}>🏠</span>
             )}
-            <h2 className="text-base sm:text-lg font-bold text-gray-900 dark:text-white hidden sm:block truncate">
+            <h2 className="text-sm sm:text-base lg:text-lg font-bold text-gray-900 dark:text-white hidden sm:block truncate max-w-[180px] lg:max-w-[260px]">
               {settings.siteName || "لوحة التحكم الرئيسية"}
             </h2>
           </div>
 
           <span
-            className="px-3 py-1 rounded-full text-xs font-bold text-white hidden md:inline shrink-0"
+            className="px-2.5 py-1 rounded-full text-[11px] font-bold text-white hidden sm:inline-block shrink-0 whitespace-nowrap"
             style={{ backgroundColor: theme.primary }}
           >
             {roleLabel}
           </span>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap shrink-0">
           {/* Quick Location & Contact Button */}
           <button
             onClick={() => setIsContactModalOpen(true)}

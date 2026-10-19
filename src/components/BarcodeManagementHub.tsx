@@ -21,12 +21,13 @@ import StickyHorizontalScrollContainer from "@/components/StickyHorizontalScroll
 import type { Product } from "@/lib/types";
 import { useToast } from "@/components/ToastProvider";
 import { useSettings } from "@/lib/settings-context";
+import { useDashboardPagination, useDebouncedValue } from "@/lib/useDashboardPagination";
 
 export type DateRangePreset = "all" | "today" | "this_week" | "this_month" | "this_year" | "custom";
 export type SortOption = "default" | "most_scanned" | "least_scanned" | "newest";
 
 export default function BarcodeManagementHub() {
-  const { products, updateProduct, reloadAllData } = useData();
+  const { products, updateProduct, reloadAllData, hydrateProductImages } = useData();
   const { settings, updateSettings } = useSettings();
   const { success, error: toastError, loading: toastLoading, dismiss } = useToast();
 
@@ -76,15 +77,6 @@ export default function BarcodeManagementHub() {
   const [endDate, setEndDate] = useState("");
   const [sortOption, setSortOption] = useState<SortOption>("default");
 
-  // ─── Infinite Scroll Progressive Loading State ────────────────────────────
-  const [displayLimit, setDisplayLimit] = useState(40); // البدء بعرض 40 منتج لضمان السرعة الفائقة
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
-
-  // إعادة ضبط العدد المعروض عند تغيير البحث أو الفلاتر لضمان فورية النتائج
-  useEffect(() => {
-    setDisplayLimit(40);
-  }, [search, filterMode, datePreset, sortOption]);
-
   // ─── Multi-Selection & Batch Modal State ──────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchPrintOpen, setBatchPrintOpen] = useState(false);
@@ -101,11 +93,28 @@ export default function BarcodeManagementHub() {
   const [dualPaneScannerOpen, setDualPaneScannerOpen] = useState(false);
 
   const loadSummary = useCallback(async () => {
+    if (products.length > 0) {
+      let withBarcode = 0;
+      let withQR = 0;
+      let missing = 0;
+      for (const p of products) {
+        if (p.barcode) withBarcode++;
+        if (p.qrCode) withQR++;
+        if (!p.barcode && !p.qrCode) missing++;
+      }
+      setSummary({
+        total: products.length,
+        withBarcode,
+        withQR,
+        missing,
+      });
+      return;
+    }
     const s = await getBarcodeSummary();
     setSummary(s);
-  }, []);
+  }, [products]);
 
-  useEffect(() => { loadSummary(); }, [loadSummary, products]);
+  useEffect(() => { loadSummary(); }, [loadSummary]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -162,14 +171,18 @@ export default function BarcodeManagementHub() {
     return true;
   }, [datePreset, startDate, endDate]);
 
+  const debouncedSearch = useDebouncedValue(search, 180);
+
   // ─── Filtered & Sorted Products List (Instant Search) ─────────────────────
   const filteredProducts = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
     const list = products.filter((p) => {
       const matchSearch =
-        !search.trim() ||
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        (p.barcode || "").includes(search) ||
-        (p.qrCode || "").includes(search);
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        (p.barcode || "").toLowerCase().includes(q) ||
+        (p.qrCode || "").toLowerCase().includes(q) ||
+        (p.categoryName || "").toLowerCase().includes(q);
 
       const matchFilter =
         filterMode === "all"
@@ -189,44 +202,29 @@ export default function BarcodeManagementHub() {
       if (sortOption === "newest") return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
       return 0;
     });
-  }, [products, search, filterMode, sortOption, isWithinDateRange]);
+  }, [products, debouncedSearch, filterMode, sortOption, isWithinDateRange]);
 
-  // المنتجات المرئية حالياً بناءً على النزول والتمرير (Infinite Scroll Slice)
-  const visibleProducts = useMemo(() => {
-    return filteredProducts.slice(0, displayLimit);
-  }, [filteredProducts, displayLimit]);
+  const {
+    visibleItems: visibleProducts,
+    displayLimit,
+    totalFilteredCount,
+    hasMore,
+    isFastScrolling,
+    effectiveBatchSize,
+    sentinelRef,
+    loadMore,
+  } = useDashboardPagination(filteredProducts, hydrateProductImages);
 
-  // مراقب التمرير التلقائي (Intersection Observer) لتحميل المزيد في الخلفية عند النزول
-  useEffect(() => {
-    const currentRef = loadMoreRef.current;
-    if (!currentRef) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && displayLimit < filteredProducts.length) {
-          // تحميل دفعة إضافية تلقائياً في الخلفية عند الوصول للأسفل
-          setDisplayLimit((prev) => Math.min(prev + 40, filteredProducts.length));
-        }
-      },
-      { threshold: 0.1 }
-    );
-
-    observer.observe(currentRef);
-    return () => {
-      if (currentRef) observer.unobserve(currentRef);
-    };
-  }, [displayLimit, filteredProducts.length]);
-
-  // ─── Selection Helpers ────────────────────────────────────────────────────
+  // ─── Selection Helpers (Selects all matching products in database) ────────
   const allVisibleSelected =
-    visibleProducts.length > 0 &&
-    visibleProducts.every((p) => selectedIds.has(p.id));
+    filteredProducts.length > 0 &&
+    filteredProducts.every((p) => selectedIds.has(p.id));
 
   const toggleSelectAll = () => {
     if (allVisibleSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(visibleProducts.map((p) => p.id)));
+      setSelectedIds(new Set(filteredProducts.map((p) => p.id)));
     }
   };
 
@@ -728,7 +726,7 @@ export default function BarcodeManagementHub() {
                   onChange={toggleSelectAll}
                   className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                 />
-                <span className="text-xs font-bold text-gray-600 dark:text-gray-400">تحديد المعروض ({visibleProducts.length} منتج)</span>
+                <span className="text-xs font-bold text-gray-600 dark:text-gray-400">تحديد كافة المطابقة ({filteredProducts.length} منتج)</span>
               </div>
 
               {visibleProducts.map((product) => {
@@ -761,14 +759,36 @@ export default function BarcodeManagementHub() {
         </div>
 
         {/* مؤشر ومستشعر التمرير اللانهائي في أسفل القائمة */}
-        <div ref={loadMoreRef} className="py-6 text-center text-xs text-gray-400 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/50">
-          {displayLimit < filteredProducts.length ? (
-            <span className="flex items-center justify-center gap-2 font-bold text-blue-600">
-              <span className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></span>
-              جاري تحميل المزيد تلقائياً في الخلفية... ({displayLimit} / {filteredProducts.length})
-            </span>
+        <div
+          ref={sentinelRef}
+          className="py-5 px-4 text-center text-xs text-gray-500 border-t border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-950/70 flex flex-col sm:flex-row items-center justify-between gap-2"
+        >
+          <span className="font-bold text-gray-600 dark:text-gray-300">
+            يتم عرض <strong className="text-purple-600 dark:text-purple-400">{visibleProducts.length}</strong> من أصل{" "}
+            <strong>{totalFilteredCount}</strong> منتج
+          </span>
+          {hasMore ? (
+            <div className="flex items-center gap-2">
+              <span className="flex items-center justify-center gap-1.5 font-extrabold text-purple-600 dark:text-purple-400">
+                <span className="w-3.5 h-3.5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></span>
+                <span>
+                  {isFastScrolling
+                    ? `⚡ تمرير سريع: مضاعفة الدفعة تلقائياً (+${effectiveBatchSize} منتج)...`
+                    : `جاري تحميل المزيد تلقائياً (+${effectiveBatchSize})... (${displayLimit} / ${totalFilteredCount})`}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={loadMore}
+                className="px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-[11px] transition-colors cursor-pointer"
+              >
+                تحميل المزيد
+              </button>
+            </div>
           ) : (
-            <span>تم عرض كافة المنتجات المطابقة ({filteredProducts.length} منتج) بنجاح ✨</span>
+            <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+              ✓ تم عرض كافة المنتجات المطابقة ({totalFilteredCount} منتج) بنجاح ✨
+            </span>
           )}
         </div>
 

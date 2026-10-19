@@ -108,6 +108,8 @@ interface DataContextType {
   // ─ Barcode / QR Code ──────────────────────────────────────────
   /** Instant in-memory lookup — O(1). Falls back to DB if not found locally. */
   lookupProductByBarcode: (code: string) => Product | null;
+  /** Hydrates images on demand for visible product IDs in chunks without blocking initial load */
+  hydrateProductImages: (ids: string[]) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -358,6 +360,128 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [productPricingOverrides, setProductPricingOverrides] = useState<Record<string, ProductPricingOverride>>({});
   const [loading, setLoading] = useState(true);
 
+  // ذاكرة تخزين مؤقت للصور المحملة تدريجياً لتفادي إعادة جلبها أو فقدانها عند تحديث البيانات الخفيفة
+  const hydratedImagesRef = React.useRef<Map<string, { image: string; originalImageUrl: string }>>(new Map());
+  const inflightImageIdsRef = React.useRef<Set<string>>(new Set());
+
+  const hydrateProductImages = useCallback(async (ids: string[]) => {
+    if (!ids || ids.length === 0) return;
+    const missingIds = Array.from(new Set(ids)).filter(
+      (id) => id && !hydratedImagesRef.current.has(id) && !inflightImageIdsRef.current.has(id)
+    );
+    if (missingIds.length === 0) return;
+
+    missingIds.forEach((id) => inflightImageIdsRef.current.add(id));
+
+    try {
+      const CHUNK_SIZE = 30;
+      for (let i = 0; i < missingIds.length; i += CHUNK_SIZE) {
+        const chunk = missingIds.slice(i, i + CHUNK_SIZE);
+        let { data, error } = await supabase
+          .from("products")
+          .select("id, image, original_image_url")
+          .in("id", chunk);
+
+        if (error) {
+          const fallback = await supabase
+            .from("products")
+            .select("id, image")
+            .in("id", chunk);
+          data = fallback.data as any;
+        }
+
+        if (data && data.length > 0) {
+          const batchMap = new Map<string, { image: string; originalImageUrl: string }>();
+          data.forEach((row: Record<string, unknown>) => {
+            const pid = row.id as string;
+            const img = (row.image as string) || "";
+            const orig = (row.original_image_url as string) || img;
+            const entry = { image: img, originalImageUrl: orig };
+            hydratedImagesRef.current.set(pid, entry);
+            batchMap.set(pid, entry);
+          });
+
+          if (batchMap.size > 0) {
+            setProducts((prev) =>
+              prev.map((p) => {
+                const hydrated = batchMap.get(p.id);
+                if (!hydrated) return p;
+                if (p.image === hydrated.image && p.originalImageUrl === hydrated.originalImageUrl) return p;
+                return {
+                  ...p,
+                  image: hydrated.image || p.image,
+                  originalImageUrl: hydrated.originalImageUrl || p.originalImageUrl || hydrated.image,
+                };
+              })
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Lazy image hydration warning:", err);
+    } finally {
+      missingIds.forEach((id) => inflightImageIdsRef.current.delete(id));
+    }
+  }, []);
+
+  const fetchAllLightweightProducts = useCallback(async (): Promise<Product[]> => {
+    const FULL_META_COLS =
+      "id, name, cost_price, wholesale_price, retail_price, profit_margin, stock, batch_stock, supplier_id, notes, category_id, category_name, is_all_categories, barcode, qr_code, sku, scan_count, last_scanned_at, is_barcode_active, created_at, updated_at";
+    const FALLBACK_META_COLS =
+      "id, name, cost_price, wholesale_price, retail_price, profit_margin, stock, supplier_id, notes, category_id, barcode, qr_code, created_at, updated_at";
+
+    let rows: Record<string, unknown>[] | null = null;
+
+    const firstTry = await supabase
+      .from("products")
+      .select(FULL_META_COLS)
+      .order("created_at", { ascending: false })
+      .limit(5000);
+
+    if (!firstTry.error && firstTry.data) {
+      rows = firstTry.data as Record<string, unknown>[];
+    } else {
+      const secondTry = await supabase
+        .from("products")
+        .select(FALLBACK_META_COLS)
+        .order("created_at", { ascending: false })
+        .limit(5000);
+
+      if (!secondTry.error && secondTry.data) {
+        rows = secondTry.data as Record<string, unknown>[];
+      } else {
+        // Fallback chunked range loader if statement limit is strict
+        const chunkedRows: Record<string, unknown>[] = [];
+        const PAGE = 150;
+        let offset = 0;
+        while (offset < 5000) {
+          const { data: pageData, error: pageErr } = await supabase
+            .from("products")
+            .select(FALLBACK_META_COLS)
+            .order("created_at", { ascending: false })
+            .range(offset, offset + PAGE - 1);
+          if (pageErr || !pageData || pageData.length === 0) break;
+          chunkedRows.push(...(pageData as Record<string, unknown>[]));
+          if (pageData.length < PAGE) break;
+          offset += PAGE;
+        }
+        rows = chunkedRows;
+      }
+    }
+
+    const parsed = (rows || []).map((r) => {
+      const prod = rowToProduct(r);
+      const cachedImg = hydratedImagesRef.current.get(prod.id);
+      if (cachedImg) {
+        prod.image = cachedImg.image || prod.image;
+        prod.originalImageUrl = cachedImg.originalImageUrl || prod.originalImageUrl;
+      }
+      return prod;
+    });
+
+    return parsed;
+  }, []);
+
   const autoSyncCategoriesFromProducts = useCallback(async () => {
     try {
       const { data: existingCats } = await supabase.from("categories").select("id, name, image, image_url");
@@ -371,14 +495,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         });
       }
 
-      const { data: prodsData } = await supabase.from("products").select("notes, image");
+      const { data: prodsData } = await supabase.from("products").select("id, notes, category_name");
       if (!prodsData || prodsData.length === 0) return [];
 
-      const categoryMap = new Map<string, { name: string; image: string }>();
+      const categoryMap = new Map<string, { name: string; image: string; sampleProductId?: string }>();
 
       for (const p of prodsData) {
         const notes = (p.notes as string) || "";
-        const catName = extractCategoryFromNotes(notes);
+        const catName = (p.category_name as string) || extractCategoryFromNotes(notes);
         if (
           catName &&
           catName !== "عام" &&
@@ -387,9 +511,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         ) {
           const existingImg = existingImageMap.get(catName.trim().toLowerCase());
           if (!categoryMap.has(catName)) {
-            categoryMap.set(catName, { 
-              name: catName, 
-              image: existingImg || (p.image as string) || "" 
+            categoryMap.set(catName, {
+              name: catName,
+              image: existingImg || "",
+              sampleProductId: existingImg ? undefined : (p.id as string),
             });
           }
         }
@@ -397,8 +522,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       if (categoryMap.size === 0) return [];
 
+      // جلب صور عينات الأقسام التي لا تملك صورة فقط في استعلام خفيف
+      const sampleIds = Array.from(categoryMap.values())
+        .map((c) => c.sampleProductId)
+        .filter((id): id is string => Boolean(id));
+
+      const sampleImgMap = new Map<string, string>();
+      if (sampleIds.length > 0) {
+        const { data: sampleImgs } = await supabase
+          .from("products")
+          .select("id, image")
+          .in("id", sampleIds.slice(0, 50));
+        sampleImgs?.forEach((s) => {
+          if (s.id && s.image) sampleImgMap.set(s.id as string, s.image as string);
+        });
+      }
+
       const catRows = Array.from(categoryMap.values()).map((cat, idx) => {
-        const existingImg = existingImageMap.get(cat.name.trim().toLowerCase()) || cat.image;
+        const existingImg =
+          existingImageMap.get(cat.name.trim().toLowerCase()) ||
+          cat.image ||
+          (cat.sampleProductId ? sampleImgMap.get(cat.sampleProductId) || "" : "");
         return {
           name: cat.name,
           image: existingImg,
@@ -434,25 +578,38 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     async function loadData() {
       try {
-        const [productsRes, suppliersRes, categoriesRes] = await Promise.all([
-          supabase.from("products").select("*").order("created_at", { ascending: false }),
+        const [loadedProducts, suppliersRes, categoriesRes] = await Promise.all([
+          fetchAllLightweightProducts(),
           supabase.from("suppliers").select("*").order("created_at", { ascending: false }),
           supabase.from("categories").select("*").order("priority", { ascending: true }),
         ]);
 
-        const loadedProducts = productsRes.data ? productsRes.data.map(rowToProduct) : [];
         const loadedCategories = categoriesRes.data ? categoriesRes.data.map(rowToCategory) : [];
         const loadedSuppliers = suppliersRes.data ? suppliersRes.data.map(rowToSupplier) : [];
 
-        if (productsRes.data) setProducts(loadedProducts);
+        setProducts(loadedProducts);
         if (suppliersRes.data) setSuppliers(loadedSuppliers);
         if (loadedCategories.length > 0) setCategories(loadedCategories);
 
         if (loadedProducts.length > 0) {
+          // ترطيب صور الدفعة الأولى وعينة لكل قسم في الخلفية بدون حجب العرض الفوري
+          const initialIds = loadedProducts.slice(0, 40).map((p) => p.id);
+          const seenCats = new Set<string>();
+          loadedProducts.forEach((p) => {
+            const cKey = p.categoryId || p.categoryName || extractCategoryFromNotes(p.notes || "");
+            if (cKey && !seenCats.has(cKey) && seenCats.size < 40) {
+              seenCats.add(cKey);
+              initialIds.push(p.id);
+            }
+          });
+          hydrateProductImages(initialIds);
+
           const distinctFromProducts = new Set<string>();
           loadedProducts.forEach((p) => {
-            const cat = extractCategoryFromNotes(p.notes || "");
-            if (cat && cat !== "عام" && cat !== "غير محدد") distinctFromProducts.add(cat);
+            const cat = p.categoryName || extractCategoryFromNotes(p.notes || "");
+            if (cat && cat !== "عام" && cat !== "غير محدد" && !isUniversalCategory(cat)) {
+              distinctFromProducts.add(cat);
+            }
           });
 
           if (loadedCategories.length === 0 || loadedCategories.length < distinctFromProducts.size) {
@@ -501,8 +658,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         if (data) setCategories(data.map(rowToCategory));
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "products" }, async () => {
-        const { data } = await supabase.from("products").select("*").order("created_at", { ascending: false });
-        if (data) setProducts(data.map(rowToProduct));
+        const refreshed = await fetchAllLightweightProducts();
+        if (refreshed.length > 0) setProducts(refreshed);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "suppliers" }, async () => {
         const { data } = await supabase.from("suppliers").select("*").order("created_at", { ascending: false });
@@ -513,7 +670,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [fetchAllLightweightProducts, hydrateProductImages]);
 
   const addProduct = useCallback(async (product: Omit<Product, "id" | "createdAt" | "updatedAt">) => {
     let finalImageUrl = product.image || "";
@@ -542,6 +699,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     if (error) throw error;
     if (created?.id) {
       setLocalBatchStock(String(created.id), effectiveBatch);
+      if (finalImageUrl) {
+        hydratedImagesRef.current.set(String(created.id), {
+          image: finalImageUrl,
+          originalImageUrl,
+        });
+      }
     }
     const newProduct: Product = {
       ...rowToProduct(created),
@@ -561,6 +724,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       finalUpdates.image = watermarkedImg;
       finalUpdates.originalImageUrl = originalToKeep;
+      hydratedImagesRef.current.set(id, {
+        image: watermarkedImg,
+        originalImageUrl: originalToKeep,
+      });
     }
 
     if (finalUpdates.batchStock !== undefined) {
@@ -588,8 +755,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       finalUpdates.batchStock !== undefined
         ? finalUpdates.batchStock
         : rowToProduct(updated).batchStock;
+    const cachedImg = hydratedImagesRef.current.get(id);
+    const parsedUpdated = rowToProduct(updated);
     const product: Product = {
-      ...rowToProduct(updated),
+      ...parsedUpdated,
+      image: parsedUpdated.image || cachedImg?.image || existingProduct?.image || "",
+      originalImageUrl:
+        parsedUpdated.originalImageUrl ||
+        cachedImg?.originalImageUrl ||
+        existingProduct?.originalImageUrl ||
+        "",
       batchStock: resolvedBatch,
     };
     setProducts((prev) => prev.map((p) => (p.id === id ? product : p)));
@@ -598,29 +773,24 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const bulkUpdateProducts = useCallback(async (ids: string[], updates: Partial<Product>) => {
     if (!ids || ids.length === 0) return;
     const row = productToRow(updates as Record<string, unknown>);
-    const chunkSize = 200;
-    const updatedRows: Record<string, unknown>[] = [];
+    const chunkSize = 150;
 
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);
-      let { data: updated, error } = await supabase.from("products").update(row).in("id", chunk).select();
+      let { error } = await supabase.from("products").update(row).in("id", chunk);
       if (error && error.message?.includes("batch_stock")) {
         const fallbackRow = { ...row };
         delete fallbackRow.batch_stock;
-        const retry = await supabase.from("products").update(fallbackRow).in("id", chunk).select();
-        updated = retry.data;
+        const retry = await supabase.from("products").update(fallbackRow).in("id", chunk);
         error = retry.error;
       }
       if (error) throw error;
-      if (updated) updatedRows.push(...updated);
     }
 
-    if (updatedRows.length > 0) {
-      const updatedMap = new Map(updatedRows.map((r) => [r.id as string, rowToProduct(r)]));
-      setProducts((prev) =>
-        prev.map((p) => (updatedMap.has(p.id) ? updatedMap.get(p.id)! : p))
-      );
-    }
+    const idSet = new Set(ids);
+    setProducts((prev) =>
+      prev.map((p) => (idSet.has(p.id) ? { ...p, ...updates } : p))
+    );
   }, []);
 
   const deleteProduct = useCallback(async (id: string) => {
@@ -770,13 +940,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const reloadAllData = useCallback(async () => {
-    const [productsRes, suppliersRes, categoriesRes, overridesRes] = await Promise.all([
-      supabase.from("products").select("*").order("created_at", { ascending: false }),
+    const [loadedProducts, suppliersRes, categoriesRes, overridesRes] = await Promise.all([
+      fetchAllLightweightProducts(),
       supabase.from("suppliers").select("*").order("created_at", { ascending: false }),
       supabase.from("categories").select("*").order("priority", { ascending: true }),
       supabase.from("product_pricing_overrides").select("*"),
     ]);
-    if (productsRes.data) setProducts(productsRes.data.map(rowToProduct));
+    setProducts(loadedProducts);
+    if (loadedProducts.length > 0) {
+      hydrateProductImages(loadedProducts.slice(0, 40).map((p) => p.id));
+    }
     if (suppliersRes.data) setSuppliers(suppliersRes.data.map(rowToSupplier));
     if (categoriesRes.data) setCategories(categoriesRes.data.map(rowToCategory));
     if (overridesRes.data) {
@@ -787,7 +960,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       });
       setProductPricingOverrides(map);
     }
-  }, []);
+  }, [fetchAllLightweightProducts, hydrateProductImages]);
 
   const persistAllCategoriesAndProducts = useCallback(async (catsToSave: CategoryItem[], prodsToSave: Product[]) => {
     if (catsToSave.length > 0) {
@@ -819,8 +992,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (prodsToSave.length > 0) {
-      const prodRows = prodsToSave.map((p) => productToRow(p as unknown as Record<string, unknown>));
-      await supabase.from("products").upsert(prodRows);
+      const CHUNK_SIZE = 50;
+      const prodRows = prodsToSave.map((p) => {
+        const rawCopy: Record<string, unknown> = { ...(p as unknown as Record<string, unknown>) };
+        // عدم مسح الصورة في قاعدة البيانات إذا لم تكن قد حُملت كسولاً بعد في الذاكرة
+        if (!rawCopy.image && !hydratedImagesRef.current.has(p.id)) {
+          delete rawCopy.image;
+          delete rawCopy.originalImageUrl;
+        }
+        return productToRow(rawCopy);
+      });
+      for (let i = 0; i < prodRows.length; i += CHUNK_SIZE) {
+        await supabase.from("products").upsert(prodRows.slice(i, i + CHUNK_SIZE));
+      }
     }
 
     await reloadAllData();
@@ -1228,6 +1412,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             ) ?? null
           );
         },
+        hydrateProductImages,
       }}
     >
       {children}

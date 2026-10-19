@@ -4,7 +4,19 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useData, extractCategoryFromNotes } from "@/lib/data-context";
 import { useSettings } from "@/lib/settings-context";
 import ImageUploader from "@/components/ImageUploader";
-import { CategoryItem, getCategoryDisplayImage } from "@/lib/types";
+import { CategoryItem, Product, getCategoryDisplayImage } from "@/lib/types";
+import { isProductInAllCategories, isUniversalCategory } from "@/lib/seo";
+import { useDebouncedValue } from "@/lib/useDashboardPagination";
+
+function doesProductMatchCategory(p: Product, cat: CategoryItem): boolean {
+  if (isProductInAllCategories(p)) return true;
+  const catNameLower = cat.name.trim().toLowerCase();
+  if (!catNameLower) return false;
+  if (p.categoryId && p.categoryId === cat.id) return true;
+  if (p.categoryName && p.categoryName.trim().toLowerCase() === catNameLower) return true;
+  if (p.notes && p.notes.toLowerCase().includes(catNameLower)) return true;
+  return false;
+}
 
 function helperUpdateNotes(notes: string | undefined, categoryName: string, assign: boolean): string {
   const current = (notes || "").trim();
@@ -27,10 +39,11 @@ function helperUpdateNotes(notes: string | undefined, categoryName: string, assi
 }
 
 export default function CategoriesManager() {
-  const { categories, products, addCategory, updateCategory, deleteCategory, updateProduct, autoSyncCategoriesFromProducts } = useData();
+  const { categories, products, addCategory, updateCategory, deleteCategory, updateProduct, autoSyncCategoriesFromProducts, hydrateProductImages } = useData();
   const { settings, updateSettings } = useSettings();
   const comboboxRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
+  const hasAutoSyncedRef = useRef(false);
 
   // Mode: "" (none chosen), "new" or category id
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
@@ -44,14 +57,16 @@ export default function CategoriesManager() {
   const [catKeywords, setCatKeywords] = useState("");
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [productSearch, setProductSearch] = useState("");
+  const [pickerLimit, setPickerLimit] = useState(36);
 
   const [saving, setSaving] = useState(false);
   const [syncingCategories, setSyncingCategories] = useState(false);
   const [successMsg, setSuccessMsg] = useState(false);
 
-  // Auto Sync Categories on Mount whenever products exist
+  // Auto Sync Categories once on initial load when products are available
   useEffect(() => {
-    if (products.length > 0) {
+    if (products.length > 0 && !hasAutoSyncedRef.current) {
+      hasAutoSyncedRef.current = true;
       autoSyncCategoriesFromProducts();
     }
   }, [products.length, autoSyncCategoriesFromProducts]);
@@ -146,7 +161,7 @@ export default function CategoriesManager() {
       // Find products belonging to this category
       const assigned = new Set<string>();
       products.forEach((p) => {
-        if (p.notes && p.notes.toLowerCase().includes(activeCategory.name.toLowerCase())) {
+        if (doesProductMatchCategory(p, activeCategory)) {
           assigned.add(p.id);
         }
       });
@@ -154,6 +169,65 @@ export default function CategoriesManager() {
     }
     setSuccessMsg(false);
   }, [selectedCategoryId, activeCategory, allAvailableCategories.length, products]);
+
+  // Precompute stats & display image per category in a single pass
+  const categoryStatsMap = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        totalCount: number;
+        lowStockCount: number;
+        outOfStockCount: number;
+        displayImg: string;
+        sampleProductId?: string;
+      }
+    >();
+
+    allAvailableCategories.forEach((c) => {
+      let totalCount = 0;
+      let lowStockCount = 0;
+      let outOfStockCount = 0;
+      let sampleImg = c.image && c.image.trim() ? c.image.trim() : "";
+      let sampleProductId: string | undefined;
+
+      for (const p of products) {
+        if (doesProductMatchCategory(p, c)) {
+          totalCount++;
+          if (p.stock > 0 && p.stock <= 5) lowStockCount++;
+          if ((p.stock ?? 0) <= 0) outOfStockCount++;
+          if (!sampleImg && p.image && p.image.trim()) {
+            sampleImg = p.image.trim();
+          }
+          if (!sampleProductId) {
+            sampleProductId = p.id;
+          }
+        }
+      }
+
+      map.set(c.id, {
+        totalCount,
+        lowStockCount,
+        outOfStockCount,
+        displayImg: sampleImg || getCategoryDisplayImage(c, products),
+        sampleProductId,
+      });
+    });
+
+    return map;
+  }, [allAvailableCategories, products]);
+
+  // Hydrate sample product images for categories that don't have a custom image yet
+  useEffect(() => {
+    const sampleIds: string[] = [];
+    categoryStatsMap.forEach((stat) => {
+      if (!stat.displayImg && stat.sampleProductId) {
+        sampleIds.push(stat.sampleProductId);
+      }
+    });
+    if (sampleIds.length > 0) {
+      hydrateProductImages(sampleIds);
+    }
+  }, [categoryStatsMap, hydrateProductImages]);
 
   const handleSelectCategoryToEdit = (catId: string) => {
     setSelectedCategoryId(catId);
@@ -173,15 +247,37 @@ export default function CategoriesManager() {
     );
   }, [allAvailableCategories, catSearchQuery]);
 
+  const debouncedProductSearch = useDebouncedValue(productSearch, 180);
+
   // Filter products by search term
   const filteredProducts = useMemo(() => {
-    if (!productSearch.trim()) return products;
-    const q = productSearch.toLowerCase();
-    return products.filter((p) => p.name.toLowerCase().includes(q) || (p.notes && p.notes.toLowerCase().includes(q)));
-  }, [products, productSearch]);
+    const q = debouncedProductSearch.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.notes && p.notes.toLowerCase().includes(q)) ||
+        (p.categoryName && p.categoryName.toLowerCase().includes(q)) ||
+        (p.barcode && p.barcode.toLowerCase().includes(q))
+    );
+  }, [products, debouncedProductSearch]);
+
+  useEffect(() => {
+    setPickerLimit(36);
+  }, [debouncedProductSearch]);
+
+  const visiblePickerProducts = useMemo(() => {
+    return filteredProducts.slice(0, pickerLimit);
+  }, [filteredProducts, pickerLimit]);
+
+  useEffect(() => {
+    if (visiblePickerProducts.length > 0) {
+      hydrateProductImages(visiblePickerProducts.map((p) => p.id));
+    }
+  }, [visiblePickerProducts, hydrateProductImages]);
 
   const handleSelectAll = () => {
-    const allIds = new Set(products.map((p) => p.id));
+    const allIds = new Set(filteredProducts.map((p) => p.id));
     setSelectedProductIds(allIds);
   };
 
@@ -347,16 +443,17 @@ export default function CategoriesManager() {
         <div className="flex items-center gap-3 overflow-x-auto py-2 no-scrollbar scroll-smooth" style={{ scrollbarWidth: "none" }}>
           {allAvailableCategories.map((c) => {
             const isSelected = selectedCategoryId === c.id;
-            const catProds = products.filter((p) => p.notes && p.notes.toLowerCase().includes(c.name.toLowerCase()));
-            const displayImg = getCategoryDisplayImage(c, products);
+            const stat = categoryStatsMap.get(c.id);
+            const totalCount = stat?.totalCount ?? 0;
+            const displayImg = stat?.displayImg || "";
             return (
               <button
                 key={c.id}
                 onClick={() => handleSelectCategoryToEdit(c.id)}
-                className={`flex-shrink-0 flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${
+                className={`flex-shrink-0 flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer max-w-[230px] ${
                   isSelected
-                    ? "border-blue-600 bg-blue-50/80 dark:bg-blue-900/40 text-blue-700 dark:text-blue-200 shadow-md scale-105"
-                    : "border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 hover:border-blue-300 text-gray-800 dark:text-gray-200"
+                    ? "border-purple-600 bg-purple-50/80 dark:bg-purple-900/40 text-purple-700 dark:text-purple-200 shadow-md scale-[1.02]"
+                    : "border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 hover:border-purple-400 text-gray-800 dark:text-gray-200"
                 }`}
               >
                 <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-200 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
@@ -366,10 +463,16 @@ export default function CategoriesManager() {
                     <span className="text-lg">📁</span>
                   )}
                 </div>
-                <div className="text-right">
-                  <p className="text-xs font-extrabold line-clamp-1">{c.name}</p>
-                  <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold mt-0.5">
-                    أولوية: {c.priority} • [{catProds.length} منتج]
+                <div className="text-right min-w-0 flex-1">
+                  <div
+                    className="overflow-x-auto whitespace-nowrap no-scrollbar max-w-full"
+                    style={{ scrollbarWidth: "none" }}
+                    title={c.name}
+                  >
+                    <p className="text-xs font-extrabold inline-block">{c.name}</p>
+                  </div>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold mt-0.5 whitespace-nowrap">
+                    أولوية: {c.priority} • [{totalCount} منتج]
                   </p>
                 </div>
               </button>
@@ -380,59 +483,70 @@ export default function CategoriesManager() {
 
       {/* 3. Category Analytics & Dynamic Alert Cards Grid */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <h3 className="font-extrabold text-base text-gray-900 dark:text-white flex items-center gap-2">
             <span>📊</span> إحصائيات الأقسام والتنبيهات الذكية للمخزون والزيارات
           </h3>
-          <span className="text-xs text-gray-400">تحديث تلقائي لحالة مخزون المنتجات وعدد الزيارات</span>
+          <span className="text-xs text-gray-400">اسحب اسم القسم أفقياً أو مرر المؤشر لعرض الاسم الكامل</span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
           {allAvailableCategories.map((c) => {
-            const catProds = products.filter((p) => p.notes && p.notes.toLowerCase().includes(c.name.toLowerCase()));
-            const totalCount = catProds.length;
-            const lowStockCount = catProds.filter((p) => p.stock > 0 && p.stock <= 5).length;
-            const outOfStockCount = catProds.filter((p) => p.stock === 0).length;
+            const stat = categoryStatsMap.get(c.id);
+            const totalCount = stat?.totalCount ?? 0;
+            const lowStockCount = stat?.lowStockCount ?? 0;
+            const outOfStockCount = stat?.outOfStockCount ?? 0;
             const viewsCount = c.views || 0;
-            const displayImg = getCategoryDisplayImage(c, products);
+            const displayImg = stat?.displayImg || "";
 
             // Border Alert Logic: Red if out of stock, Yellow if low stock, Normal if healthy
             let borderStyle = "border-emerald-300 dark:border-emerald-800 bg-white dark:bg-gray-800/90";
-            let alertBadge = <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/40 px-1.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 shrink-0">✅ متوفر</span>;
+            let alertBadge = <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/40 px-1.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 shrink-0 whitespace-nowrap">✅ متوفر</span>;
 
             if (outOfStockCount > 0) {
               borderStyle = "border-red-500 dark:border-red-600 bg-red-50/40 dark:bg-red-950/20 text-red-900 dark:text-red-200 ring-1 ring-red-500/20";
-              alertBadge = <span className="text-[10px] font-bold text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-900/50 px-1.5 py-0.5 rounded-full border border-red-300 dark:border-red-800 animate-pulse shrink-0">🚨 منفذ</span>;
+              alertBadge = <span className="text-[10px] font-bold text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-900/50 px-1.5 py-0.5 rounded-full border border-red-300 dark:border-red-800 animate-pulse shrink-0 whitespace-nowrap">🚨 منفذ</span>;
             } else if (lowStockCount > 0) {
               borderStyle = "border-amber-400 dark:border-amber-500 bg-amber-50/40 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200 ring-1 ring-amber-400/20";
-              alertBadge = <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 rounded-full border border-amber-300 dark:border-amber-800 shrink-0">⚠️ وشيك</span>;
+              alertBadge = <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/50 px-1.5 py-0.5 rounded-full border border-amber-300 dark:border-amber-800 shrink-0 whitespace-nowrap">⚠️ وشيك</span>;
             }
 
             return (
               <div
                 key={c.id}
-                className={`p-3 rounded-2xl border transition-all duration-300 shadow-sm space-y-2.5 flex flex-col justify-between w-full mx-auto ${borderStyle}`}
+                className={`p-3 rounded-2xl border transition-all duration-300 shadow-sm space-y-2 flex flex-col justify-between w-full mx-auto min-w-0 ${borderStyle}`}
               >
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-1.5 border-b border-gray-100 dark:border-gray-700 pb-2">
+                <div className="space-y-2 min-w-0">
+                  {/* Top Row: Thumbnail + Priority + Alert Badge */}
+                  <div className="flex items-center justify-between gap-1.5">
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0 border border-gray-200 dark:border-gray-700 shadow-sm">
+                      <div className="w-11 h-11 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0 border border-gray-200 dark:border-gray-700 shadow-sm">
                         {displayImg ? (
                           <img src={displayImg} alt={c.name} loading="lazy" className="w-full h-full object-cover" />
                         ) : (
                           <span className="text-base">📁</span>
                         )}
                       </div>
-                      <div className="min-w-0">
-                        <h4 className="font-extrabold text-xs text-gray-900 dark:text-white truncate leading-tight" title={c.name}>{c.name}</h4>
-                        <p className="text-[10px] text-gray-400">أولوية: {c.priority}</p>
-                      </div>
+                      <span className="px-1.5 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-200 border border-purple-200 dark:border-purple-700/60 text-[10px] font-extrabold whitespace-nowrap">
+                        #{c.priority}
+                      </span>
                     </div>
                     {alertBadge}
                   </div>
 
+                  {/* Full-width Horizontally Scrollable Category Title (No Clipping, Compact Card Size) */}
+                  <div
+                    className="w-full overflow-x-auto whitespace-nowrap no-scrollbar py-1 px-2 rounded-lg bg-gray-50/90 dark:bg-gray-900/60 border border-gray-200/70 dark:border-gray-700/70 scroll-smooth"
+                    style={{ scrollbarWidth: "none" }}
+                    title={c.name}
+                  >
+                    <h4 className="font-extrabold text-xs text-gray-900 dark:text-white inline-block leading-tight">
+                      {c.name}
+                    </h4>
+                  </div>
+
                   {/* Compact Analytics Stats Grid */}
-                  <div className="grid grid-cols-2 gap-1 pt-1">
+                  <div className="grid grid-cols-2 gap-1 pt-0.5">
                     <div className="p-1 rounded-lg bg-gray-50 dark:bg-gray-900/60 border border-gray-100 dark:border-gray-700 text-center">
                       <span className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 whitespace-nowrap">إجمالي</span>
                       <span className="text-xs font-black text-blue-600 dark:text-blue-400 block leading-tight whitespace-nowrap">{totalCount} منتج</span>
@@ -457,7 +571,7 @@ export default function CategoriesManager() {
 
                 <button
                   onClick={() => handleSelectCategoryToEdit(c.id)}
-                  className="w-full min-h-[38px] py-1.5 px-3 bg-gray-100 dark:bg-gray-700 hover:bg-blue-600 hover:text-white dark:hover:bg-blue-600 text-gray-700 dark:text-gray-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs whitespace-nowrap active:scale-95 shrink-0"
+                  className="w-full min-h-[36px] py-1.5 px-3 bg-purple-600/10 dark:bg-purple-500/15 hover:bg-purple-600 hover:text-white dark:hover:bg-purple-600 text-purple-800 dark:text-purple-200 border border-purple-500/25 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-2xs whitespace-nowrap active:scale-95 shrink-0 cursor-pointer"
                 >
                   <span>✏️</span>
                   <span className="whitespace-nowrap">تعديل القسم</span>
@@ -758,47 +872,72 @@ export default function CategoriesManager() {
           />
         </div>
 
-        {/* Products Grid Checklist */}
+        {/* Products Grid Checklist (Chunked Loading) */}
         {filteredProducts.length === 0 ? (
           <div className="p-8 text-center text-gray-400 text-xs bg-gray-50 dark:bg-gray-900/50 rounded-xl">
             لا توجد منتجات مطابقة لعملية البحث.
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-96 overflow-y-auto p-1 custom-scrollbar">
-            {filteredProducts.map((product) => {
-              const isChecked = selectedProductIds.has(product.id);
-              return (
-                <div
-                  key={product.id}
-                  onClick={() => toggleProductSelection(product.id)}
-                  className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center gap-3 select-none ${
-                    isChecked
-                      ? "border-blue-500 bg-blue-50/70 dark:bg-blue-900/30 ring-1 ring-blue-500"
-                      : "border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/40 hover:border-gray-300"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={() => {}} // handled by parent div onClick
-                    className="w-4 h-4 text-blue-600 rounded accent-blue-600 cursor-pointer"
-                  />
+          <div className="space-y-3">
+            <div
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                if (el.scrollTop + el.clientHeight >= el.scrollHeight - 120 && pickerLimit < filteredProducts.length) {
+                  setPickerLimit((prev) => Math.min(prev + 36, filteredProducts.length));
+                }
+              }}
+              className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-96 overflow-y-auto p-1 custom-scrollbar"
+            >
+              {visiblePickerProducts.map((product) => {
+                const isChecked = selectedProductIds.has(product.id);
+                return (
+                  <div
+                    key={product.id}
+                    onClick={() => toggleProductSelection(product.id)}
+                    className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center gap-3 select-none ${
+                      isChecked
+                        ? "border-purple-500 bg-purple-50/70 dark:bg-purple-900/30 ring-1 ring-purple-500"
+                        : "border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/40 hover:border-gray-300"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => {}}
+                      className="w-4 h-4 text-purple-600 rounded accent-purple-600 cursor-pointer shrink-0"
+                    />
 
-                  {product.image ? (
-                    <img src={product.image} alt="" className="w-10 h-10 rounded-lg object-cover border border-gray-200 dark:border-gray-700" />
-                  ) : (
-                    <div className="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-sm">📦</div>
-                  )}
+                    {product.image ? (
+                      <img src={product.image} alt="" className="w-10 h-10 rounded-lg object-cover border border-gray-200 dark:border-gray-700 shrink-0" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-sm shrink-0">📦</div>
+                    )}
 
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-gray-900 dark:text-white truncate">{product.name}</p>
-                    <p className="text-[11px] text-blue-600 dark:text-blue-400 font-extrabold mt-0.5">
-                      {product.retailPrice.toLocaleString()} د.ع
-                    </p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-gray-900 dark:text-white truncate" title={product.name}>{product.name}</p>
+                      <p className="text-[11px] text-blue-600 dark:text-blue-400 font-extrabold mt-0.5">
+                        {product.retailPrice.toLocaleString()} د.ع
+                      </p>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+
+            {pickerLimit < filteredProducts.length && (
+              <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-900/60 rounded-xl border border-gray-200 dark:border-gray-700 text-xs">
+                <span className="text-gray-500 dark:text-gray-400 font-bold">
+                  يتم عرض {visiblePickerProducts.length} من أصل {filteredProducts.length} منتج
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPickerLimit((prev) => Math.min(prev + 48, filteredProducts.length))}
+                  className="px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-[11px] transition-colors cursor-pointer"
+                >
+                  عرض المزيد (+48)
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
