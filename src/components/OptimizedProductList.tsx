@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { Product } from '@/lib/types';
+import ProgressiveProductImage from '@/components/ProgressiveProductImage';
 
 // إعدادات الأداء والدفعات الافتراضية
 const DEFAULT_INITIAL_LIMIT = 10;
@@ -186,17 +187,16 @@ export default function OptimizedProductList({
               }`}
             >
               <div className="flex items-center gap-3">
-                {product.image ? (
-                  <img
-                    src={product.image}
-                    alt={productName}
-                    className="w-10 h-10 object-cover rounded-lg border border-purple-500/20 bg-purple-950/40"
-                  />
-                ) : (
-                  <div className="w-10 h-10 rounded-lg bg-purple-900/40 border border-purple-500/20 flex items-center justify-center text-purple-400 text-xs">
-                    📦
-                  </div>
-                )}
+                <ProgressiveProductImage
+                  src={product.image}
+                  thumbnailSrc={product.thumbnailUrl}
+                  blurDataUrl={product.blurDataUrl}
+                  productId={product.id}
+                  alt={productName}
+                  mode="thumbnail"
+                  containerClassName="w-10 h-10 rounded-lg border border-purple-500/20 shrink-0"
+                  fallbackTextClassName="text-xs"
+                />
                 <div>
                   <h4 className="text-sm font-bold text-white group-hover:text-purple-300 transition-colors">
                     {productName}

@@ -11,6 +11,7 @@ import { Product, Supplier } from "@/lib/types";
 import { exportInventoryToCSV } from "@/lib/csv-export";
 import { useDashboardPagination, useDebouncedValue } from "@/lib/useDashboardPagination";
 import TruncatedText from "@/components/TruncatedText";
+import ProgressiveProductImage from "@/components/ProgressiveProductImage";
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
 import { searchProductsSmart } from "@/lib/smart-search";
 import {
@@ -577,17 +578,18 @@ export default function InventoryPage() {
                           </td>
                           <td className="px-4 py-3 max-w-[240px]">
                             <div className="flex items-center gap-3 min-w-0">
-                              {product.image ? (
-                                <img
-                                  src={product.image}
-                                  alt=""
-                                  className={`w-9 h-9 rounded-lg object-cover shrink-0 ${
-                                    isOutOfStock ? "ring-2 ring-red-500" : ""
-                                  }`}
-                                />
-                              ) : (
-                                <div className="w-9 h-9 rounded-lg bg-white dark:bg-gray-800 flex items-center justify-center text-gray-400 border border-gray-200 dark:border-gray-700 shrink-0">📦</div>
-                              )}
+                              <ProgressiveProductImage
+                                src={product.image}
+                                thumbnailSrc={product.thumbnailUrl}
+                                blurDataUrl={product.blurDataUrl}
+                                productId={product.id}
+                                alt={product.name}
+                                mode="thumbnail"
+                                containerClassName={`w-9 h-9 rounded-lg shrink-0 ${
+                                  isOutOfStock ? "ring-2 ring-red-500" : "border border-gray-200 dark:border-gray-700"
+                                }`}
+                                fallbackTextClassName="text-xs"
+                              />
                               <div className="min-w-0 flex-1">
                                 <TruncatedText
                                   text={product.name}
@@ -721,19 +723,18 @@ export default function InventoryPage() {
 
                     {/* Featured Image & Basic Supplier Row */}
                     <div className="flex items-center gap-3.5 bg-gray-50/70 dark:bg-gray-800/40 p-3 rounded-xl border border-gray-100 dark:border-gray-800/60">
-                      {product.image ? (
-                        <img
-                          src={product.image}
-                          alt={product.name}
-                          className={`w-16 h-16 rounded-xl object-cover flex-shrink-0 border shadow-sm ${
-                            isOutOfStock ? "border-red-500 ring-1 ring-red-500" : "border-gray-200 dark:border-gray-700"
-                          }`}
-                        />
-                      ) : (
-                        <div className="w-16 h-16 rounded-xl bg-white dark:bg-gray-800 flex items-center justify-center text-gray-400 text-2xl flex-shrink-0 border border-gray-200 dark:border-gray-700 shadow-sm">
-                          📦
-                        </div>
-                      )}
+                      <ProgressiveProductImage
+                        src={product.image}
+                        thumbnailSrc={product.thumbnailUrl}
+                        blurDataUrl={product.blurDataUrl}
+                        productId={product.id}
+                        alt={product.name}
+                        mode="thumbnail"
+                        containerClassName={`w-16 h-16 rounded-xl flex-shrink-0 border shadow-sm ${
+                          isOutOfStock ? "border-red-500 ring-1 ring-red-500" : "border-gray-200 dark:border-gray-700"
+                        }`}
+                        fallbackTextClassName="text-2xl"
+                      />
 
                       <div className="min-w-0 flex-1 space-y-1">
                         <p className="text-xs font-bold text-gray-800 dark:text-gray-200 line-clamp-1">{product.name}</p>

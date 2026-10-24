@@ -22,6 +22,7 @@ import {
 } from "@/lib/seo";
 import { useDashboardPagination, useDebouncedValue } from "@/lib/useDashboardPagination";
 import TruncatedText from "@/components/TruncatedText";
+import ProgressiveProductImage from "@/components/ProgressiveProductImage";
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
 import { searchProductsSmart } from "@/lib/smart-search";
 
@@ -966,11 +967,16 @@ export default function ProductsPage() {
                           )}
                           <td className="p-2.5 max-w-[200px]">
                             <div className="flex items-center gap-2 min-w-0">
-                              {product.image ? (
-                                <img src={product.image} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0 border border-gray-200 dark:border-gray-700" />
-                              ) : (
-                                <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 text-sm flex-shrink-0">📦</div>
-                              )}
+                              <ProgressiveProductImage
+                                src={product.image}
+                                thumbnailSrc={product.thumbnailUrl}
+                                blurDataUrl={product.blurDataUrl}
+                                productId={product.id}
+                                alt={product.name}
+                                mode="thumbnail"
+                                containerClassName="w-8 h-8 rounded-lg flex-shrink-0 border border-gray-200 dark:border-gray-700"
+                                fallbackTextClassName="text-xs"
+                              />
                               <div className="min-w-0 flex-1">
                                 <TruncatedText
                                   text={product.name}
@@ -1209,17 +1215,16 @@ export default function ProductsPage() {
 
                     {/* 2. Image Section (Centered directly below the name) */}
                     <div className="flex justify-center my-1">
-                      <div className="w-16 h-16 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm flex items-center justify-center p-1">
-                        {product.image ? (
-                          <img
-                            src={product.image}
-                            alt={product.name}
-                            className="w-full h-full object-cover rounded-lg"
-                          />
-                        ) : (
-                          <span className="text-2xl">📦</span>
-                        )}
-                      </div>
+                      <ProgressiveProductImage
+                        src={product.image}
+                        thumbnailSrc={product.thumbnailUrl}
+                        blurDataUrl={product.blurDataUrl}
+                        productId={product.id}
+                        alt={product.name}
+                        mode="thumbnail"
+                        containerClassName="w-16 h-16 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm"
+                        fallbackTextClassName="text-2xl"
+                      />
                     </div>
 
                     {/* 3. Body: Key-Value Structured Data Grid */}

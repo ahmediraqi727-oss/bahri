@@ -24,6 +24,7 @@ import { useSettings } from "@/lib/settings-context";
 import { useDashboardPagination, useDebouncedValue } from "@/lib/useDashboardPagination";
 import { searchProductsSmart } from "@/lib/smart-search";
 import TruncatedText from "@/components/TruncatedText";
+import ProgressiveProductImage from "@/components/ProgressiveProductImage";
 import {
   ALL_CATEGORIES_LABEL,
   isProductInAllCategories,
@@ -669,7 +670,16 @@ export default function BarcodeManagementHub() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          {product.image && (<img src={product.image} alt={product.name} className="w-10 h-10 rounded-xl object-cover border border-gray-200 dark:border-gray-700 flex-shrink-0" />)}
+                          <ProgressiveProductImage
+                            src={product.image}
+                            thumbnailSrc={product.thumbnailUrl}
+                            blurDataUrl={product.blurDataUrl}
+                            productId={product.id}
+                            alt={product.name}
+                            mode="thumbnail"
+                            containerClassName="w-10 h-10 rounded-xl border border-gray-200 dark:border-gray-700 flex-shrink-0"
+                            fallbackTextClassName="text-sm"
+                          />
                           <div className="min-w-0">
                             <TruncatedText
                               text={product.name}
@@ -761,7 +771,16 @@ export default function BarcodeManagementHub() {
                   <div key={product.id} className={`p-3.5 transition-colors ${isSelected ? "bg-blue-50/60 dark:bg-blue-950/20" : "bg-white dark:bg-gray-900"}`}>
                     <div className="flex items-center gap-3 mb-3">
                       <input type="checkbox" checked={isSelected} onChange={() => toggleSelectId(product.id)} className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer flex-shrink-0" />
-                      {product.image && (<img src={product.image} alt={product.name} className="w-12 h-12 rounded-xl object-cover border border-gray-200 dark:border-gray-700 flex-shrink-0 shadow-sm" />)}
+                      <ProgressiveProductImage
+                        src={product.image}
+                        thumbnailSrc={product.thumbnailUrl}
+                        blurDataUrl={product.blurDataUrl}
+                        productId={product.id}
+                        alt={product.name}
+                        mode="thumbnail"
+                        containerClassName="w-12 h-12 rounded-xl border border-gray-200 dark:border-gray-700 flex-shrink-0 shadow-sm"
+                        fallbackTextClassName="text-base"
+                      />
                       <div className="flex-1 min-w-0">
                         <p className="font-extrabold text-gray-900 dark:text-white text-sm leading-tight line-clamp-2">{product.name}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{product.retailPrice.toLocaleString()} د.ع</p>

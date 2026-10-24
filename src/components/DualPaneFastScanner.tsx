@@ -22,6 +22,7 @@ import {
   DEFAULT_PRICING_CONFIG,
 } from "@/lib/pricing-engine";
 import type { Product } from "@/lib/types";
+import ProgressiveProductImage from "@/components/ProgressiveProductImage";
 
 // ─── Interfaces & Types ────────────────────────────────────────────────────────
 
@@ -936,19 +937,18 @@ export default function DualPaneFastScanner({
                 </div>
               ) : (
                 <div className="flex items-center gap-3">
-                  <div className="relative w-16 h-16 bg-[#2a174c] rounded-xl overflow-hidden shrink-0 border border-purple-400/30">
-                    {currentProduct.image ? (
-                      <Image
-                        src={currentProduct.image}
-                        alt={currentProduct.name}
-                        fill
-                        sizes="80px"
-                        className="object-contain p-1"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-xl">📦</div>
-                    )}
-                  </div>
+                  <ProgressiveProductImage
+                    src={currentProduct.image}
+                    thumbnailSrc={currentProduct.thumbnailUrl}
+                    blurDataUrl={currentProduct.blurDataUrl}
+                    productId={currentProduct.id}
+                    alt={currentProduct.name}
+                    mode="thumbnail"
+                    priority
+                    containerClassName="w-16 h-16 rounded-xl shrink-0 border border-purple-400/30"
+                    imgClassName="object-cover"
+                    fallbackTextClassName="text-xl"
+                  />
 
                   <div className="flex-1 min-w-0">
                     <h3 className="font-extrabold text-xs text-white truncate mb-1">

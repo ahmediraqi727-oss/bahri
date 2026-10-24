@@ -336,6 +336,8 @@ export interface Product {
   name: string;
   image: string;
   originalImageUrl?: string;
+  thumbnailUrl?: string | null;
+  blurDataUrl?: string | null;
   costPrice: number;
   wholesalePrice: number;
   profitMargin: number;
@@ -370,6 +372,7 @@ export interface BackupProductItem {
   name: string;
   image?: string;
   originalImageUrl?: string;
+  thumbnailUrl?: string | null;
   price?: number;
   retailPrice?: number;
   costPrice?: number;

@@ -15,6 +15,11 @@ import {
   splitCategoryNames,
 } from "@/lib/seo";
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
+import {
+  processAndUploadProductImage,
+  formatByteSize,
+  cacheProductThumbnail,
+} from "@/lib/image-optimizer";
 
 interface ProductModalProps {
   isOpen: boolean;
@@ -64,6 +69,18 @@ export default function ProductModal({
 
   const [name, setName] = useState("");
   const [image, setImage] = useState("");
+  const [thumbnailUrl, setThumbnailUrl] = useState("");
+  const [blurDataUrl, setBlurDataUrl] = useState("");
+  const [optimizingImage, setOptimizingImage] = useState(false);
+  const [imageOptStats, setImageOptStats] = useState<{
+    originalSize: number;
+    optimizedSize: number;
+    thumbnailSize: number;
+    savingsPercent: number;
+    width: number;
+    height: number;
+    format: string;
+  } | null>(null);
   const [costPrice, setCostPrice] = useState("");
   const [wholesalePrice, setWholesalePrice] = useState("");
   const [profitMargin, setProfitMargin] = useState("");
@@ -108,6 +125,8 @@ export default function ProductModal({
 
     setError("");
     setSubmitting(false);
+    setOptimizingImage(false);
+    setImageOptStats(null);
     setIncomingBatchQty("");
     setIsComboOpen(false);
     setCategoryQuery("");
@@ -115,6 +134,8 @@ export default function ProductModal({
     if (product) {
       setName(product.name);
       setImage(product.image);
+      setThumbnailUrl(product.thumbnailUrl || "");
+      setBlurDataUrl(product.blurDataUrl || "");
       setCostPrice(product.costPrice.toString());
       setWholesalePrice(product.wholesalePrice.toString());
       setProfitMargin(product.profitMargin.toString());
@@ -145,6 +166,8 @@ export default function ProductModal({
     } else {
       setName("");
       setImage("");
+      setThumbnailUrl("");
+      setBlurDataUrl("");
       setCostPrice("");
       setWholesalePrice("");
       setProfitMargin("");
@@ -353,12 +376,44 @@ export default function ProductModal({
     handleToggleRegularCategory(catName, false);
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setImage(ev.target?.result as string);
-    reader.readAsDataURL(file);
+
+    setOptimizingImage(true);
+    setError("");
+    try {
+      const result = await processAndUploadProductImage(file, {
+        bucket: "product-images",
+        maxMainDimension: 800,
+        mainQuality: 0.8,
+        thumbnailSize: 200,
+        thumbnailQuality: 0.76,
+      });
+
+      setImage(result.mainUrl);
+      setThumbnailUrl(result.thumbnailUrl);
+      setBlurDataUrl(result.blurDataUrl);
+      setImageOptStats({
+        originalSize: result.originalSize,
+        optimizedSize: result.optimizedSize,
+        thumbnailSize: result.thumbnailSize,
+        savingsPercent: result.savingsPercent,
+        width: result.width,
+        height: result.height,
+        format: result.format.toUpperCase(),
+      });
+
+      if (product?.id) {
+        cacheProductThumbnail(product.id, result.thumbnailUrl, result.blurDataUrl);
+      }
+    } catch (err) {
+      console.error("Image optimization error:", err);
+      setError("تعذر ضغط ومعالجة الصورة، يرجى تجربة صورة أخرى.");
+    } finally {
+      setOptimizingImage(false);
+      if (e.target) e.target.value = "";
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -435,6 +490,8 @@ export default function ProductModal({
       const data = {
         name: name.trim(),
         image,
+        thumbnailUrl: image ? thumbnailUrl || null : null,
+        blurDataUrl: image ? blurDataUrl || null : null,
         costPrice: parseFloat(costPrice) || 0,
         wholesalePrice: parseFloat(wholesalePrice) || 0,
         profitMargin: parseFloat(profitMargin) || 0,
@@ -573,59 +630,129 @@ export default function ProductModal({
             </div>
           )}
 
-          {/* Image Upload with Dual Options */}
-          <div className="flex flex-col items-center gap-3 bg-gray-50 dark:bg-gray-800/40 p-4 rounded-2xl border border-gray-200 dark:border-gray-700/60">
-            <label className="text-xs font-bold text-gray-700 dark:text-gray-300">صورة المنتج</label>
-            <div className="w-32 h-32 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-600 overflow-hidden relative group bg-white dark:bg-gray-900 flex items-center justify-center">
-              {image ? (
-                <>
-                  <img src={image} alt="Product" className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-1">
-                    <button
-                      type="button"
-                      onClick={() => cameraRef.current?.click()}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-[11px] font-bold"
-                    >
-                      📷 كاميرا
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => galleryRef.current?.click()}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded text-[11px] font-bold"
-                    >
-                      📁 معرض
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setImage("")}
-                      className="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-[11px] font-bold"
-                    >
-                      🗑️
-                    </button>
+          {/* Image Upload with Instant WebP Optimization & 200x200 Square Thumbnail */}
+          <div className="flex flex-col items-center gap-3 bg-gradient-to-b from-purple-50/70 to-gray-50 dark:from-[#1e103a]/70 dark:to-gray-900/50 p-4 rounded-2xl border border-purple-200/80 dark:border-purple-500/30">
+            <div className="flex items-center justify-between w-full max-w-md">
+              <label className="text-xs font-extrabold text-gray-800 dark:text-purple-200 flex items-center gap-1.5">
+                <span>🖼️</span>
+                <span>صورة المنتج (ضغط WebP ذكي + مصغرة 200×200)</span>
+              </label>
+              {imageOptStats && image && (
+                <span className="px-2 py-0.5 rounded-lg text-[10px] font-extrabold bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/60">
+                  ⚡ وفّر {imageOptStats.savingsPercent}% ({imageOptStats.format})
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              {/* Main Image Preview (Preserves Original Aspect Ratio) */}
+              <div className="w-36 h-36 rounded-2xl border-2 border-dashed border-purple-300 dark:border-purple-500/50 overflow-hidden relative group bg-gradient-to-br from-[#2e1065]/15 via-[#4c1d95]/10 to-[#5b21b6]/20 dark:from-[#2e1065] dark:via-[#1e1136] dark:to-[#4c1d95] flex items-center justify-center shadow-inner">
+                {optimizingImage ? (
+                  <div className="flex flex-col items-center justify-center text-center p-2 gap-2 bg-gradient-to-br from-[#5b21b6] to-[#2e1065] text-white w-full h-full">
+                    <span className="w-7 h-7 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span className="text-[10px] font-extrabold leading-tight">
+                      جاري ضغط WebP وتوليد المصغرة...
+                    </span>
                   </div>
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 gap-1 text-center p-2">
-                  <span className="text-3xl">🖼️</span>
-                  <span className="text-[11px] font-bold">لم تدرج صورة</span>
+                ) : image ? (
+                  <>
+                    <img
+                      src={image}
+                      alt="Product"
+                      className="w-full h-full object-contain bg-black/10 transition-all duration-300"
+                    />
+                    <div className="absolute bottom-1 right-1 pointer-events-none">
+                      <span className="px-1.5 py-0.5 rounded bg-black/70 text-white text-[9px] font-bold backdrop-blur-xs">
+                        {imageOptStats ? `${imageOptStats.width}×${imageOptStats.height}` : "الأصلية المحسنة"}
+                      </span>
+                    </div>
+                    <div className="absolute inset-0 bg-black/65 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 p-1">
+                      <button
+                        type="button"
+                        onClick={() => cameraRef.current?.click()}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded-lg text-[11px] font-bold cursor-pointer"
+                      >
+                        📷 كاميرا
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => galleryRef.current?.click()}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded-lg text-[11px] font-bold cursor-pointer"
+                      >
+                        📁 معرض
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setImage("");
+                          setThumbnailUrl("");
+                          setBlurDataUrl("");
+                          setImageOptStats(null);
+                        }}
+                        className="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded-lg text-[11px] font-bold cursor-pointer"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-gray-400 dark:text-purple-300/60 gap-1 text-center p-2">
+                    <span className="text-3xl">🖼️</span>
+                    <span className="text-[11px] font-bold">لم تدرج صورة</span>
+                  </div>
+                )}
+              </div>
+
+              {/* 200x200 Square Thumbnail Live Preview */}
+              {(thumbnailUrl || image) && !optimizingImage && (
+                <div className="flex flex-col items-center gap-1.5">
+                  <div className="w-20 h-20 rounded-xl border border-purple-400/50 overflow-hidden shadow-md bg-gradient-to-br from-[#5b21b6] to-[#2e1065] relative">
+                    <img
+                      src={thumbnailUrl || image}
+                      alt="مصغرة 200x200"
+                      className="w-full h-full object-cover"
+                    />
+                    <span className="absolute bottom-0 inset-x-0 bg-[#2e1065]/85 text-purple-100 text-[9px] font-extrabold text-center py-0.5">
+                      مصغرة 200×200
+                    </span>
+                  </div>
+                  {imageOptStats && (
+                    <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300">
+                      حجم المصغرة: {formatByteSize(imageOptStats.thumbnailSize)}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
+
+            {/* Compression & Bandwidth Savings Details */}
+            {imageOptStats && image && (
+              <div className="w-full max-w-md px-3 py-2 rounded-xl bg-purple-100/70 dark:bg-[#241046]/90 border border-purple-300/60 dark:border-purple-500/40 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-purple-900 dark:text-purple-100">
+                <span>
+                  📦 الحجم الأصلي: <strong className="line-through opacity-75">{formatByteSize(imageOptStats.originalSize)}</strong>
+                </span>
+                <span>
+                  🚀 بعد الضغط ({imageOptStats.format}): <strong className="text-emerald-600 dark:text-emerald-400">{formatByteSize(imageOptStats.optimizedSize)}</strong>
+                </span>
+              </div>
+            )}
 
             {/* Dual Buttons */}
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                disabled={optimizingImage}
                 onClick={() => cameraRef.current?.click()}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 dark:hover:bg-blue-900/70 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm cursor-pointer disabled:opacity-50"
               >
                 <span>📷</span>
                 <span>التقاط بالكاميرا</span>
               </button>
               <button
                 type="button"
+                disabled={optimizingImage}
                 onClick={() => galleryRef.current?.click()}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-sm cursor-pointer disabled:opacity-50"
               >
                 <span>📁</span>
                 <span>اختر من المعرض</span>

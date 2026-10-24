@@ -12,6 +12,7 @@ import {
   getEffectiveTiers as engineGetEffectiveTiers,
 } from "./pricing-engine";
 import { ALL_CATEGORIES_LABEL, isUniversalCategory, splitCategoryNames } from "./seo";
+import { cacheProductThumbnail, getCachedProductThumbnail } from "./image-optimizer";
 
 export function extractCategoryFromNotes(notes: string): string {
   if (!notes) return "عام";
@@ -148,6 +149,17 @@ export function rowToProduct(row: Record<string, unknown>): Product {
   const idStr = (row.id as string) || "";
   const image = (row.image as string) || "";
   const origImage = (row.original_image_url as string) || image || "";
+  const cachedThumb = getCachedProductThumbnail(idStr, image);
+  const thumbUrl =
+    (row.thumbnail_url as string | null) ??
+    (row.thumbnailUrl as string | null) ??
+    cachedThumb?.thumbnail ??
+    null;
+  const blurUrl =
+    (row.blur_data_url as string | null) ??
+    (row.blurDataUrl as string | null) ??
+    cachedThumb?.blur ??
+    null;
   const costP = Number(row.cost_price ?? row.costPrice) || 0;
   const retailP = Number(row.retail_price ?? row.retailPrice ?? row.price) || 0;
   const wholesaleP = Number(row.wholesale_price ?? row.wholesalePrice) || 0;
@@ -191,6 +203,8 @@ export function rowToProduct(row: Record<string, unknown>): Product {
     name: (row.name as string) || "",
     image,
     originalImageUrl: origImage,
+    thumbnailUrl: thumbUrl,
+    blurDataUrl: blurUrl,
     costPrice: costP,
     wholesalePrice: wholesaleP,
     profitMargin: profitM,
@@ -226,6 +240,12 @@ export function productToRow(product: Record<string, unknown>): Record<string, u
   }
   if ("name" in product) row.name = product.name;
   if ("image" in product) row.image = product.image || "";
+
+  if ("thumbnailUrl" in product && product.thumbnailUrl !== undefined) {
+    row.thumbnail_url = product.thumbnailUrl || null;
+  } else if ("thumbnail_url" in product && product.thumbnail_url !== undefined) {
+    row.thumbnail_url = product.thumbnail_url || null;
+  }
 
   if ("originalImageUrl" in product && product.originalImageUrl !== undefined) {
     row.original_image_url = product.originalImageUrl || product.image || "";
@@ -405,7 +425,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   // ذاكرة تخزين مؤقت للصور المحملة تدريجياً لتفادي إعادة جلبها أو فقدانها عند تحديث البيانات الخفيفة
-  const hydratedImagesRef = React.useRef<Map<string, { image: string; originalImageUrl: string }>>(new Map());
+  const hydratedImagesRef = React.useRef<
+    Map<string, { image: string; originalImageUrl: string; thumbnailUrl?: string | null; blurDataUrl?: string | null }>
+  >(new Map());
   const inflightImageIdsRef = React.useRef<Set<string>>(new Set());
 
   const hydrateProductImages = useCallback(async (ids: string[]) => {
@@ -423,24 +445,38 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         const chunk = missingIds.slice(i, i + CHUNK_SIZE);
         let { data, error } = await supabase
           .from("products")
-          .select("id, image, original_image_url")
+          .select("id, image, original_image_url, thumbnail_url")
           .in("id", chunk);
 
         if (error) {
-          const fallback = await supabase
+          const secondAttempt = await supabase
             .from("products")
-            .select("id, image")
+            .select("id, image, original_image_url")
             .in("id", chunk);
-          data = fallback.data as any;
+          if (!secondAttempt.error) {
+            data = secondAttempt.data as any;
+          } else {
+            const fallback = await supabase
+              .from("products")
+              .select("id, image")
+              .in("id", chunk);
+            data = fallback.data as any;
+          }
         }
 
         if (data && data.length > 0) {
-          const batchMap = new Map<string, { image: string; originalImageUrl: string }>();
+          const batchMap = new Map<
+            string,
+            { image: string; originalImageUrl: string; thumbnailUrl?: string | null; blurDataUrl?: string | null }
+          >();
           data.forEach((row: Record<string, unknown>) => {
             const pid = row.id as string;
             const img = (row.image as string) || "";
             const orig = (row.original_image_url as string) || img;
-            const entry = { image: img, originalImageUrl: orig };
+            const cachedThumb = getCachedProductThumbnail(pid, img);
+            const thumb = (row.thumbnail_url as string | null) ?? cachedThumb?.thumbnail ?? null;
+            const blur = cachedThumb?.blur ?? null;
+            const entry = { image: img, originalImageUrl: orig, thumbnailUrl: thumb, blurDataUrl: blur };
             hydratedImagesRef.current.set(pid, entry);
             batchMap.set(pid, entry);
           });
@@ -450,11 +486,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
               prev.map((p) => {
                 const hydrated = batchMap.get(p.id);
                 if (!hydrated) return p;
-                if (p.image === hydrated.image && p.originalImageUrl === hydrated.originalImageUrl) return p;
+                if (
+                  p.image === hydrated.image &&
+                  p.originalImageUrl === hydrated.originalImageUrl &&
+                  p.thumbnailUrl === hydrated.thumbnailUrl
+                ) {
+                  return p;
+                }
                 return {
                   ...p,
                   image: hydrated.image || p.image,
                   originalImageUrl: hydrated.originalImageUrl || p.originalImageUrl || hydrated.image,
+                  thumbnailUrl: hydrated.thumbnailUrl || p.thumbnailUrl || null,
+                  blurDataUrl: hydrated.blurDataUrl || p.blurDataUrl || null,
                 };
               })
             );
@@ -519,6 +563,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (cachedImg) {
         prod.image = cachedImg.image || prod.image;
         prod.originalImageUrl = cachedImg.originalImageUrl || prod.originalImageUrl;
+        prod.thumbnailUrl = cachedImg.thumbnailUrl || prod.thumbnailUrl || null;
+        prod.blurDataUrl = cachedImg.blurDataUrl || prod.blurDataUrl || null;
       }
       return prod;
     });
@@ -753,6 +799,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const addProduct = useCallback(async (product: Omit<Product, "id" | "createdAt" | "updatedAt">) => {
     let finalImageUrl = product.image || "";
     const originalImageUrl = product.originalImageUrl || product.image || "";
+    const thumbnailUrl = product.thumbnailUrl || null;
+    const blurDataUrl = product.blurDataUrl || null;
 
     if (finalImageUrl) {
       finalImageUrl = await applyWatermarkIfNeeded(finalImageUrl);
@@ -764,6 +812,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       batchStock: effectiveBatch,
       image: finalImageUrl,
       originalImageUrl: originalImageUrl,
+      thumbnailUrl: thumbnailUrl,
     } as Record<string, unknown>);
 
     let { data: created, error } = await supabase.from("products").insert(row).select().single();
@@ -772,30 +821,40 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       (error.message?.includes("batch_stock") ||
         error.message?.includes("is_all_categories") ||
         error.message?.includes("category_name") ||
+        error.message?.includes("thumbnail_url") ||
         error.code === "PGRST204")
     ) {
       const fallbackRow = { ...row };
       if (error.message?.includes("batch_stock") || error.code === "PGRST204") delete fallbackRow.batch_stock;
       if (error.message?.includes("is_all_categories") || error.code === "PGRST204") delete fallbackRow.is_all_categories;
       if (error.message?.includes("category_name") || error.code === "PGRST204") delete fallbackRow.category_name;
+      if (error.message?.includes("thumbnail_url") || error.code === "PGRST204") delete fallbackRow.thumbnail_url;
       const retry = await supabase.from("products").insert(fallbackRow).select().single();
       created = retry.data;
       error = retry.error;
     }
     if (error) throw error;
     if (created?.id) {
-      setLocalBatchStock(String(created.id), effectiveBatch);
+      const createdId = String(created.id);
+      setLocalBatchStock(createdId, effectiveBatch);
+      if (thumbnailUrl) {
+        cacheProductThumbnail(createdId, thumbnailUrl, blurDataUrl || undefined);
+      }
       if (finalImageUrl) {
-        hydratedImagesRef.current.set(String(created.id), {
+        hydratedImagesRef.current.set(createdId, {
           image: finalImageUrl,
           originalImageUrl,
+          thumbnailUrl,
+          blurDataUrl,
         });
       }
-      syncProductCategoriesJunction(String(created.id), product.categoryName, product.isAllCategories);
+      syncProductCategoriesJunction(createdId, product.categoryName, product.isAllCategories);
     }
     const parsedCreated = rowToProduct(created);
     const newProduct: Product = {
       ...parsedCreated,
+      thumbnailUrl: thumbnailUrl || parsedCreated.thumbnailUrl || null,
+      blurDataUrl: blurDataUrl || parsedCreated.blurDataUrl || null,
       categoryName: product.categoryName !== undefined ? product.categoryName : parsedCreated.categoryName,
       categoryId: product.categoryId !== undefined ? product.categoryId : parsedCreated.categoryId,
       isAllCategories: product.isAllCategories !== undefined ? product.isAllCategories : parsedCreated.isAllCategories,
@@ -809,15 +868,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     let finalUpdates = { ...updates };
     const existingProduct = products.find((p) => p.id === id);
 
+    if (updates.thumbnailUrl) {
+      cacheProductThumbnail(id, updates.thumbnailUrl, updates.blurDataUrl || undefined);
+    }
+
     if (updates.image) {
       const originalToKeep = updates.originalImageUrl || existingProduct?.originalImageUrl || updates.image;
       const watermarkedImg = await applyWatermarkIfNeeded(updates.image);
+      const resolvedThumb =
+        updates.thumbnailUrl !== undefined
+          ? updates.thumbnailUrl
+          : existingProduct?.thumbnailUrl ?? null;
+      const resolvedBlur =
+        updates.blurDataUrl !== undefined
+          ? updates.blurDataUrl
+          : existingProduct?.blurDataUrl ?? null;
 
       finalUpdates.image = watermarkedImg;
       finalUpdates.originalImageUrl = originalToKeep;
       hydratedImagesRef.current.set(id, {
         image: watermarkedImg,
         originalImageUrl: originalToKeep,
+        thumbnailUrl: resolvedThumb,
+        blurDataUrl: resolvedBlur,
       });
     }
 
@@ -839,12 +912,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       (error.message?.includes("batch_stock") ||
         error.message?.includes("is_all_categories") ||
         error.message?.includes("category_name") ||
+        error.message?.includes("thumbnail_url") ||
         error.code === "PGRST204")
     ) {
       const fallbackRow = { ...row };
       if (error.message?.includes("batch_stock") || error.code === "PGRST204") delete fallbackRow.batch_stock;
       if (error.message?.includes("is_all_categories") || error.code === "PGRST204") delete fallbackRow.is_all_categories;
       if (error.message?.includes("category_name") || error.code === "PGRST204") delete fallbackRow.category_name;
+      if (error.message?.includes("thumbnail_url") || error.code === "PGRST204") delete fallbackRow.thumbnail_url;
       const retry = await supabase.from("products").update(fallbackRow).eq("id", id).select().single();
       updated = retry.data;
       error = retry.error;
@@ -895,6 +970,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         cachedImg?.originalImageUrl ||
         existingProduct?.originalImageUrl ||
         "",
+      thumbnailUrl:
+        finalUpdates.thumbnailUrl !== undefined
+          ? finalUpdates.thumbnailUrl
+          : parsedUpdated.thumbnailUrl || cachedImg?.thumbnailUrl || existingProduct?.thumbnailUrl || null,
+      blurDataUrl:
+        finalUpdates.blurDataUrl !== undefined
+          ? finalUpdates.blurDataUrl
+          : parsedUpdated.blurDataUrl || cachedImg?.blurDataUrl || existingProduct?.blurDataUrl || null,
       batchStock: resolvedBatch,
     };
     setProducts((prev) => prev.map((p) => (p.id === id ? product : p)));
@@ -913,12 +996,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         (error.message?.includes("batch_stock") ||
           error.message?.includes("is_all_categories") ||
           error.message?.includes("category_name") ||
+          error.message?.includes("thumbnail_url") ||
           error.code === "PGRST204")
       ) {
         const fallbackRow = { ...row };
         if (error.message?.includes("batch_stock") || error.code === "PGRST204") delete fallbackRow.batch_stock;
         if (error.message?.includes("is_all_categories") || error.code === "PGRST204") delete fallbackRow.is_all_categories;
         if (error.message?.includes("category_name") || error.code === "PGRST204") delete fallbackRow.category_name;
+        if (error.message?.includes("thumbnail_url") || error.code === "PGRST204") delete fallbackRow.thumbnail_url;
         const retry = await supabase.from("products").update(fallbackRow).in("id", chunk);
         error = retry.error;
       }

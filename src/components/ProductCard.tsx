@@ -20,6 +20,7 @@ import {
 } from "@/lib/pricing-engine";
 import type { Product } from "@/lib/types";
 import { HighlightSearchMatch } from "@/lib/smart-search";
+import ProgressiveProductImage from "@/components/ProgressiveProductImage";
 
 export interface ProductCardProps {
   product: Product;
@@ -124,27 +125,20 @@ export default function ProductCard({
         className="relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800 cursor-pointer"
         onClick={() => onSelectProduct?.(product)}
       >
-        {product.image ? (
-          <Image
-            src={product.image}
-            alt={productAlt}
-            fill
-            sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-            className={`object-cover group-hover:scale-110 transition-transform duration-700 ease-out will-change-transform ${
-              isOutOfStock ? "opacity-85 saturate-75" : ""
-            }`}
-            priority={priorityImage}
-            loading={priorityImage ? undefined : "lazy"}
-            referrerPolicy="no-referrer"
-          />
-        ) : (
-          <div
-            className="w-full h-full flex items-center justify-center text-5xl text-gray-300 group-hover:scale-110 transition-transform duration-500"
-            aria-hidden="true"
-          >
-            📦
-          </div>
-        )}
+        <ProgressiveProductImage
+          src={product.image}
+          thumbnailSrc={product.thumbnailUrl}
+          blurDataUrl={product.blurDataUrl}
+          productId={product.id}
+          alt={productAlt}
+          mode="card"
+          priority={priorityImage}
+          containerClassName="w-full h-full"
+          imgClassName={`object-cover group-hover:scale-110 transition-transform duration-700 ease-out will-change-transform ${
+            isOutOfStock ? "opacity-85 saturate-75" : ""
+          }`}
+          fallbackTextClassName="text-5xl group-hover:scale-110 transition-transform duration-500"
+        />
 
         {/* Out-of-Stock Top Banner / Frame Indicator */}
         {isOutOfStock && (
