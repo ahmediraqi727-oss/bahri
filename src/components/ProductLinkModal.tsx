@@ -5,6 +5,7 @@ import Image from "next/image";
 import type { Product } from "@/lib/types";
 import { useData } from "@/lib/data-context";
 import { assignBarcodeToProduct } from "@/lib/barcode-service";
+import { searchProductsSmart, normalizeSearchText } from "@/lib/smart-search";
 
 interface ProductLinkModalProps {
   isOpen: boolean;
@@ -33,26 +34,21 @@ export default function ProductLinkModal({
   } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // Filter products by search and category
+  // Filter products by smart fuzzy search and category
   const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
-      // Exclude deleted products if flag is present
+    const activeCatNorm = selectedCategory ? normalizeSearchText(selectedCategory) : "";
+    const base = products.filter((p) => {
       if ((p as { isDeleted?: boolean }).isDeleted) return false;
-
-      const matchesCategory = selectedCategory
-        ? (p.notes && p.notes.includes(`الفئة: ${selectedCategory}`)) ||
-          (p.notes && p.notes.includes(selectedCategory))
-        : true;
-
-      if (!matchesCategory) return false;
-
-      if (!search.trim()) return true;
-      const q = search.trim().toLowerCase();
-      const matchName = p.name.toLowerCase().includes(q);
-      const matchBarcode = p.barcode?.toLowerCase().includes(q) ?? false;
-      const matchQR = p.qrCode?.toLowerCase().includes(q) ?? false;
-      return matchName || matchBarcode || matchQR;
+      if (!activeCatNorm) return true;
+      return (
+        (p.notes && normalizeSearchText(p.notes).includes(activeCatNorm)) ||
+        (p.categoryName && normalizeSearchText(p.categoryName).includes(activeCatNorm))
+      );
     });
+
+    if (!search.trim()) return base;
+    const res = searchProductsSmart(base, search, { maxFallbackResults: 8 });
+    return res.directMatches.length > 0 ? res.directMatches : res.fallbackMatches;
   }, [products, search, selectedCategory]);
 
   if (!isOpen || !scannedCode) return null;

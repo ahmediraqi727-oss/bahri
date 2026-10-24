@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase-client";
 import { Product } from "@/lib/types";
 import { rowToProduct } from "@/lib/data-context";
+import { normalizeDigits, expandTokenSynonyms } from "@/lib/smart-search";
 
 interface UseAdaptiveProductsOptions {
   searchQuery?: string;
@@ -23,12 +24,9 @@ interface UseAdaptiveProductsReturn {
   sentinelRef: (node: HTMLElement | null) => void;
 }
 
-/**
- * Calculates initial page batch size dynamically based on Viewport Density:
- * - Mobile (< 768px - grid-cols-2): 10 items (fills screen + buffer)
- * - Tablet (768px - 1024px - md:grid-cols-3): 12 items
- * - Desktop (> 1024px - lg:grid-cols-4 / xl:grid-cols-5): 20 items
- */
+// Track whether the `search_products_smart` RPC is installed in Supabase to avoid redundant failed RPC calls
+let smartRpcAvailable: boolean | null = null;
+
 function getViewportBatchSize(): number {
   if (typeof window === "undefined") return 12;
   const width = window.innerWidth;
@@ -49,6 +47,23 @@ export function useAdaptiveProducts({
   const [totalCount, setTotalCount] = useState(0);
   const [batchSize, setBatchSize] = useState(getViewportBatchSize());
 
+  // Debounce search query (180ms) to eliminate per-keystroke network bottlenecks
+  const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Keep products synced when initialProducts arrive from DataContext
+  useEffect(() => {
+    if (initialProducts.length > 0 && products.length === 0 && !debouncedSearch.trim()) {
+      setProducts(initialProducts);
+      setLoading(false);
+    }
+  }, [initialProducts, products.length, debouncedSearch]);
+
   const pageRef = useRef(0);
   const isFetchingRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -58,18 +73,14 @@ export function useAdaptiveProducts({
   const lastScrollYRef = useRef<number>(0);
   const lastScrollTimeRef = useRef<number>(Date.now());
 
-  // Update batch size on window resize
   useEffect(() => {
     const handleResize = () => {
-      const newSize = getViewportBatchSize();
-      setBatchSize(newSize);
+      setBatchSize(getViewportBatchSize());
     };
-
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Recommendation 2: Passive scroll listener for velocity tracking with MANDATORY CLEANUP
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -80,9 +91,7 @@ export function useAdaptiveProducts({
 
       if (dt > 30) {
         const dy = Math.abs(currentY - lastScrollYRef.current);
-        const velocity = dy / dt; // px per ms
-        velocityRef.current = velocity;
-
+        velocityRef.current = dy / dt;
         lastScrollYRef.current = currentY;
         lastScrollTimeRef.current = now;
       }
@@ -92,10 +101,10 @@ export function useAdaptiveProducts({
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Fetch page logic supporting velocity doubling and AbortController cancellation
   const fetchProductsPage = useCallback(
     async (pageToFetch: number, isReset = false) => {
-      if (isFetchingRef.current) return;
+      // Allow reset queries to cancel in-flight requests instead of being dropped
+      if (isFetchingRef.current && !isReset) return;
       isFetchingRef.current = true;
 
       if (isReset) {
@@ -104,7 +113,6 @@ export function useAdaptiveProducts({
         setLoadingMore(true);
       }
 
-      // Recommendation 3: Cancel previous stale request via AbortController
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
@@ -112,13 +120,46 @@ export function useAdaptiveProducts({
       abortControllerRef.current = controller;
 
       try {
-        // Recommendation 2 / Rule: Adapt batch size according to scroll velocity
         const isHighVelocity = velocityRef.current > 1.2;
         const currentBatchSize = isHighVelocity ? batchSize * 2 : batchSize;
 
         const from = pageToFetch * currentBatchSize;
         const to = from + currentBatchSize - 1;
+        const cleanQuery = normalizeDigits(debouncedSearch.trim());
 
+        // 1. Try Supabase Smart Trigram RPC when searching (if installed in SQL Editor)
+        if (cleanQuery && smartRpcAvailable !== false && (!selectedCategory || selectedCategory === "الكل")) {
+          const { data: rpcData, error: rpcError } = await supabase.rpc("search_products_smart", {
+            search_term: cleanQuery,
+            result_limit: currentBatchSize,
+            result_offset: from,
+          });
+
+          if (controller.signal.aborted) return;
+
+          if (!rpcError && Array.isArray(rpcData)) {
+            smartRpcAvailable = true;
+            const fetchedItems = rpcData.map((row) => rowToProduct(row as Record<string, unknown>));
+            setTotalCount(fetchedItems.length);
+            if (isReset) {
+              setProducts(fetchedItems);
+            } else {
+              setProducts((prev) => {
+                const existingIds = new Set(prev.map((p) => p.id));
+                const newItems = fetchedItems.filter((p) => !existingIds.has(p.id));
+                return [...prev, ...newItems];
+              });
+            }
+            setHasMore(fetchedItems.length >= currentBatchSize);
+            pageRef.current = pageToFetch;
+            return;
+          } else if (rpcError) {
+            // RPC not yet created in Supabase; fall back silently to multi-token query
+            smartRpcAvailable = false;
+          }
+        }
+
+        // 2. Standard / Multi-Token Partial & Synonym Supabase Query
         let query = supabase
           .from("products")
           .select("*", { count: "exact" })
@@ -136,9 +177,40 @@ export function useAdaptiveProducts({
           );
         }
 
-        if (searchQuery && searchQuery.trim()) {
-          const q = searchQuery.trim();
-          query = query.or(`name.ilike.%${q}%,notes.ilike.%${q}%`);
+        if (cleanQuery) {
+          // Build smart OR clauses for tokens + primary synonyms so partial/out-of-order queries match
+          const tokens = cleanQuery
+            .split(/\s+/)
+            .map((t) => t.replace(/[,%()]/g, "").trim())
+            .filter(Boolean)
+            .slice(0, 4);
+
+          const orClauses: string[] = [];
+          const cleanWhole = cleanQuery.replace(/[,%()]/g, "").trim();
+          if (cleanWhole) {
+            orClauses.push(`name.ilike.%${cleanWhole}%`);
+            orClauses.push(`notes.ilike.%${cleanWhole}%`);
+            orClauses.push(`barcode.ilike.%${cleanWhole}%`);
+          }
+
+          tokens.forEach((token) => {
+            if (token.length >= 2) {
+              orClauses.push(`name.ilike.%${token}%`);
+              orClauses.push(`notes.ilike.%${token}%`);
+              const syns = expandTokenSynonyms(token).slice(0, 3);
+              syns.forEach((syn) => {
+                const safeSyn = syn.replace(/[,%()]/g, "").trim();
+                if (safeSyn.length >= 2) {
+                  orClauses.push(`name.ilike.%${safeSyn}%`);
+                }
+              });
+            }
+          });
+
+          const uniqueClauses = Array.from(new Set(orClauses)).slice(0, 14);
+          if (uniqueClauses.length > 0) {
+            query = query.or(uniqueClauses.join(","));
+          }
         }
 
         const { data, count, error } = await query;
@@ -173,7 +245,7 @@ export function useAdaptiveProducts({
           pageRef.current = pageToFetch;
         }
       } catch (err: any) {
-        if (err.name !== "AbortError") {
+        if (err?.name !== "AbortError") {
           console.error("Adaptive streaming fetch error:", err);
         }
       } finally {
@@ -184,29 +256,25 @@ export function useAdaptiveProducts({
         }
       }
     },
-    [batchSize, selectedCategory, searchQuery, products.length]
+    [batchSize, selectedCategory, debouncedSearch, products.length]
   );
 
-  // Recommendation 5: useCallback for loadMore
   const loadMore = useCallback(async () => {
     if (!hasMore || loading || loadingMore || isFetchingRef.current) return;
     const nextPage = pageRef.current + 1;
     await fetchProductsPage(nextPage, false);
   }, [hasMore, loading, loadingMore, fetchProductsPage]);
 
-  // Recommendation 5: useCallback for refetch
   const refetch = useCallback(async () => {
     pageRef.current = 0;
     await fetchProductsPage(0, true);
   }, [fetchProductsPage]);
 
-  // Trigger refetch whenever category or searchQuery changes
   useEffect(() => {
     pageRef.current = 0;
     fetchProductsPage(0, true);
-  }, [selectedCategory, searchQuery]);
+  }, [selectedCategory, debouncedSearch]);
 
-  // Recommendation 4: IntersectionObserver with rootMargin: '300px'
   const observerRef = useRef<IntersectionObserver | null>(null);
   const sentinelRef = useCallback(
     (node: HTMLElement | null) => {
@@ -220,7 +288,7 @@ export function useAdaptiveProducts({
               loadMore();
             }
           },
-          { rootMargin: "300px" } // 300px margin before bottom of screen
+          { rootMargin: "300px" }
         );
         observerRef.current.observe(node);
       }

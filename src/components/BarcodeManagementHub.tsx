@@ -22,6 +22,7 @@ import type { Product } from "@/lib/types";
 import { useToast } from "@/components/ToastProvider";
 import { useSettings } from "@/lib/settings-context";
 import { useDashboardPagination, useDebouncedValue } from "@/lib/useDashboardPagination";
+import { searchProductsSmart } from "@/lib/smart-search";
 
 export type DateRangePreset = "all" | "today" | "this_week" | "this_month" | "this_year" | "custom";
 export type SortOption = "default" | "most_scanned" | "least_scanned" | "newest";
@@ -171,19 +172,11 @@ export default function BarcodeManagementHub() {
     return true;
   }, [datePreset, startDate, endDate]);
 
-  const debouncedSearch = useDebouncedValue(search, 180);
+  const debouncedSearch = useDebouncedValue(search, 150);
 
-  // ─── Filtered & Sorted Products List (Instant Search) ─────────────────────
+  // ─── Filtered & Sorted Products List (Instant Smart Fuzzy Search) ─────────
   const filteredProducts = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase();
-    const list = products.filter((p) => {
-      const matchSearch =
-        !q ||
-        p.name.toLowerCase().includes(q) ||
-        (p.barcode || "").toLowerCase().includes(q) ||
-        (p.qrCode || "").toLowerCase().includes(q) ||
-        (p.categoryName || "").toLowerCase().includes(q);
-
+    const preFiltered = products.filter((p) => {
       const matchFilter =
         filterMode === "all"
           ? true
@@ -192,10 +185,18 @@ export default function BarcodeManagementHub() {
           : !!(p.barcode || p.qrCode);
 
       const matchDate = isWithinDateRange(p.createdAt || p.lastScannedAt);
-
-      return matchSearch && matchFilter && matchDate;
+      return matchFilter && matchDate;
     });
 
+    let list = preFiltered;
+    if (debouncedSearch.trim()) {
+      const res = searchProductsSmart(preFiltered, debouncedSearch, {
+        maxFallbackResults: 8,
+      });
+      list = res.directMatches.length > 0 ? res.directMatches : res.fallbackMatches;
+    }
+
+    if (sortOption === "default") return list;
     return [...list].sort((a, b) => {
       if (sortOption === "most_scanned") return (b.scanCount || 0) - (a.scanCount || 0);
       if (sortOption === "least_scanned") return (a.scanCount || 0) - (b.scanCount || 0);

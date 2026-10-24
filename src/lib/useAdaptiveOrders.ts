@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase-client";
 import { Order, CartItem } from "@/lib/order-types";
+import { normalizeDigits } from "@/lib/smart-search";
 
 interface UseAdaptiveOrdersOptions {
   searchQuery?: string;
@@ -70,6 +71,14 @@ export function useAdaptiveOrders({
   const isFetchingRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 180);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   // Separate non-blocking summary metrics query (Fast aggregation without returning full rows)
   const fetchSummaryMetrics = useCallback(async () => {
     try {
@@ -108,7 +117,7 @@ export function useAdaptiveOrders({
   // Main Range-paginated Fetching with AbortController for rapid input protection
   const fetchOrdersPage = useCallback(
     async (pageToFetch: number, isReset = false) => {
-      if (isFetchingRef.current) return;
+      if (isFetchingRef.current && !isReset) return;
       isFetchingRef.current = true;
 
       if (isReset) {
@@ -139,9 +148,23 @@ export function useAdaptiveOrders({
           query = query.eq("status", statusFilter);
         }
 
-        if (searchQuery && searchQuery.trim()) {
-          const q = searchQuery.trim();
-          query = query.or(`customer_name.ilike.%${q}%,customer_phone.ilike.%${q}%,notes.ilike.%${q}%`);
+        if (debouncedSearch && debouncedSearch.trim()) {
+          const q = normalizeDigits(debouncedSearch.trim()).replace(/[,%()]/g, "");
+          const tokens = q.split(/\s+/).filter(Boolean).slice(0, 3);
+          const clauses = [
+            `customer_name.ilike.%${q}%`,
+            `customer_phone.ilike.%${q}%`,
+            `notes.ilike.%${q}%`,
+            `invoice_serial.ilike.%${q}%`,
+          ];
+          tokens.forEach((tok) => {
+            if (tok.length >= 2) {
+              clauses.push(`customer_name.ilike.%${tok}%`);
+              clauses.push(`customer_phone.ilike.%${tok}%`);
+              clauses.push(`notes.ilike.%${tok}%`);
+            }
+          });
+          query = query.or(Array.from(new Set(clauses)).join(","));
         }
 
         if (startDate) {
@@ -197,7 +220,7 @@ export function useAdaptiveOrders({
         }
       }
     },
-    [batchSize, statusFilter, searchQuery, startDate, endDate, orders.length]
+    [batchSize, statusFilter, debouncedSearch, startDate, endDate, orders.length]
   );
 
   const loadMore = useCallback(async () => {
@@ -214,7 +237,7 @@ export function useAdaptiveOrders({
   useEffect(() => {
     pageRef.current = 0;
     fetchOrdersPage(0, true);
-  }, [statusFilter, searchQuery, startDate, endDate]);
+  }, [statusFilter, debouncedSearch, startDate, endDate]);
 
   return {
     orders,

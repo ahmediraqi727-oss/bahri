@@ -12,6 +12,7 @@ import { exportInventoryToCSV } from "@/lib/csv-export";
 import { useDashboardPagination, useDebouncedValue } from "@/lib/useDashboardPagination";
 import TruncatedText from "@/components/TruncatedText";
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
+import { searchProductsSmart } from "@/lib/smart-search";
 
 interface StockThresholds {
   excellent: number;
@@ -199,24 +200,33 @@ export default function InventoryPage() {
     return map;
   }, [suppliers]);
 
-  const debouncedSearch = useDebouncedValue(searchQuery, 180);
+  const debouncedSearch = useDebouncedValue(searchQuery, 150);
+
+  const levelScopedProducts = useMemo(() => {
+    if (filterLevel === "all") return products;
+    return products.filter((p) => getStockLevel(p, thresholds) === filterLevel);
+  }, [products, filterLevel, thresholds]);
+
+  const smartSearch = useMemo(() => {
+    return searchProductsSmart(levelScopedProducts, debouncedSearch, {
+      supplierNameMap,
+      maxFallbackResults: 10,
+    });
+  }, [levelScopedProducts, debouncedSearch, supplierNameMap]);
+
+  const isFallbackMode = Boolean(
+    debouncedSearch.trim() &&
+      smartSearch.directMatches.length === 0 &&
+      smartSearch.fallbackMatches.length > 0
+  );
 
   // Always prioritize out-of-stock ("empty") and low-stock ("low") items at the very top of the list
   const filtered = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase();
-    const base = products.filter((p) => {
-      if (filterLevel !== "all" && getStockLevel(p, thresholds) !== filterLevel) {
-        return false;
-      }
-      if (!q) return true;
-      return (
-        p.name.toLowerCase().includes(q) ||
-        (p.notes && p.notes.toLowerCase().includes(q)) ||
-        (p.categoryName && p.categoryName.toLowerCase().includes(q)) ||
-        (p.barcode && p.barcode.toLowerCase().includes(q)) ||
-        (p.supplierId && (supplierNameMap.get(p.supplierId) || "").includes(q))
-      );
-    });
+    const base = !debouncedSearch.trim()
+      ? levelScopedProducts
+      : smartSearch.directMatches.length > 0
+      ? smartSearch.directMatches
+      : smartSearch.fallbackMatches;
 
     return [...base].sort((a, b) => {
       const levelA = getStockLevel(a, thresholds);
@@ -230,7 +240,7 @@ export default function InventoryPage() {
 
       return (a.stock ?? 0) - (b.stock ?? 0);
     });
-  }, [products, filterLevel, thresholds, debouncedSearch, supplierNameMap]);
+  }, [levelScopedProducts, thresholds, debouncedSearch, smartSearch.directMatches, smartSearch.fallbackMatches]);
 
   const {
     visibleItems: visibleProducts,
@@ -396,30 +406,41 @@ export default function InventoryPage() {
         })}
       </div>
 
-      {/* Instant Search Bar for Inventory */}
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-3.5 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative flex-1 w-full">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="🔍 بحث فوري في المخزون بالاسم، الكود، القسم أو المورد..."
-            className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none text-sm"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery("")}
-              className="absolute left-3 top-2.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm cursor-pointer"
-            >
-              ✕
-            </button>
-          )}
+      {/* Instant Smart Search Bar for Inventory */}
+      <div className="bg-white dark:bg-[#160b2e] rounded-2xl border border-purple-200/80 dark:border-purple-800/60 p-3.5 shadow-sm space-y-2.5">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="relative flex-1 w-full">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="🔍 بحث ذكي فوري في المخزون بالاسم، الكود، القسم، المورد، أو المرادف (مثل: تاير، باتري)..."
+              className="w-full px-4 py-2.5 pl-10 border border-purple-300 dark:border-purple-700/80 rounded-xl bg-gray-50 dark:bg-[#241046]/80 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#5b21b6] focus:border-[#5b21b6] outline-none text-sm font-medium transition-all"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-gray-200 dark:bg-purple-900/80 hover:bg-rose-500 hover:text-white text-gray-600 dark:text-purple-200 text-xs flex items-center justify-center transition-colors cursor-pointer"
+                title="مسح البحث"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-xs font-extrabold text-[#5b21b6] dark:text-purple-200 bg-[#5b21b6]/10 dark:bg-[#5b21b6]/30 px-3 py-2 rounded-xl border border-[#5b21b6]/30 whitespace-nowrap font-mono tabular-nums">
+            <span>المعروض حالياً: {visibleProducts.length}</span>
+            <span>من أصل {totalFilteredCount}</span>
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-xs font-extrabold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 px-3 py-2 rounded-xl border border-purple-200 dark:border-purple-800/50 whitespace-nowrap">
-          <span>المعروض حالياً: {visibleProducts.length}</span>
-          <span>من أصل {totalFilteredCount}</span>
-        </div>
+        {isFallbackMode && (
+          <div className="px-3.5 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-200 text-xs font-bold flex items-center gap-2">
+            <span>✨</span>
+            <span>
+              لم نجد مطابقة حرفية لـ «{debouncedSearch}» — يتم عرض ({filtered.length}) منتجات مشابهة ومقترحة في المخزون.
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Bulk Selection Toolbar */}

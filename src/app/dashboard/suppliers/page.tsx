@@ -8,6 +8,7 @@ import { useTrash } from "@/lib/trash";
 import { Supplier } from "@/lib/types";
 import { hasPermission } from "@/lib/permissions";
 import { getAdminPermissionsConfig } from "@/components/PermissionGate";
+import { filterItemsSmart } from "@/lib/smart-search";
 
 export default function SuppliersPage() {
   const { suppliers, products, addSupplier, updateSupplier, deleteSupplier } = useData();
@@ -32,11 +33,14 @@ export default function SuppliersPage() {
   const [formNotes, setFormNotes] = useState("");
 
   const filtered = useMemo(() => {
-    if (!searchQuery) return suppliers;
-    const q = searchQuery.toLowerCase();
-    return suppliers.filter(
-      (s) => s.name.toLowerCase().includes(q) || s.phone.includes(q) || s.email.toLowerCase().includes(q)
-    );
+    if (!searchQuery.trim()) return suppliers;
+    return filterItemsSmart(suppliers, searchQuery, (s) => [
+      s.name,
+      s.phone,
+      s.email,
+      s.address,
+      s.notes,
+    ]);
   }, [suppliers, searchQuery]);
 
   const getProductCount = (supplierId: string) => products.filter((p) => p.supplierId === supplierId).length;

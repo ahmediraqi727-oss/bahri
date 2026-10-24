@@ -9,6 +9,7 @@ import { useActivityLog } from "@/lib/activity-log";
 import { CustomerRecord } from "@/lib/types";
 import { rowToCustomer } from "@/lib/visitor-tracker";
 import DataTableWrapper from "@/components/DataTableWrapper";
+import { scoreSmartRecordMatch } from "@/lib/smart-search";
 
 type FilterTab = "all" | "known" | "anonymous" | "registered" | "blocked" | "suspicious";
 type SortOption = "latestActive" | "latestCreated" | "mostVisits" | "priority";
@@ -99,17 +100,14 @@ export default function CustomersPage() {
       list = list.filter((c) => c.isSuspicious);
     }
 
-    // 2. Filter by Search Query
+    // 2. Filter by Smart Fuzzy & Normalized Search Query
     if (search.trim()) {
-      const q = search.trim().toLowerCase();
       list = list.filter((c) => {
         return (
-          c.name.toLowerCase().includes(q) ||
-          c.phone.toLowerCase().includes(q) ||
-          c.governorate.toLowerCase().includes(q) ||
-          c.city.toLowerCase().includes(q) ||
-          c.deviceType.toLowerCase().includes(q) ||
-          c.visitorId.toLowerCase().includes(q)
+          scoreSmartRecordMatch(
+            [c.name, c.phone, c.governorate, c.city, c.deviceType, c.visitorId, c.email],
+            search
+          ) > 0
         );
       });
     }

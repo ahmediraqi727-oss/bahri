@@ -13,6 +13,7 @@ import {
 } from "@/lib/seo";
 import { useDebouncedValue } from "@/lib/useDashboardPagination";
 import TruncatedText from "@/components/TruncatedText";
+import { searchProductsSmart, filterItemsSmart } from "@/lib/smart-search";
 
 function doesProductMatchCategory(p: Product, cat: CategoryItem): boolean {
   if (isProductInAllCategories(p)) return true;
@@ -269,28 +270,24 @@ export default function CategoriesManager() {
     }
   };
 
-  // Filtered Categories List for Combobox
+  // Filtered Categories List for Combobox (Smart Arabic & Synonym Search)
   const filteredCategoriesList = useMemo(() => {
     if (!catSearchQuery.trim()) return allAvailableCategories;
-    const q = catSearchQuery.trim().toLowerCase();
-    return allAvailableCategories.filter(
-      (c) => c.name.toLowerCase().includes(q) || (c.keywords && c.keywords.toLowerCase().includes(q))
-    );
+    return filterItemsSmart(allAvailableCategories, catSearchQuery, (c) => [
+      c.name,
+      c.keywords,
+    ]);
   }, [allAvailableCategories, catSearchQuery]);
 
-  const debouncedProductSearch = useDebouncedValue(productSearch, 180);
+  const debouncedProductSearch = useDebouncedValue(productSearch, 150);
 
-  // Filter products by search term
+  // Filter products by smart fuzzy & synonym search term
   const filteredProducts = useMemo(() => {
-    const q = debouncedProductSearch.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        (p.notes && p.notes.toLowerCase().includes(q)) ||
-        (p.categoryName && p.categoryName.toLowerCase().includes(q)) ||
-        (p.barcode && p.barcode.toLowerCase().includes(q))
-    );
+    if (!debouncedProductSearch.trim()) return products;
+    const res = searchProductsSmart(products, debouncedProductSearch, {
+      maxFallbackResults: 8,
+    });
+    return res.directMatches.length > 0 ? res.directMatches : res.fallbackMatches;
   }, [products, debouncedProductSearch]);
 
   useEffect(() => {

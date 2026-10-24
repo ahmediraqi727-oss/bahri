@@ -19,6 +19,7 @@ import {
   DEFAULT_PRICING_CONFIG,
 } from "@/lib/pricing-engine";
 import type { Product } from "@/lib/types";
+import { HighlightSearchMatch } from "@/lib/smart-search";
 
 export interface ProductCardProps {
   product: Product;
@@ -29,6 +30,7 @@ export interface ProductCardProps {
   isFavorite?: boolean;
   priorityImage?: boolean;
   selectedCategory?: string | null;
+  searchQuery?: string;
   cardQty?: number;
   onQtyChange?: (newQty: number) => void;
   isAdded?: boolean;
@@ -43,6 +45,7 @@ export default function ProductCard({
   isFavorite = false,
   priorityImage = false,
   selectedCategory = null,
+  searchQuery = "",
   cardQty: propCardQty,
   onQtyChange,
   isAdded = false,
@@ -173,10 +176,10 @@ export default function ProductCard({
       <div className="p-3 sm:p-4 space-y-3 flex-1 flex flex-col justify-between">
         <div>
           <h3
-            className="font-bold text-gray-900 dark:text-white text-sm leading-tight line-clamp-2 cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+            className="font-bold text-gray-900 dark:text-white text-sm leading-tight line-clamp-2 cursor-pointer hover:text-[#5b21b6] dark:hover:text-purple-400 transition-colors"
             onClick={() => onSelectProduct?.(product)}
           >
-            {product.name}
+            <HighlightSearchMatch text={product.name} query={searchQuery} />
           </h3>
           {(() => {
             const isUniversal = isProductInAllCategories(product);
@@ -191,7 +194,7 @@ export default function ProductCard({
             if (!displayCat) return null;
             return (
               <p className="text-xs text-purple-600 dark:text-purple-300/80 font-semibold mt-1 line-clamp-1">
-                {displayCat}
+                <HighlightSearchMatch text={displayCat} query={searchQuery} />
               </p>
             );
           })()}

@@ -23,6 +23,7 @@ import {
 import { useDashboardPagination, useDebouncedValue } from "@/lib/useDashboardPagination";
 import TruncatedText from "@/components/TruncatedText";
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
+import { searchProductsSmart } from "@/lib/smart-search";
 
 export default function ProductsPage() {
   const { products, suppliers, categories, addProduct, addCategory, deleteProduct, updateProduct, bulkUpdateProducts, bulkDeleteProducts, persistAllCategoriesAndProducts, reloadAllData, hydrateProductImages } = useData();
@@ -114,20 +115,28 @@ export default function ProductsPage() {
     return map;
   }, [suppliers]);
 
-  const debouncedSearch = useDebouncedValue(searchQuery, 180);
+  const debouncedSearch = useDebouncedValue(searchQuery, 150);
+
+  const smartSearch = useMemo(() => {
+    return searchProductsSmart(products, debouncedSearch, {
+      supplierNameMap,
+      maxFallbackResults: 10,
+    });
+  }, [products, debouncedSearch, supplierNameMap]);
+
+  const isFallbackMode = Boolean(
+    debouncedSearch.trim() &&
+      smartSearch.directMatches.length === 0 &&
+      smartSearch.fallbackMatches.length > 0
+  );
 
   const filtered = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        (p.notes && p.notes.toLowerCase().includes(q)) ||
-        (p.categoryName && p.categoryName.toLowerCase().includes(q)) ||
-        (p.barcode && p.barcode.toLowerCase().includes(q)) ||
-        (p.supplierId && (supplierNameMap.get(p.supplierId) || "").includes(q))
-    );
-  }, [products, debouncedSearch, supplierNameMap]);
+    if (!debouncedSearch.trim()) return products;
+    if (smartSearch.directMatches.length > 0) {
+      return smartSearch.directMatches;
+    }
+    return smartSearch.fallbackMatches;
+  }, [products, debouncedSearch, smartSearch.directMatches, smartSearch.fallbackMatches]);
 
   const {
     visibleItems: visibleProducts,
@@ -837,36 +846,48 @@ export default function ProductsPage() {
       )}
 
       {/* Search Input Box */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
-        <div className="relative flex-1 w-full">
-          <input
-            type="text"
-            placeholder="🔍 ابحث بالاسم، الفئة/القسم، المورد..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none text-sm"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery("")}
-              className="absolute left-3 top-2.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-sm"
-            >
-              ✕
-            </button>
+      <div className="bg-white dark:bg-[#160b2e] rounded-2xl border border-purple-200/80 dark:border-purple-800/60 p-4 shadow-sm space-y-3">
+        <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
+          <div className="relative flex-1 w-full">
+            <input
+              type="text"
+              placeholder="🔍 بحث ذكي فوري بالاسم، الباركود، الفئة، المورد، أو المرادف (مثل: تاير، باتري، بريك)..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full px-4 py-2.5 pl-10 border border-purple-300 dark:border-purple-700/80 rounded-xl bg-gray-50 dark:bg-[#241046]/80 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[#5b21b6] focus:border-[#5b21b6] outline-none text-sm font-medium transition-all"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-gray-200 dark:bg-purple-900/80 hover:bg-rose-500 hover:text-white text-gray-600 dark:text-purple-200 text-xs flex items-center justify-center transition-colors cursor-pointer"
+                title="مسح البحث"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {isAdminOrManager && filtered.length > 0 && (
+            <div className="flex items-center gap-2 w-full md:w-auto justify-end flex-wrap">
+              <span className="px-3 py-1.5 rounded-xl bg-[#5b21b6]/10 dark:bg-[#5b21b6]/30 border border-[#5b21b6]/30 text-[#5b21b6] dark:text-purple-200 text-xs font-extrabold whitespace-nowrap font-mono tabular-nums">
+                المعروض: {visibleProducts.length} من {totalFilteredCount}
+              </span>
+              <button
+                onClick={toggleSelectAll}
+                className="px-3 py-2 text-xs font-bold rounded-xl border border-purple-300 dark:border-purple-700 bg-purple-50/60 dark:bg-[#241046] text-[#5b21b6] dark:text-purple-200 hover:bg-[#5b21b6] hover:text-white transition-colors whitespace-nowrap cursor-pointer"
+              >
+                {isAllSelected ? "إلغاء تحديد الكل" : `تحديد كافة المطابقة (${filtered.length})`}
+              </button>
+            </div>
           )}
         </div>
 
-        {isAdminOrManager && filtered.length > 0 && (
-          <div className="flex items-center gap-2 w-full md:w-auto justify-end flex-wrap">
-            <span className="px-3 py-1.5 rounded-lg bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/50 text-purple-700 dark:text-purple-300 text-xs font-extrabold whitespace-nowrap">
-              المعروض: {visibleProducts.length} من {totalFilteredCount}
+        {isFallbackMode && (
+          <div className="px-3.5 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-200 text-xs font-bold flex items-center gap-2">
+            <span>✨</span>
+            <span>
+              لم نجد مطابقة حرفية لـ «{debouncedSearch}» — يتم عرض ({filtered.length}) منتجات مشابهة ومقترحة تلقائياً بناءً على التشابه والمرادفات.
             </span>
-            <button
-              onClick={toggleSelectAll}
-              className="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors whitespace-nowrap"
-            >
-              {isAllSelected ? "إلغاء تحديد الكل" : `تحديد كافة المطابقة (${filtered.length})`}
-            </button>
           </div>
         )}
       </div>

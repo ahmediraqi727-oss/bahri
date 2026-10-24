@@ -11,6 +11,7 @@ import PhoneQuickLoginModal from "@/components/PhoneQuickLoginModal";
 import { useAuth } from "@/lib/auth-context";
 import jsPDF from "jspdf";
 import DataTableWrapper from "@/components/DataTableWrapper";
+import { scoreSmartRecordMatch } from "@/lib/smart-search";
 
 const STATUS_LABELS: Record<Order["status"], string> = {
   pending: "قيد الانتظار",
@@ -568,16 +569,24 @@ export default function InvoicesPage() {
       const q = searchQuery.toLowerCase().trim();
       const serialStr = formatInvoiceSerial(o).toLowerCase();
       const rawSerialNum = o.serialNumber ? String(o.serialNumber) : "";
+      const itemNames = Array.isArray(o.items) ? o.items.map((it) => it.name).join(" ") : "";
 
       const matchSearch =
         !q ||
-        serialStr.includes(q) ||
-        rawSerialNum.includes(q) ||
-        o.id.toLowerCase().includes(q) ||
-        o.customerName.toLowerCase().includes(q) ||
-        o.customerPhone.includes(q) ||
-        o.customerAddress.toLowerCase().includes(q) ||
-        o.createdAt.includes(q);
+        scoreSmartRecordMatch(
+          [
+            serialStr,
+            rawSerialNum,
+            o.id,
+            o.customerName,
+            o.customerPhone,
+            o.customerAddress,
+            o.notes,
+            itemNames,
+            o.createdAt,
+          ],
+          searchQuery
+        ) > 0;
 
       return matchStatus && matchDate && matchSearch;
     });

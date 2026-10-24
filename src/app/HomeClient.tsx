@@ -45,6 +45,11 @@ import {
   isUniversalCategory,
   isProductInAllCategories,
 } from "@/lib/seo";
+import {
+  searchProductsSmart,
+  HighlightSearchMatch,
+  normalizeSearchText,
+} from "@/lib/smart-search";
 // ─── Barcode / QR Scanner ─────────────────────────────────────────────────
 import BarcodeScanner from "@/components/BarcodeScanner";
 import ScannerProductModal from "@/components/ScannerProductModal";
@@ -249,51 +254,63 @@ export default function HomeClient() {
     initialProducts: allAvailableProducts,
   });
 
-  const textFilteredProducts = useMemo(() => {
-    let result = streamingProducts.length > 0 ? streamingProducts : allAvailableProducts;
+  const supplierNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    suppliers.forEach((s) => {
+      if (s.id && s.name) map.set(s.id, s.name);
+    });
+    return map;
+  }, [suppliers]);
 
-    if (!canSeeOutOfStock) {
-      result = result.filter((p) => (p.stock ?? 0) > 0);
-    }
-
-    if (selectedCategory) {
-      const seenIds = new Set(result.map((p) => p.id));
-      const extraUniversal = allAvailableProducts.filter(
-        (p) => !seenIds.has(p.id) && isProductInAllCategories(p)
-      );
-      if (extraUniversal.length > 0) {
-        result = [...result, ...extraUniversal];
+  // دمج المنتجات المتوفرة بالذاكرة مع المنتجات القادمة من استعلام Supabase بدون تكرار لضمان سرعة البحث الفورية
+  const mergedCatalogProducts = useMemo(() => {
+    const map = new Map<string, Product>();
+    streamingProducts.forEach((p) => {
+      if (canSeeOutOfStock || (p.stock ?? 0) > 0) {
+        map.set(p.id, p);
       }
+    });
+    allAvailableProducts.forEach((p) => {
+      if (!map.has(p.id)) {
+        map.set(p.id, p);
+      }
+    });
+    return Array.from(map.values());
+  }, [allAvailableProducts, streamingProducts, canSeeOutOfStock]);
 
-      const selLower = selectedCategory.toLowerCase();
-      result = result.filter(
-        (p) =>
-          isProductInAllCategories(p) ||
-          (p.notes && p.notes.toLowerCase().includes(selLower)) ||
-          (p.categoryName && p.categoryName.toLowerCase().includes(selLower))
-      );
-    }
+  // تصفية حسب القسم المختار أولاً مع دعم التطبيع العربي
+  const categoryScopedProducts = useMemo(() => {
+    if (!selectedCategory) return mergedCatalogProducts;
+    const normSel = normalizeSearchText(selectedCategory);
+    return mergedCatalogProducts.filter(
+      (p) =>
+        isProductInAllCategories(p) ||
+        (p.notes && normalizeSearchText(p.notes).includes(normSel)) ||
+        (p.categoryName && normalizeSearchText(p.categoryName).includes(normSel))
+    );
+  }, [mergedCatalogProducts, selectedCategory]);
 
-    if (search) {
-      const q = search.toLowerCase();
-      result = result.filter((p) => {
-        const supplier = suppliers.find((s) => s.id === p.supplierId);
-        return p.name.toLowerCase().includes(q) || (supplier?.name.toLowerCase().includes(q)) || (p.notes && p.notes.toLowerCase().includes(q));
-      });
-    }
+  // تشغيل محرك البحث الذكي الهجين (المطابقات المباشرة والجزئية + المرادفات + التسامح مع الأخطاء + المقترحات البديلة)
+  const smartSearchResult = useMemo(() => {
+    return searchProductsSmart(categoryScopedProducts, search, {
+      supplierNameMap,
+      maxFallbackResults: 8,
+    });
+  }, [categoryScopedProducts, search, supplierNameMap]);
 
-    return result;
-  }, [allAvailableProducts, streamingProducts, search, selectedCategory, suppliers, canSeeOutOfStock]);
+  const textFilteredProducts = useMemo(() => {
+    if (!search.trim()) return categoryScopedProducts;
+    return smartSearchResult.directMatches;
+  }, [categoryScopedProducts, search, smartSearchResult.directMatches]);
 
   const similarProducts = useMemo(() => {
-    if (!search || textFilteredProducts.length > 0 || !searchSubmitted) return [];
-    const q = search.toLowerCase();
-    const words = q.split(/\s+/).filter(Boolean);
-    return allAvailableProducts.filter((p) => {
-      const name = p.name.toLowerCase();
-      return words.some((w) => name.includes(w));
-    }).slice(0, 4);
-  }, [search, textFilteredProducts, searchSubmitted, allAvailableProducts]);
+    if (!search.trim()) return [];
+    // إظهار قسم المنتجات المشابهة والمقترحة تلقائياً عند انعدام أو قلة المطابقات المباشرة (4 أو أقل)
+    if (smartSearchResult.directMatches.length <= 4) {
+      return smartSearchResult.fallbackMatches;
+    }
+    return [];
+  }, [search, smartSearchResult.directMatches.length, smartSearchResult.fallbackMatches]);
 
   const availableProducts = useMemo(() => {
     if (!imageResults || imageResults.length === 0) return textFilteredProducts;
@@ -305,21 +322,25 @@ export default function HomeClient() {
     return scored.filter((p) => textIds.has(p!.id)) as typeof allAvailableProducts;
   }, [textFilteredProducts, imageResults, allAvailableProducts]);
 
+  // تحديث المقترحات المنسدلة الفورية بناءً على نتائج البحث الذكي
+  useEffect(() => {
+    if (search.trim().length >= 1 && !searchSubmitted) {
+      const combined = [
+        ...smartSearchResult.directMatches.slice(0, 6),
+        ...(smartSearchResult.directMatches.length < 3
+          ? smartSearchResult.fallbackMatches.slice(0, 4)
+          : []),
+      ];
+      setSuggestions(combined.slice(0, 6));
+    } else {
+      setSuggestions([]);
+    }
+  }, [search, searchSubmitted, smartSearchResult.directMatches, smartSearchResult.fallbackMatches]);
+
   const handleSearchChange = (value: string) => {
     setSearch(value);
     setImageResults(null);
     setSearchSubmitted(false);
-    if (value.trim().length >= 1) {
-      const q = value.toLowerCase();
-      setSuggestions(
-        allAvailableProducts.filter((p) => {
-          const supplier = suppliers.find((s) => s.id === p.supplierId);
-          return p.name.toLowerCase().includes(q) || (supplier?.name.toLowerCase().includes(q));
-        }).slice(0, 5)
-      );
-    } else {
-      setSuggestions([]);
-    }
   };
 
   const handleSearchSubmit = () => {
@@ -1020,28 +1041,124 @@ export default function HomeClient() {
         </div>
       </nav>
 
-      {/* Expanded Search Panel */}
+      {/* Expanded Smart Search Panel with Instant Fuzzy Suggestions Dropdown */}
       {searchOpen && (
-        <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-lg animate-fadeIn">
+        <div className="bg-white dark:bg-[#160b2e] border-b border-purple-200 dark:border-purple-900/60 shadow-xl animate-fadeIn relative z-30" dir="rtl">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
               <div className="flex-1 relative w-full">
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-purple-600 dark:text-purple-400 pointer-events-none text-base">
+                  🔍
+                </span>
                 <input
                   type="search"
                   value={search}
                   onChange={(e) => handleSearchChange(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSearchSubmit()}
-                  placeholder={t.searchPlaceholder}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleSearchSubmit();
+                    } else if (e.key === "Escape") {
+                      setSuggestions([]);
+                      setSearchOpen(false);
+                    }
+                  }}
+                  placeholder={t.searchPlaceholder || "ابحث باسم القطعة، الكود، أو المرادف (مثال: تاير، باتري، بريك)..."}
                   autoFocus
-                  className="w-full py-3 pl-16 pr-12 border border-gray-300 dark:border-gray-700 rounded-full bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none text-sm font-medium"
-                  aria-label="البحث في المنتجات"
+                  className="w-full py-3 pl-28 pr-11 border border-purple-300 dark:border-purple-800/80 rounded-2xl bg-gray-50 dark:bg-[#241046]/90 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-purple-300/50 focus:ring-2 focus:ring-[#5b21b6] focus:border-[#5b21b6] outline-none text-sm font-bold transition-all shadow-inner"
+                  aria-label="البحث الذكي في المنتجات"
                 />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch("");
+                      setSuggestions([]);
+                      setSearchSubmitted(false);
+                    }}
+                    className="absolute left-20 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-gray-200 dark:bg-purple-900/80 hover:bg-rose-500 hover:text-white text-gray-600 dark:text-purple-200 text-xs font-black flex items-center justify-center transition-colors cursor-pointer"
+                    title="مسح البحث"
+                    aria-label="مسح البحث"
+                  >
+                    ✕
+                  </button>
+                )}
                 <button
-                  onClick={() => { handleSearchSubmit(); setSearchOpen(false); }}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-full text-xs font-bold transition-colors"
+                  type="button"
+                  onClick={() => { handleSearchSubmit(); }}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-[#5b21b6] hover:bg-purple-700 text-white px-4 py-1.5 rounded-xl text-xs font-extrabold transition-all shadow-md cursor-pointer active:scale-95"
                 >
                   {t.search}
                 </button>
+
+                {/* Live Instant Suggestions & Similar Matches Dropdown */}
+                {search.trim().length >= 1 && suggestions.length > 0 && (
+                  <div className="absolute right-0 left-0 top-full mt-2 bg-white dark:bg-[#1a0d36] border border-purple-200 dark:border-purple-700/70 rounded-2xl shadow-2xl overflow-hidden z-50 max-h-[380px] overflow-y-auto divide-y divide-gray-100 dark:divide-purple-900/50">
+                    <div className="px-3.5 py-2 bg-purple-50/80 dark:bg-[#241046] flex items-center justify-between text-[11px] font-extrabold text-[#5b21b6] dark:text-purple-200">
+                      <span>
+                        {smartSearchResult.directMatches.length > 0
+                          ? `⚡ نتائج فورية مطابقة (${smartSearchResult.directMatches.length})`
+                          : "💡 أقرب المنتجات المشابهة والمقترحة"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSuggestions([])}
+                        className="text-gray-400 hover:text-rose-400 cursor-pointer"
+                      >
+                        إغلاق ✕
+                      </button>
+                    </div>
+                    {suggestions.map((item) => {
+                      const isDirect = smartSearchResult.directMatches.some((d) => d.id === item.id);
+                      const catLabel = item.categoryName || extractCategoryFromNotes(item.notes || "") || "عام";
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            handleSuggestionClick(item.name);
+                            setDetailProduct(item);
+                          }}
+                          className="w-full px-3.5 py-2.5 flex items-center justify-between gap-3 hover:bg-purple-50/70 dark:hover:bg-[#2a1352] transition-colors text-right cursor-pointer"
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-gray-100 dark:bg-purple-950 border border-purple-200/50 dark:border-purple-800/60 flex-shrink-0 flex items-center justify-center">
+                              {item.image ? (
+                                <Image
+                                  src={item.image}
+                                  alt={item.name}
+                                  fill
+                                  sizes="40px"
+                                  className="object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : (
+                                <span className="text-base">📦</span>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white truncate">
+                                <HighlightSearchMatch text={item.name} query={search} />
+                              </p>
+                              <div className="flex items-center gap-2 mt-0.5 text-[11px] text-gray-500 dark:text-purple-300/75">
+                                <span className="truncate">📁 {catLabel}</span>
+                                {!isDirect && (
+                                  <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-300 font-bold text-[10px]">
+                                    مشابه مقترح
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-left flex-shrink-0">
+                            <span className="text-xs font-extrabold text-[#5b21b6] dark:text-purple-300 font-mono tabular-nums">
+                              {item.retailPrice.toLocaleString()} {t.dinar}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
               <ImageSearch
                 onResults={handleImageResults}
@@ -1336,7 +1453,36 @@ export default function HomeClient() {
         {/* H2: Products catalog section heading */}
         <h2 className="sr-only">{productsGridH2}</h2>
 
-        {streamingLoading && availableProducts.length === 0 ? (
+        {/* Active Smart Search Status Banner */}
+        {search.trim() && (
+          <div className="mb-6 bg-purple-50/90 dark:bg-[#1b0d38] border border-purple-200 dark:border-purple-800/70 rounded-2xl p-3.5 sm:px-5 flex flex-wrap items-center justify-between gap-3 shadow-sm" dir="rtl">
+            <div className="flex items-center gap-2.5 flex-wrap text-xs sm:text-sm font-extrabold text-gray-900 dark:text-purple-100">
+              <span className="w-7 h-7 rounded-xl bg-[#5b21b6] text-white flex items-center justify-center text-sm shadow-xs">
+                🔍
+              </span>
+              <span>نتائج البحث الذكي عن:</span>
+              <span className="px-3 py-1 rounded-xl bg-[#5b21b6] text-white text-xs font-black shadow-xs">
+                {search}
+              </span>
+              <span className="text-xs font-bold text-purple-700 dark:text-purple-300 font-mono tabular-nums">
+                ({availableProducts.length} منتج مطابق{similarProducts.length > 0 ? ` + ${similarProducts.length} مقترح مشابه` : ""})
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setSuggestions([]);
+                setSearchSubmitted(false);
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-white dark:bg-[#241046] hover:bg-rose-50 dark:hover:bg-rose-950/60 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-800/50 text-xs font-extrabold transition-colors cursor-pointer"
+            >
+              إلغاء البحث ✕
+            </button>
+          </div>
+        )}
+
+        {streamingLoading && availableProducts.length === 0 && similarProducts.length === 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 animate-pulse">
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 space-y-4 flex flex-col justify-between h-80">
@@ -1349,47 +1495,100 @@ export default function HomeClient() {
               </div>
             ))}
           </div>
-        ) : availableProducts.length === 0 ? (
-          <div className="text-center py-16 bg-white dark:bg-gray-900 rounded-3xl border border-gray-200 dark:border-gray-800 p-8 shadow-sm">
+        ) : availableProducts.length === 0 && similarProducts.length === 0 ? (
+          <div className="text-center py-16 bg-white dark:bg-[#160b2e] rounded-3xl border border-purple-200/70 dark:border-purple-900/60 p-8 shadow-sm">
             <span className="text-6xl block mb-4" aria-hidden="true">📭</span>
-            <p className="text-xl font-bold text-gray-700 dark:text-gray-200 mb-2">
+            <p className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">
               {selectedCategory ? `لا توجد منتجات متوفرة حالياً في قسم "${selectedCategory}"` : "لا توجد منتجات مطابقة للبحث"}
             </p>
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-purple-300/70 mb-4">
+              جرب البحث بكلمة أقصر أو مرادف آخر للقطعة (مثل: تاير، إطار، بطارية، بريك)
+            </p>
             <button
-              onClick={() => { setSearch(""); setSelectedCategory(null); setImageResults(null); }}
-              className="mt-4 px-6 py-2.5 rounded-xl text-white text-sm font-bold shadow-md cursor-pointer"
-              style={{ backgroundColor: theme.primary }}
+              onClick={() => { setSearch(""); setSelectedCategory(null); setImageResults(null); setSuggestions([]); }}
+              className="mt-2 px-6 py-2.5 rounded-xl bg-[#5b21b6] hover:bg-purple-700 text-white text-sm font-bold shadow-md cursor-pointer transition-colors"
             >
               عرض جميع المنتجات
             </button>
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-              {availableProducts.map((product, idx) => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  priorityImage={idx < 4}
-                  selectedCategory={selectedCategory}
-                  cardQty={cardQty[product.id] ?? 1}
-                  onQtyChange={(newQty) =>
-                    setCardQty((prev) => ({ ...prev, [product.id]: newQty }))
-                  }
-                  isAdded={addedId === product.id}
-                  isFavorite={favoriteIds.includes(product.id)}
-                  onSelectProduct={(p) => setDetailProduct(p)}
-                  onEditProduct={(p) => setEditingProduct(p)}
-                  onAddToCart={(p, q) => handleAdd(p, q)}
-                  onToggleFavorite={(p) => handleToggleFavorite(p.id, p.name)}
-                />
-              ))}
-            </div>
+            {/* 1. Direct & Partial Matches Grid */}
+            {availableProducts.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+                {availableProducts.map((product, idx) => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    priorityImage={idx < 4}
+                    selectedCategory={selectedCategory}
+                    searchQuery={search}
+                    cardQty={cardQty[product.id] ?? 1}
+                    onQtyChange={(newQty) =>
+                      setCardQty((prev) => ({ ...prev, [product.id]: newQty }))
+                    }
+                    isAdded={addedId === product.id}
+                    isFavorite={favoriteIds.includes(product.id)}
+                    onSelectProduct={(p) => setDetailProduct(p)}
+                    onEditProduct={(p) => setEditingProduct(p)}
+                    onAddToCart={(p, q) => handleAdd(p, q)}
+                    onToggleFavorite={(p) => handleToggleFavorite(p.id, p.name)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* 2. Automatic Similar & Suggested Products Fallback Section ("منتجات مشابهة ومقترحة") */}
+            {similarProducts.length > 0 && (
+              <div className={`${availableProducts.length > 0 ? "mt-10 pt-8 border-t border-purple-200/70 dark:border-purple-900/50" : ""} space-y-5 animate-fadeIn`} dir="rtl">
+                <div className="bg-gradient-to-l from-purple-50 via-indigo-50/60 to-purple-50 dark:from-[#241046] dark:via-[#1a0d36] dark:to-[#160b2e] border border-purple-200 dark:border-purple-700/60 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-[#5b21b6] text-white flex items-center justify-center text-lg font-extrabold shadow-sm flex-shrink-0">
+                      ✨
+                    </div>
+                    <div>
+                      <h3 className="text-sm sm:text-base font-extrabold text-gray-900 dark:text-white">
+                        {availableProducts.length === 0
+                          ? `لم نجد مطابقة حرفية لـ «${search}» — إليك أقرب منتجات مشابهة ومقترحة`
+                          : "منتجات مشابهة ومقترحة ذات صلة ببحثك"}
+                      </h3>
+                      <p className="text-xs text-gray-600 dark:text-purple-200/80 mt-0.5">
+                        تم اختيارها ذكياً بناءً على التشابه اللفظي ومرادفات قطع الغيار والأقسام المرتبطة
+                      </p>
+                    </div>
+                  </div>
+                  <span className="px-3 py-1 rounded-xl bg-[#5b21b6]/15 dark:bg-[#5b21b6]/40 text-[#5b21b6] dark:text-purple-200 border border-[#5b21b6]/30 text-xs font-extrabold self-start sm:self-center whitespace-nowrap">
+                    {similarProducts.length} مقترح ذكي
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+                  {similarProducts.map((product) => (
+                    <ProductCard
+                      key={`sim-${product.id}`}
+                      product={product}
+                      selectedCategory={selectedCategory}
+                      searchQuery={search}
+                      cardQty={cardQty[product.id] ?? 1}
+                      onQtyChange={(newQty) =>
+                        setCardQty((prev) => ({ ...prev, [product.id]: newQty }))
+                      }
+                      isAdded={addedId === product.id}
+                      isFavorite={favoriteIds.includes(product.id)}
+                      onSelectProduct={(p) => setDetailProduct(p)}
+                      onEditProduct={(p) => setEditingProduct(p)}
+                      onAddToCart={(p, q) => handleAdd(p, q)}
+                      onToggleFavorite={(p) => handleToggleFavorite(p.id, p.name)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Recommendation 4: Sentinel Element with rootMargin 300px for infinite streaming */}
             <div ref={sentinelRef} className="h-16 w-full flex items-center justify-center my-6">
               {streamingLoadingMore && (
-                <div className="flex items-center gap-2 text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-5 py-2.5 rounded-2xl border border-blue-200 dark:border-blue-800/40 animate-pulse shadow-xs">
+                <div className="flex items-center gap-2 text-xs font-bold text-[#5b21b6] dark:text-purple-300 bg-purple-50 dark:bg-[#241046]/60 px-5 py-2.5 rounded-2xl border border-purple-200 dark:border-purple-800/50 animate-pulse shadow-xs">
                   <span className="animate-spin text-base">⏳</span>
                   <span>جاري جلب المزيد من المنتجات تلقائياً...</span>
                 </div>
