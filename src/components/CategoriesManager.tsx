@@ -944,6 +944,18 @@ export default function CategoriesManager() {
                         text={product.name}
                         as="p"
                         className="text-xs font-bold text-gray-900 dark:text-white"
+                        productData={{
+                          name: product.name,
+                          category: isProductInAllCategories(product)
+                            ? "جميع الاقسام"
+                            : (() => {
+                                const cats = extractCategoriesFromProduct(product);
+                                if (cats.some((c) => isUniversalCategory(c))) return "جميع الاقسام";
+                                return cats.length > 0 ? cats.join(" ، ") : "غير مصنف";
+                              })(),
+                          retailPrice: product.retailPrice,
+                          wholesalePrice: product.wholesalePrice,
+                        }}
                       />
                       <p className="text-[11px] text-blue-600 dark:text-blue-400 font-extrabold mt-0.5 whitespace-nowrap">
                         {product.retailPrice.toLocaleString()} د.ع

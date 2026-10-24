@@ -13,6 +13,12 @@ import { useDashboardPagination, useDebouncedValue } from "@/lib/useDashboardPag
 import TruncatedText from "@/components/TruncatedText";
 import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
 import { searchProductsSmart } from "@/lib/smart-search";
+import {
+  ALL_CATEGORIES_LABEL,
+  isProductInAllCategories,
+  extractCategoriesFromProduct,
+  isUniversalCategory,
+} from "@/lib/seo";
 
 interface StockThresholds {
   excellent: number;
@@ -262,6 +268,13 @@ export default function InventoryPage() {
   }, [products, thresholds]);
 
   const getSupplier = (id: string) => suppliers.find((s) => s.id === id);
+
+  const getProductCategoryLabel = (product: Product): string => {
+    if (isProductInAllCategories(product)) return ALL_CATEGORIES_LABEL;
+    const catList = extractCategoriesFromProduct(product);
+    if (catList.some((c) => isUniversalCategory(c))) return ALL_CATEGORIES_LABEL;
+    return catList.length > 0 ? catList.join(" ، ") : "غير مصنف";
+  };
 
   const handleInlineStock = async (id: string, value: number) => {
     const product = products.find((p) => p.id === id);
@@ -581,6 +594,12 @@ export default function InventoryPage() {
                                   as="span"
                                   maxWidthClass="max-w-[180px]"
                                   className="font-bold text-gray-900 dark:text-white"
+                                  productData={{
+                                    name: product.name,
+                                    category: getProductCategoryLabel(product),
+                                    retailPrice: product.retailPrice,
+                                    wholesalePrice: product.wholesalePrice,
+                                  }}
                                 />
                                 {isOutOfStock && (
                                   <span className="text-[11px] font-extrabold text-red-600 dark:text-red-400 block whitespace-nowrap">
@@ -686,6 +705,12 @@ export default function InventoryPage() {
                           text={product.name}
                           as="h3"
                           className="font-extrabold text-gray-900 dark:text-white text-sm"
+                          productData={{
+                            name: product.name,
+                            category: getProductCategoryLabel(product),
+                            retailPrice: product.retailPrice,
+                            wholesalePrice: product.wholesalePrice,
+                          }}
                         />
                       </div>
 

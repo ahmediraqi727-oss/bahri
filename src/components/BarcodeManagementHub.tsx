@@ -23,6 +23,13 @@ import { useToast } from "@/components/ToastProvider";
 import { useSettings } from "@/lib/settings-context";
 import { useDashboardPagination, useDebouncedValue } from "@/lib/useDashboardPagination";
 import { searchProductsSmart } from "@/lib/smart-search";
+import TruncatedText from "@/components/TruncatedText";
+import {
+  ALL_CATEGORIES_LABEL,
+  isProductInAllCategories,
+  extractCategoriesFromProduct,
+  isUniversalCategory,
+} from "@/lib/seo";
 
 export type DateRangePreset = "all" | "today" | "this_week" | "this_month" | "this_year" | "custom";
 export type SortOption = "default" | "most_scanned" | "least_scanned" | "newest";
@@ -664,7 +671,24 @@ export default function BarcodeManagementHub() {
                         <div className="flex items-center gap-3">
                           {product.image && (<img src={product.image} alt={product.name} className="w-10 h-10 rounded-xl object-cover border border-gray-200 dark:border-gray-700 flex-shrink-0" />)}
                           <div className="min-w-0">
-                            <p className="font-extrabold text-gray-900 dark:text-white truncate max-w-[200px]">{product.name}</p>
+                            <TruncatedText
+                              text={product.name}
+                              as="p"
+                              maxWidthClass="max-w-[200px]"
+                              className="font-extrabold text-gray-900 dark:text-white"
+                              productData={{
+                                name: product.name,
+                                category: isProductInAllCategories(product)
+                                  ? ALL_CATEGORIES_LABEL
+                                  : (() => {
+                                      const cats = extractCategoriesFromProduct(product);
+                                      if (cats.some((c) => isUniversalCategory(c))) return ALL_CATEGORIES_LABEL;
+                                      return cats.length > 0 ? cats.join(" ، ") : "غير مصنف";
+                                    })(),
+                                retailPrice: product.retailPrice,
+                                wholesalePrice: product.wholesalePrice,
+                              }}
+                            />
                             <p className="text-xs text-gray-400 font-mono">{product.retailPrice.toLocaleString()} د.ع</p>
                           </div>
                         </div>

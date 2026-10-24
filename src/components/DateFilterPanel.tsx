@@ -11,6 +11,13 @@
 import React, { useState, useMemo, useCallback } from "react";
 import { Product } from "@/lib/types";
 import { DateFilter, DatePreset, filterProductsByDate, resolveDateRange } from "@/lib/import-validator";
+import TruncatedText from "@/components/TruncatedText";
+import {
+  ALL_CATEGORIES_LABEL,
+  isProductInAllCategories,
+  extractCategoriesFromProduct,
+  isUniversalCategory,
+} from "@/lib/seo";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -425,9 +432,23 @@ export default function DateFilterPanel({
                               )}
 
                               <div className="flex-1 min-w-0">
-                                <p className={`font-semibold truncate text-xs leading-snug ${isSelected ? "text-indigo-700 dark:text-indigo-300" : "text-gray-800 dark:text-gray-100"}`}>
-                                  {product.name}
-                                </p>
+                                <TruncatedText
+                                  text={product.name}
+                                  as="p"
+                                  className={`font-semibold text-xs leading-snug ${isSelected ? "text-indigo-700 dark:text-indigo-300" : "text-gray-800 dark:text-gray-100"}`}
+                                  productData={{
+                                    name: product.name,
+                                    category: isProductInAllCategories(product)
+                                      ? ALL_CATEGORIES_LABEL
+                                      : (() => {
+                                          const cats = extractCategoriesFromProduct(product);
+                                          if (cats.some((c) => isUniversalCategory(c))) return ALL_CATEGORIES_LABEL;
+                                          return cats.length > 0 ? cats.join(" ، ") : "غير مصنف";
+                                        })(),
+                                    retailPrice: product.retailPrice,
+                                    wholesalePrice: product.wholesalePrice,
+                                  }}
+                                />
                                 <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
                                   {product.notes?.split("|")[0]?.trim() || "—"}
                                 </p>

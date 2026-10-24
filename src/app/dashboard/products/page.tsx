@@ -150,6 +150,13 @@ export default function ProductsPage() {
 
   const getSupplierName = (id: string) => suppliers.find((s) => s.id === id)?.name || "—";
 
+  const getProductCategoryLabel = (product: Product): string => {
+    if (isProductInAllCategories(product)) return ALL_CATEGORIES_LABEL;
+    const catList = extractCategoriesFromProduct(product);
+    if (catList.some((c) => isUniversalCategory(c))) return ALL_CATEGORIES_LABEL;
+    return catList.length > 0 ? catList.join(" ، ") : "غير مصنف";
+  };
+
   // Checkboxes Selection logic (Selects all matching products in database)
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const isAllSelected = filtered.length > 0 && filtered.every((p) => selectedIdSet.has(p.id));
@@ -970,6 +977,12 @@ export default function ProductsPage() {
                                   as="p"
                                   maxWidthClass="max-w-[145px]"
                                   className="font-bold text-gray-900 dark:text-white"
+                                  productData={{
+                                    name: product.name,
+                                    category: getProductCategoryLabel(product),
+                                    retailPrice: product.retailPrice,
+                                    wholesalePrice: product.wholesalePrice,
+                                  }}
                                 />
                                 {product.notes && (
                                   <TruncatedText
@@ -977,6 +990,12 @@ export default function ProductsPage() {
                                     as="p"
                                     maxWidthClass="max-w-[145px]"
                                     className="text-[10px] text-gray-500 dark:text-gray-400"
+                                    productData={{
+                                      name: product.name,
+                                      category: getProductCategoryLabel(product),
+                                      retailPrice: product.retailPrice,
+                                      wholesalePrice: product.wholesalePrice,
+                                    }}
                                   />
                                 )}
                               </div>
@@ -987,6 +1006,7 @@ export default function ProductsPage() {
                             {(() => {
                               const isUniversal = isProductInAllCategories(product);
                               const catList = extractCategoriesFromProduct(product);
+                              const fullCatLabel = getProductCategoryLabel(product);
                               if (isUniversal || catList.some((c) => isUniversalCategory(c))) {
                                 return (
                                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-200 border border-purple-300 dark:border-purple-500/60 font-extrabold text-[11px] whitespace-nowrap shadow-xs">
@@ -1002,7 +1022,16 @@ export default function ProductsPage() {
                                       key={cName}
                                       className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-[10px] whitespace-nowrap max-w-[110px]"
                                     >
-                                      <TruncatedText text={cName} maxWidthClass="max-w-[95px]" />
+                                      <TruncatedText
+                                        text={cName}
+                                        maxWidthClass="max-w-[95px]"
+                                        productData={{
+                                          name: product.name,
+                                          category: fullCatLabel,
+                                          retailPrice: product.retailPrice,
+                                          wholesalePrice: product.wholesalePrice,
+                                        }}
+                                      />
                                     </span>
                                   ))}
                                   {catList.length > 2 && (
@@ -1012,6 +1041,12 @@ export default function ProductsPage() {
                                       <TruncatedText
                                         text={catList.join(" ، ")}
                                         maxWidthClass="max-w-[40px]"
+                                        productData={{
+                                          name: product.name,
+                                          category: fullCatLabel,
+                                          retailPrice: product.retailPrice,
+                                          wholesalePrice: product.wholesalePrice,
+                                        }}
                                       />
                                     </span>
                                   )}
@@ -1137,6 +1172,12 @@ export default function ProductsPage() {
                           text={product.name}
                           as="h3"
                           className="font-bold text-gray-900 dark:text-white text-sm"
+                          productData={{
+                            name: product.name,
+                            category: getProductCategoryLabel(product),
+                            retailPrice: product.retailPrice,
+                            wholesalePrice: product.wholesalePrice,
+                          }}
                         />
                       </div>
 
