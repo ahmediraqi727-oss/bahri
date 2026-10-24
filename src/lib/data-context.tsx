@@ -11,7 +11,7 @@ import {
   overrideFromRow,
   getEffectiveTiers as engineGetEffectiveTiers,
 } from "./pricing-engine";
-import { ALL_CATEGORIES_LABEL, isUniversalCategory } from "./seo";
+import { ALL_CATEGORIES_LABEL, isUniversalCategory, splitCategoryNames } from "./seo";
 
 export function extractCategoryFromNotes(notes: string): string {
   if (!notes) return "عام";
@@ -167,15 +167,24 @@ export function rowToProduct(row: Record<string, unknown>): Product {
   const rawNotes = (row.notes as string) || "";
   const rawCatName = (row.category_name as string | null) ?? (row.categoryName as string | null) ?? null;
   const notesCat = extractCategoryFromNotes(rawNotes);
-  const isAllCats =
-    Boolean(row.is_all_categories ?? row.isAllCategories) ||
-    isUniversalCategory(rawCatName) ||
-    isUniversalCategory(notesCat);
+  const hasExplicitNotesTag = rawNotes.includes("الفئة:") && notesCat && notesCat !== "عام";
+
+  // إذا كان حقل الملاحظات يحتوي على وسم فئة صريح (مثل "الفئة: بطاريات")، نعطيه الأولوية
+  // لمنع أي قيمة قديمة مخزنة في عمود is_all_categories أو category_name من إعادة قفل المنتج على "جميع الاقسام"
+  const isAllCats = hasExplicitNotesTag
+    ? isUniversalCategory(notesCat)
+    : Boolean(row.is_all_categories ?? row.isAllCategories) ||
+      isUniversalCategory(rawCatName) ||
+      isUniversalCategory(notesCat);
 
   const catId = isAllCats
     ? null
     : ((row.category_id as string | null) ?? (row.categoryId as string | null) ?? null);
-  const catName = isAllCats ? ALL_CATEGORIES_LABEL : rawCatName;
+  const catName = isAllCats
+    ? ALL_CATEGORIES_LABEL
+    : hasExplicitNotesTag
+    ? notesCat
+    : rawCatName || (notesCat !== "عام" ? notesCat : null);
 
   return {
     id: idStr,
@@ -253,20 +262,55 @@ export function productToRow(product: Record<string, unknown>): Record<string, u
     row.supplier_id = isUUID(sid) ? sid : null;
   }
 
-  const notesStr = "notes" in product ? String(product.notes || "") : "";
-  const isAllCats =
-    Boolean(product.isAllCategories ?? product.is_all_categories) ||
-    isUniversalCategory(product.categoryName as string | null) ||
-    isUniversalCategory(product.category_name as string | null) ||
-    isUniversalCategory(extractCategoryFromNotes(notesStr));
+  const hasCategoryOrNotesUpdate =
+    "isAllCategories" in product ||
+    "is_all_categories" in product ||
+    "categoryName" in product ||
+    "category_name" in product ||
+    "categoryId" in product ||
+    "category_id" in product ||
+    "notes" in product;
 
-  if (isAllCats) {
-    row.category_id = null;
-  } else if (("categoryId" in product && product.categoryId) || ("category_id" in product && product.category_id)) {
-    const cid = String(product.categoryId ?? product.category_id ?? "").trim();
-    if (isUUID(cid)) row.category_id = cid;
-  } else if ("categoryId" in product && product.categoryId === null) {
-    row.category_id = null;
+  const notesStr = "notes" in product ? String(product.notes || "") : "";
+  const explicitCatName =
+    "categoryName" in product
+      ? (product.categoryName as string | null)
+      : "category_name" in product
+      ? (product.category_name as string | null)
+      : undefined;
+
+  const notesExtractedCat = "notes" in product ? extractCategoryFromNotes(notesStr) : "";
+
+  let isAllCats = false;
+  if ("isAllCategories" in product || "is_all_categories" in product) {
+    isAllCats = Boolean(product.isAllCategories ?? product.is_all_categories);
+  } else if (explicitCatName !== undefined) {
+    isAllCats = isUniversalCategory(explicitCatName);
+  } else if ("notes" in product) {
+    isAllCats = isUniversalCategory(notesExtractedCat);
+  }
+
+  if (hasCategoryOrNotesUpdate) {
+    row.is_all_categories = isAllCats;
+    if (isAllCats) {
+      row.category_name = ALL_CATEGORIES_LABEL;
+      row.category_id = null;
+    } else {
+      const resolvedCatName =
+        explicitCatName !== undefined
+          ? explicitCatName || null
+          : notesExtractedCat && notesExtractedCat !== "عام"
+          ? notesExtractedCat
+          : null;
+      row.category_name = resolvedCatName;
+
+      if (("categoryId" in product && product.categoryId) || ("category_id" in product && product.category_id)) {
+        const cid = String(product.categoryId ?? product.category_id ?? "").trim();
+        row.category_id = isUUID(cid) ? cid : null;
+      } else if ("categoryId" in product && product.categoryId === null) {
+        row.category_id = null;
+      }
+    }
   }
 
   if ("notes" in product) row.notes = product.notes || "";
@@ -502,20 +546,23 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       for (const p of prodsData) {
         const notes = (p.notes as string) || "";
-        const catName = (p.category_name as string) || extractCategoryFromNotes(notes);
-        if (
-          catName &&
-          catName !== "عام" &&
-          catName !== "غير محدد" &&
-          !isUniversalCategory(catName)
-        ) {
-          const existingImg = existingImageMap.get(catName.trim().toLowerCase());
-          if (!categoryMap.has(catName)) {
-            categoryMap.set(catName, {
-              name: catName,
-              image: existingImg || "",
-              sampleProductId: existingImg ? undefined : (p.id as string),
-            });
+        const rawCat = (p.category_name as string) || extractCategoryFromNotes(notes);
+        const catNames = splitCategoryNames(rawCat);
+        for (const catName of catNames) {
+          if (
+            catName &&
+            catName !== "عام" &&
+            catName !== "غير محدد" &&
+            !isUniversalCategory(catName)
+          ) {
+            const existingImg = existingImageMap.get(catName.trim().toLowerCase());
+            if (!categoryMap.has(catName)) {
+              categoryMap.set(catName, {
+                name: catName,
+                image: existingImg || "",
+                sampleProductId: existingImg ? undefined : (p.id as string),
+              });
+            }
           }
         }
       }
@@ -606,10 +653,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
           const distinctFromProducts = new Set<string>();
           loadedProducts.forEach((p) => {
-            const cat = p.categoryName || extractCategoryFromNotes(p.notes || "");
-            if (cat && cat !== "عام" && cat !== "غير محدد" && !isUniversalCategory(cat)) {
-              distinctFromProducts.add(cat);
-            }
+            const rawCat = p.categoryName || extractCategoryFromNotes(p.notes || "");
+            const catList = splitCategoryNames(rawCat);
+            catList.forEach((cat) => {
+              if (cat && cat !== "عام" && cat !== "غير محدد" && !isUniversalCategory(cat)) {
+                distinctFromProducts.add(cat);
+              }
+            });
           });
 
           if (loadedCategories.length === 0 || loadedCategories.length < distinctFromProducts.size) {
@@ -672,6 +722,34 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     };
   }, [fetchAllLightweightProducts, hydrateProductImages]);
 
+  // مزامنة جدول الربط المتعدد (product_categories) في الخلفية بدون إبطاء الحفظ
+  const syncProductCategoriesJunction = useCallback(
+    async (productId: string, categoryNameStr: string | null | undefined, isAllCats: boolean | undefined) => {
+      if (!productId || !isUUID(productId)) return;
+      try {
+        await supabase.from("product_categories").delete().eq("product_id", productId);
+        if (isAllCats || !categoryNameStr || isUniversalCategory(categoryNameStr)) return;
+        const names = splitCategoryNames(categoryNameStr);
+        if (names.length === 0) return;
+
+        const catIds = names
+          .map((n) => categories.find((c) => c.name.trim().toLowerCase() === n.toLowerCase())?.id)
+          .filter((cid): cid is string => Boolean(cid && isUUID(cid)));
+
+        if (catIds.length > 0) {
+          const rows = Array.from(new Set(catIds)).map((category_id) => ({
+            product_id: productId,
+            category_id,
+          }));
+          await supabase.from("product_categories").upsert(rows, { onConflict: "product_id,category_id" });
+        }
+      } catch {
+        // جدول product_categories اختياري إلى حين تشغيل كود SQL من قبل المستخدم
+      }
+    },
+    [categories]
+  );
+
   const addProduct = useCallback(async (product: Omit<Product, "id" | "createdAt" | "updatedAt">) => {
     let finalImageUrl = product.image || "";
     const originalImageUrl = product.originalImageUrl || product.image || "";
@@ -689,9 +767,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     } as Record<string, unknown>);
 
     let { data: created, error } = await supabase.from("products").insert(row).select().single();
-    if (error && error.message?.includes("batch_stock")) {
+    if (
+      error &&
+      (error.message?.includes("batch_stock") ||
+        error.message?.includes("is_all_categories") ||
+        error.message?.includes("category_name") ||
+        error.code === "PGRST204")
+    ) {
       const fallbackRow = { ...row };
-      delete fallbackRow.batch_stock;
+      if (error.message?.includes("batch_stock") || error.code === "PGRST204") delete fallbackRow.batch_stock;
+      if (error.message?.includes("is_all_categories") || error.code === "PGRST204") delete fallbackRow.is_all_categories;
+      if (error.message?.includes("category_name") || error.code === "PGRST204") delete fallbackRow.category_name;
       const retry = await supabase.from("products").insert(fallbackRow).select().single();
       created = retry.data;
       error = retry.error;
@@ -705,14 +791,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           originalImageUrl,
         });
       }
+      syncProductCategoriesJunction(String(created.id), product.categoryName, product.isAllCategories);
     }
+    const parsedCreated = rowToProduct(created);
     const newProduct: Product = {
-      ...rowToProduct(created),
+      ...parsedCreated,
+      categoryName: product.categoryName !== undefined ? product.categoryName : parsedCreated.categoryName,
+      categoryId: product.categoryId !== undefined ? product.categoryId : parsedCreated.categoryId,
+      isAllCategories: product.isAllCategories !== undefined ? product.isAllCategories : parsedCreated.isAllCategories,
       batchStock: effectiveBatch,
     };
     setProducts((prev) => [newProduct, ...prev]);
     return newProduct;
-  }, []);
+  }, [syncProductCategoriesJunction]);
 
   const updateProduct = useCallback(async (id: string, updates: Partial<Product>) => {
     let finalUpdates = { ...updates };
@@ -743,22 +834,61 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     const row = productToRow(finalUpdates as Record<string, unknown>);
 
     let { data: updated, error } = await supabase.from("products").update(row).eq("id", id).select().single();
-    if (error && error.message?.includes("batch_stock")) {
+    if (
+      error &&
+      (error.message?.includes("batch_stock") ||
+        error.message?.includes("is_all_categories") ||
+        error.message?.includes("category_name") ||
+        error.code === "PGRST204")
+    ) {
       const fallbackRow = { ...row };
-      delete fallbackRow.batch_stock;
+      if (error.message?.includes("batch_stock") || error.code === "PGRST204") delete fallbackRow.batch_stock;
+      if (error.message?.includes("is_all_categories") || error.code === "PGRST204") delete fallbackRow.is_all_categories;
+      if (error.message?.includes("category_name") || error.code === "PGRST204") delete fallbackRow.category_name;
       const retry = await supabase.from("products").update(fallbackRow).eq("id", id).select().single();
       updated = retry.data;
       error = retry.error;
     }
     if (error) throw error;
+
+    if (
+      "categoryName" in finalUpdates ||
+      "isAllCategories" in finalUpdates ||
+      "notes" in finalUpdates
+    ) {
+      const resolvedCatName =
+        finalUpdates.categoryName !== undefined
+          ? finalUpdates.categoryName
+          : finalUpdates.notes !== undefined
+          ? extractCategoryFromNotes(finalUpdates.notes)
+          : existingProduct?.categoryName;
+      const resolvedAll =
+        finalUpdates.isAllCategories !== undefined
+          ? finalUpdates.isAllCategories
+          : isUniversalCategory(resolvedCatName);
+      syncProductCategoriesJunction(id, resolvedCatName, resolvedAll);
+    }
+
+    const parsedUpdated = rowToProduct(updated);
     const resolvedBatch =
       finalUpdates.batchStock !== undefined
         ? finalUpdates.batchStock
-        : rowToProduct(updated).batchStock;
+        : parsedUpdated.batchStock;
     const cachedImg = hydratedImagesRef.current.get(id);
-    const parsedUpdated = rowToProduct(updated);
     const product: Product = {
       ...parsedUpdated,
+      categoryName:
+        finalUpdates.categoryName !== undefined
+          ? finalUpdates.categoryName
+          : parsedUpdated.categoryName,
+      categoryId:
+        finalUpdates.categoryId !== undefined
+          ? finalUpdates.categoryId
+          : parsedUpdated.categoryId,
+      isAllCategories:
+        finalUpdates.isAllCategories !== undefined
+          ? finalUpdates.isAllCategories
+          : parsedUpdated.isAllCategories,
       image: parsedUpdated.image || cachedImg?.image || existingProduct?.image || "",
       originalImageUrl:
         parsedUpdated.originalImageUrl ||
@@ -768,7 +898,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       batchStock: resolvedBatch,
     };
     setProducts((prev) => prev.map((p) => (p.id === id ? product : p)));
-  }, [products]);
+  }, [products, syncProductCategoriesJunction]);
 
   const bulkUpdateProducts = useCallback(async (ids: string[], updates: Partial<Product>) => {
     if (!ids || ids.length === 0) return;
@@ -778,9 +908,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);
       let { error } = await supabase.from("products").update(row).in("id", chunk);
-      if (error && error.message?.includes("batch_stock")) {
+      if (
+        error &&
+        (error.message?.includes("batch_stock") ||
+          error.message?.includes("is_all_categories") ||
+          error.message?.includes("category_name") ||
+          error.code === "PGRST204")
+      ) {
         const fallbackRow = { ...row };
-        delete fallbackRow.batch_stock;
+        if (error.message?.includes("batch_stock") || error.code === "PGRST204") delete fallbackRow.batch_stock;
+        if (error.message?.includes("is_all_categories") || error.code === "PGRST204") delete fallbackRow.is_all_categories;
+        if (error.message?.includes("category_name") || error.code === "PGRST204") delete fallbackRow.category_name;
         const retry = await supabase.from("products").update(fallbackRow).in("id", chunk);
         error = retry.error;
       }

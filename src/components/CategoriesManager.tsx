@@ -5,7 +5,12 @@ import { useData, extractCategoryFromNotes } from "@/lib/data-context";
 import { useSettings } from "@/lib/settings-context";
 import ImageUploader from "@/components/ImageUploader";
 import { CategoryItem, Product, getCategoryDisplayImage } from "@/lib/types";
-import { isProductInAllCategories, isUniversalCategory } from "@/lib/seo";
+import {
+  isProductInAllCategories,
+  isUniversalCategory,
+  extractCategoriesFromProduct,
+  splitCategoryNames,
+} from "@/lib/seo";
 import { useDebouncedValue } from "@/lib/useDashboardPagination";
 
 function doesProductMatchCategory(p: Product, cat: CategoryItem): boolean {
@@ -13,28 +18,48 @@ function doesProductMatchCategory(p: Product, cat: CategoryItem): boolean {
   const catNameLower = cat.name.trim().toLowerCase();
   if (!catNameLower) return false;
   if (p.categoryId && p.categoryId === cat.id) return true;
-  if (p.categoryName && p.categoryName.trim().toLowerCase() === catNameLower) return true;
+  const prodCats = extractCategoriesFromProduct(p);
+  if (prodCats.some((c) => c.trim().toLowerCase() === catNameLower)) return true;
   if (p.notes && p.notes.toLowerCase().includes(catNameLower)) return true;
   return false;
 }
 
 function helperUpdateNotes(notes: string | undefined, categoryName: string, assign: boolean): string {
   const current = (notes || "").trim();
-  const catTag = `الفئة: ${categoryName}`;
-  const hasTag = current.toLowerCase().includes(catTag.toLowerCase());
+  const targetClean = categoryName.trim();
+  if (!targetClean) return current;
+
+  const match = current.match(/الفئة:\s*([^|\n]+)/);
+  const existingCats = match && match[1] ? splitCategoryNames(match[1]) : [];
+
+  // إذا كان المنتج معيناً لـ "جميع الاقسام" فلا نقوم بالكتابة فوقه عند حفظ قسم فردي
+  if (existingCats.some((c) => isUniversalCategory(c))) {
+    return current;
+  }
+
+  const hasCat = existingCats.some((c) => c.toLowerCase() === targetClean.toLowerCase());
 
   if (assign) {
-    if (hasTag) return current;
-    if (!current) return catTag;
+    if (hasCat) return current;
+    const nextCats = [...existingCats, targetClean];
+    const newTag = `الفئة: ${nextCats.join(" ، ")}`;
     if (current.includes("الفئة:")) {
-      return current.replace(/الفئة:\s*[^|,\n]+/g, catTag);
+      return current.replace(/الفئة:\s*[^|\n]+/g, newTag);
     }
-    return `${current} | ${catTag}`;
+    if (!current) return newTag;
+    return `${current} | ${newTag}`;
   } else {
-    if (!hasTag) return current;
-    let updated = current.replace(new RegExp(`\\|?\\s*${catTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "gi"), "").trim();
-    if (updated.startsWith("|")) updated = updated.slice(1).trim();
-    return updated;
+    if (!hasCat) return current;
+    const nextCats = existingCats.filter((c) => c.toLowerCase() !== targetClean.toLowerCase());
+    if (nextCats.length > 0) {
+      const newTag = `الفئة: ${nextCats.join(" ، ")}`;
+      return current.replace(/الفئة:\s*[^|\n]+/g, newTag);
+    } else {
+      let updated = current.replace(/\|?\s*الفئة:\s*[^|\n]+/g, "").trim();
+      if (updated.startsWith("|")) updated = updated.slice(1).trim();
+      if (updated.endsWith("|")) updated = updated.slice(0, -1).trim();
+      return updated;
+    }
   }
 }
 
@@ -88,24 +113,29 @@ export default function CategoriesManager() {
   const allAvailableCategories = useMemo(() => {
     const map = new Map<string, CategoryItem>();
     categories.forEach((c) => {
-      if (c && c.name) map.set(c.name.trim().toLowerCase(), c);
+      if (c && c.name && !isUniversalCategory(c.name)) {
+        map.set(c.name.trim().toLowerCase(), c);
+      }
     });
 
     products.forEach((p) => {
-      const extracted = extractCategoryFromNotes(p.notes || "");
-      if (extracted && extracted !== "عام" && extracted !== "غير محدد") {
-        const key = extracted.trim().toLowerCase();
-        if (!map.has(key)) {
-          map.set(key, {
-            id: `extracted-${key}`,
-            name: extracted,
-            image: p.image || "",
-            priority: map.size + 1,
-            keywords: extracted,
-            isActive: true,
-          });
+      const rawExtracted = extractCategoryFromNotes(p.notes || "");
+      const catList = splitCategoryNames(rawExtracted);
+      catList.forEach((extracted) => {
+        if (extracted && extracted !== "عام" && extracted !== "غير محدد" && !isUniversalCategory(extracted)) {
+          const key = extracted.trim().toLowerCase();
+          if (!map.has(key)) {
+            map.set(key, {
+              id: `extracted-${key}`,
+              name: extracted,
+              image: p.image || "",
+              priority: map.size + 1,
+              keywords: extracted,
+              isActive: true,
+            });
+          }
         }
-      }
+      });
     });
 
     return Array.from(map.values()).sort((a, b) => (a.priority || 0) - (b.priority || 0));

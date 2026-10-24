@@ -11,6 +11,8 @@ import {
   ALL_CATEGORIES_LABEL,
   isUniversalCategory,
   isProductInAllCategories,
+  extractCategoriesFromProduct,
+  splitCategoryNames,
 } from "@/lib/seo";
 
 interface ProductModalProps {
@@ -23,23 +25,20 @@ interface ProductModalProps {
   onSaved?: (product: Product) => void;
 }
 
-function extractCategoryFromNotes(notes: string | undefined): string {
-  if (!notes) return "";
-  const match = notes.match(/الفئة:\s*([^|,\n]+)/);
-  return match && match[1] ? match[1].trim() : "";
-}
-
 function updateNotesWithCategory(notes: string | undefined, categoryName: string): string {
   const current = (notes || "").trim();
-  if (!categoryName) {
-    let updated = current.replace(/\|?\s*الفئة:\s*[^|,\n]+/g, "").trim();
+  if (!categoryName || !categoryName.trim()) {
+    let updated = current.replace(/\|?\s*الفئة:\s*[^|\n]+/g, "").trim();
     if (updated.startsWith("|")) updated = updated.slice(1).trim();
+    if (updated.endsWith("|")) updated = updated.slice(0, -1).trim();
     return updated;
   }
-  const normalizedCat = isUniversalCategory(categoryName) ? ALL_CATEGORIES_LABEL : categoryName.trim();
+  const normalizedCat = isUniversalCategory(categoryName)
+    ? ALL_CATEGORIES_LABEL
+    : splitCategoryNames(categoryName).join(" ، ");
   const tag = `الفئة: ${normalizedCat}`;
   if (current.includes("الفئة:")) {
-    return current.replace(/الفئة:\s*[^|,\n]+/g, tag);
+    return current.replace(/الفئة:\s*[^|\n]+/g, tag);
   }
   if (!current) return tag;
   return `${current} | ${tag}`;
@@ -59,6 +58,8 @@ export default function ProductModal({
   const galleryRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const comboRef = useRef<HTMLDivElement>(null);
+  const categoryInputRef = useRef<HTMLInputElement>(null);
+  const initializedProductKeyRef = useRef<string | null>(null);
 
   const [name, setName] = useState("");
   const [image, setImage] = useState("");
@@ -79,8 +80,9 @@ export default function ProductModal({
   // Camera & Scanner State for Barcode & QR input fields
   const [activeScannerField, setActiveScannerField] = useState<"barcode" | "qrCode" | null>(null);
 
-  // Creatable Autocomplete Category Combobox State
-  const [selectedCategoryName, setSelectedCategoryName] = useState("");
+  // Multi-Category & Universal Category State (decoupled from search query)
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [isAllCategoriesSelected, setIsAllCategoriesSelected] = useState<boolean>(false);
   const [categoryQuery, setCategoryQuery] = useState("");
   const [isComboOpen, setIsComboOpen] = useState(false);
 
@@ -89,10 +91,26 @@ export default function ProductModal({
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // تهيئة بيانات النافذة مرة واحدة فقط عند فتحها أو تغير معرّف المنتج لمنع تحديثات الخلفية من مسح تعديلات المستخدم
   useEffect(() => {
+    if (!isOpen) {
+      initializedProductKeyRef.current = null;
+      setIsComboOpen(false);
+      return;
+    }
+
+    const currentKey = product ? `edit-${product.id}` : `new-${initialBarcode || ""}-${initialQrCode || ""}`;
+    if (initializedProductKeyRef.current === currentKey) {
+      return;
+    }
+    initializedProductKeyRef.current = currentKey;
+
     setError("");
     setSubmitting(false);
     setIncomingBatchQty("");
+    setIsComboOpen(false);
+    setCategoryQuery("");
+
     if (product) {
       setName(product.name);
       setImage(product.image);
@@ -108,23 +126,49 @@ export default function ProductModal({
       setNotes(product.notes);
       setBarcode(product.barcode || initialBarcode || "");
       setQrCode(product.qrCode || initialQrCode || "");
+
       const isUniversal = isProductInAllCategories(product);
-      const cat = isUniversal
-        ? ALL_CATEGORIES_LABEL
-        : extractCategoryFromNotes(product.notes) || product.categoryName || "";
-      setSelectedCategoryName(cat);
-      setCategoryQuery(cat);
+      if (isUniversal) {
+        setIsAllCategoriesSelected(true);
+        setSelectedCategories([]);
+      } else {
+        setIsAllCategoriesSelected(false);
+        const extractedCats = extractCategoriesFromProduct(product).filter(
+          (c) => !isUniversalCategory(c)
+        );
+        setSelectedCategories(extractedCats);
+      }
+
       setShowNewSupplier(false);
       setNewSupplierName("");
     } else {
-      setName(""); setImage(""); setCostPrice(""); setWholesalePrice("");
-      setProfitMargin(""); setRetailPrice(""); setStock(""); setBatchStock("");
-      setBatchManuallyEdited(false); setSupplierId("");
-      setNotes(""); setSelectedCategoryName(""); setCategoryQuery(""); setShowNewSupplier(false); setNewSupplierName("");
+      setName("");
+      setImage("");
+      setCostPrice("");
+      setWholesalePrice("");
+      setProfitMargin("");
+      setRetailPrice("");
+      setStock("");
+      setBatchStock("");
+      setBatchManuallyEdited(false);
+      setSupplierId("");
+      setNotes("");
+      setSelectedCategories([]);
+      setIsAllCategoriesSelected(false);
+      setCategoryQuery("");
+      setShowNewSupplier(false);
+      setNewSupplierName("");
       setBarcode(initialBarcode || "");
       setQrCode(initialQrCode || "");
     }
-  }, [product, isOpen, initialBarcode, initialQrCode]);
+  }, [isOpen, product, initialBarcode, initialQrCode]);
+
+  // إذا تم تحميل صورة المنتج الكسولة في الخلفية أثناء فتح النافذة ولم يقم المستخدم بتغيير الصورة بعد
+  useEffect(() => {
+    if (isOpen && product?.image && !image) {
+      setImage(product.image);
+    }
+  }, [isOpen, product?.image, image]);
 
   // Handle outside click for Category Combobox dropdown
   useEffect(() => {
@@ -169,11 +213,11 @@ export default function ProductModal({
       if (p.notes && p.notes.includes("الفئة:")) {
         const pName = p.name.toLowerCase();
         if (q.includes(pName) || pName.includes(q)) {
-          const match = p.notes.match(/الفئة:\s*([^|,\n]+)/);
+          const match = p.notes.match(/الفئة:\s*([^|\n]+)/);
           if (match && match[1]) {
-            const candidate = match[1].trim();
-            if (isUniversalCategory(candidate)) continue;
-            const foundCat = categories.find((c) => c.name.toLowerCase() === candidate.toLowerCase());
+            const firstCandidate = splitCategoryNames(match[1])[0];
+            if (!firstCandidate || isUniversalCategory(firstCandidate)) continue;
+            const foundCat = categories.find((c) => c.name.toLowerCase() === firstCandidate.toLowerCase());
             if (foundCat) return foundCat.name;
           }
         }
@@ -183,11 +227,11 @@ export default function ProductModal({
     return null;
   }, [name, categories, products]);
 
-  // Filtered categories for combobox (excluding any duplicate universal category entry)
+  // Filtered categories for combobox — shows ALL categories immediately when categoryQuery is empty
   const filteredCategories = useMemo(() => {
     const baseList = categories.filter((c) => !isUniversalCategory(c.name));
-    if (!categoryQuery.trim() || isUniversalCategory(categoryQuery.trim())) return baseList;
     const q = categoryQuery.trim().toLowerCase();
+    if (!q || isUniversalCategory(q)) return baseList;
     return baseList.filter(
       (c) => c.name.toLowerCase().includes(q) || (c.keywords && c.keywords.toLowerCase().includes(q))
     );
@@ -199,22 +243,88 @@ export default function ProductModal({
     if (isUniversalCategory(categoryQuery.trim())) {
       return { id: "universal-all", name: ALL_CATEGORIES_LABEL, priority: 0, isActive: true, image: "" };
     }
-    return categories.find((c) => c.name.toLowerCase() === categoryQuery.trim().toLowerCase());
+    return categories.find((c) => c.name.trim().toLowerCase() === categoryQuery.trim().toLowerCase());
   }, [categories, categoryQuery]);
 
-  const handleSelectCategory = (catName: string) => {
-    const finalName = isUniversalCategory(catName) ? ALL_CATEGORIES_LABEL : catName;
-    setSelectedCategoryName(finalName);
-    setCategoryQuery(finalName);
-    setNotes((prev) => updateNotesWithCategory(prev, finalName));
-    setIsComboOpen(false);
+  // التبديل الفوري لزر "جميع الاقسام": إذا كان مفعلاً مسبقاً يتم إلغاء التعميم وفتح قائمة الأقسام فوراً لاختيار قسم بديل
+  const handleToggleUniversalCategory = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (isAllCategoriesSelected) {
+      setIsAllCategoriesSelected(false);
+      setCategoryQuery("");
+      const fallbackTag = selectedCategories.join(" ، ");
+      setNotes((prev) => updateNotesWithCategory(prev, fallbackTag));
+      setIsComboOpen(true);
+      setTimeout(() => {
+        categoryInputRef.current?.focus();
+      }, 20);
+    } else {
+      setIsAllCategoriesSelected(true);
+      setSelectedCategories([]);
+      setCategoryQuery("");
+      setNotes((prev) => updateNotesWithCategory(prev, ALL_CATEGORIES_LABEL));
+      setIsComboOpen(false);
+    }
+  };
+
+  // إضافة أو إزالة قسم عادي (يدعم اختيار قسم واحد أو عدة أقسام للمنتج بمرونة كاملة)
+  const handleToggleRegularCategory = (catName: string, closeDropdown = false) => {
+    const trimmed = catName.trim();
+    if (!trimmed) return;
+
+    if (isUniversalCategory(trimmed)) {
+      setIsAllCategoriesSelected(true);
+      setSelectedCategories([]);
+      setCategoryQuery("");
+      setNotes((prev) => updateNotesWithCategory(prev, ALL_CATEGORIES_LABEL));
+      setIsComboOpen(false);
+      return;
+    }
+
+    setIsAllCategoriesSelected(false);
+    setCategoryQuery("");
+
+    setSelectedCategories((prev) => {
+      const exists = prev.some((c) => c.toLowerCase() === trimmed.toLowerCase());
+      const next = exists
+        ? prev.filter((c) => c.toLowerCase() !== trimmed.toLowerCase())
+        : [...prev, trimmed];
+      setNotes((prevNotes) => updateNotesWithCategory(prevNotes, next.join(" ، ")));
+      return next;
+    });
+
+    if (closeDropdown) {
+      setIsComboOpen(false);
+    }
+  };
+
+  const handleRemoveCategoryChip = (catName: string) => {
+    setSelectedCategories((prev) => {
+      const next = prev.filter((c) => c.toLowerCase() !== catName.toLowerCase());
+      setNotes((prevNotes) => updateNotesWithCategory(prevNotes, next.join(" ، ")));
+      return next;
+    });
+  };
+
+  const handleClearAllCategories = () => {
+    setIsAllCategoriesSelected(false);
+    setSelectedCategories([]);
+    setCategoryQuery("");
+    setNotes((prev) => updateNotesWithCategory(prev, ""));
+    setIsComboOpen(true);
+    setTimeout(() => {
+      categoryInputRef.current?.focus();
+    }, 20);
   };
 
   const handleCreateNewCategory = async (catNameToCreate: string) => {
     const trimmed = catNameToCreate.trim();
     if (!trimmed) return;
     if (isUniversalCategory(trimmed)) {
-      handleSelectCategory(ALL_CATEGORIES_LABEL);
+      handleToggleRegularCategory(ALL_CATEGORIES_LABEL, true);
       return;
     }
     try {
@@ -224,10 +334,14 @@ export default function ProductModal({
         priority: categories.length + 1,
         isActive: true,
       });
-      setSelectedCategoryName(created.name);
-      setCategoryQuery(created.name);
-      setNotes((prev) => updateNotesWithCategory(prev, created.name));
-      setIsComboOpen(false);
+      setIsAllCategoriesSelected(false);
+      setCategoryQuery("");
+      setSelectedCategories((prev) => {
+        const exists = prev.some((c) => c.toLowerCase() === created.name.toLowerCase());
+        const next = exists ? prev : [...prev, created.name];
+        setNotes((prevNotes) => updateNotesWithCategory(prevNotes, next.join(" ، ")));
+        return next;
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "تعذر إضافة القسم الجديد";
       alert(msg);
@@ -235,7 +349,7 @@ export default function ProductModal({
   };
 
   const handleApplySuggestedCategory = (catName: string) => {
-    handleSelectCategory(catName);
+    handleToggleRegularCategory(catName, false);
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -265,31 +379,51 @@ export default function ProductModal({
         finalSupplierId = newSup.id;
       }
 
-      // Resolve category name: handle "جميع الاقسام" without creating a fake row in categories table
-      let finalCategoryName = selectedCategoryName;
-      let resolvedCategoryId: string | null = null;
-      const isAllCats =
-        isUniversalCategory(categoryQuery.trim()) || isUniversalCategory(selectedCategoryName);
+      // معالجة الأقسام المحددة أو المكتوبة في حقل البحث
+      let finalIsAll = isAllCategoriesSelected;
+      let finalCategoriesList = [...selectedCategories];
+      const typedQuery = categoryQuery.trim();
 
-      if (isAllCats) {
+      if (typedQuery) {
+        if (isUniversalCategory(typedQuery)) {
+          finalIsAll = true;
+          finalCategoriesList = [];
+        } else {
+          finalIsAll = false;
+          const typedParts = splitCategoryNames(typedQuery);
+          for (const part of typedParts) {
+            const match = categories.find((c) => c.name.trim().toLowerCase() === part.toLowerCase());
+            if (match) {
+              if (!finalCategoriesList.some((c) => c.toLowerCase() === match.name.toLowerCase())) {
+                finalCategoriesList.push(match.name);
+              }
+            } else {
+              const created = await addCategory({
+                name: part,
+                image: "",
+                priority: categories.length + 1,
+                isActive: true,
+              });
+              if (!finalCategoriesList.some((c) => c.toLowerCase() === created.name.toLowerCase())) {
+                finalCategoriesList.push(created.name);
+              }
+            }
+          }
+        }
+      }
+
+      let finalCategoryName = "";
+      let resolvedCategoryId: string | null = null;
+
+      if (finalIsAll) {
         finalCategoryName = ALL_CATEGORIES_LABEL;
         resolvedCategoryId = null;
-      } else if (
-        categoryQuery.trim() &&
-        !exactCategoryMatch &&
-        categoryQuery.trim() !== selectedCategoryName
-      ) {
-        const created = await addCategory({
-          name: categoryQuery.trim(),
-          image: "",
-          priority: categories.length + 1,
-          isActive: true,
-        });
-        finalCategoryName = created.name;
-        resolvedCategoryId = created.id;
-      } else if (categoryQuery.trim() && exactCategoryMatch) {
-        finalCategoryName = exactCategoryMatch.name;
-        resolvedCategoryId = exactCategoryMatch.id !== "universal-all" ? exactCategoryMatch.id : null;
+      } else if (finalCategoriesList.length > 0) {
+        finalCategoryName = finalCategoriesList.join(" ، ");
+        const primaryCat = categories.find(
+          (c) => c.name.trim().toLowerCase() === finalCategoriesList[0].toLowerCase()
+        );
+        resolvedCategoryId = primaryCat ? primaryCat.id : null;
       }
 
       const finalNotes = updateNotesWithCategory(notes, finalCategoryName);
@@ -310,7 +444,7 @@ export default function ProductModal({
         notes: finalNotes,
         categoryName: finalCategoryName || null,
         categoryId: resolvedCategoryId,
-        isAllCategories: isUniversalCategory(finalCategoryName),
+        isAllCategories: finalIsAll,
         barcode: barcode.trim() || null,
         qrCode: qrCode.trim() || null,
       };
@@ -453,46 +587,49 @@ export default function ProductModal({
             />
 
             {/* Smart Category Auto-Suggestion Badge */}
-            {suggestedCategory && suggestedCategory !== selectedCategoryName && (
+            {suggestedCategory &&
+              !isAllCategoriesSelected &&
+              !selectedCategories.some((c) => c.toLowerCase() === suggestedCategory.toLowerCase()) && (
               <div className="mt-2 p-2.5 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl flex items-center justify-between animate-fadeIn">
                 <div className="flex items-center gap-2 text-xs font-bold text-blue-800 dark:text-blue-300">
                   <span>💡</span>
-                  <span>يقترح النظام تصنيف هذا المنتج ضمن قسم: <strong>"{suggestedCategory}"</strong></span>
+                  <span>يقترح النظام إضافة هذا المنتج إلى قسم: <strong>"{suggestedCategory}"</strong></span>
                 </div>
                 <button
                   type="button"
                   onClick={() => handleApplySuggestedCategory(suggestedCategory)}
                   className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors shadow-sm"
                 >
-                  تطبيق القسم المقترح ⚡
+                  + إضافة القسم المقترح ⚡
                 </button>
               </div>
             )}
           </div>
 
-          {/* Creatable Autocomplete Category Select Combobox */}
-          <div ref={comboRef} className="relative space-y-2">
-            <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex flex-wrap items-center justify-between gap-2">
-              <span>📁 القسم / التصنيف (اختر أو اكتب اسم قسم جديد)</span>
-              {selectedCategoryName && (
-                <span
-                  className={`text-xs font-extrabold px-2.5 py-0.5 rounded-lg border ${
-                    isUniversalCategory(selectedCategoryName)
-                      ? "bg-purple-600/20 text-purple-700 dark:text-purple-200 border-purple-400/50"
-                      : "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800"
-                  }`}
+          {/* Multi-Category & Universal Category Combobox */}
+          <div ref={comboRef} className="relative space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="text-sm font-bold text-gray-700 dark:text-gray-300">
+                📁 القسم / التصنيف (يمكنك اختيار قسم واحد أو عدة أقسام للمنتج)
+              </label>
+              {(isAllCategoriesSelected || selectedCategories.length > 0) && (
+                <button
+                  type="button"
+                  onClick={handleClearAllCategories}
+                  className="text-[11px] font-extrabold text-rose-600 dark:text-rose-400 hover:underline flex items-center gap-1 cursor-pointer"
                 >
-                  المحدد حالياً: {isUniversalCategory(selectedCategoryName) ? `🌐 ${ALL_CATEGORIES_LABEL}` : selectedCategoryName}
-                </span>
+                  <span>✕</span>
+                  <span>إلغاء تحديد الأقسام وفتح القائمة</span>
+                </button>
               )}
-            </label>
+            </div>
 
-            {/* Standalone One-Click "جميع الاقسام" Button above input */}
+            {/* Standalone One-Click "جميع الاقسام" Toggle Button */}
             <button
               type="button"
-              onClick={() => handleSelectCategory(ALL_CATEGORIES_LABEL)}
-              className={`w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm font-extrabold transition-all duration-200 flex items-center justify-between gap-2 active:scale-[0.99] cursor-pointer ${
-                isUniversalCategory(selectedCategoryName)
+              onClick={handleToggleUniversalCategory}
+              className={`w-full min-h-[46px] px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm font-extrabold transition-all duration-200 flex items-center justify-between gap-2 active:scale-[0.99] cursor-pointer ${
+                isAllCategoriesSelected
                   ? "bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 text-white border-purple-400 shadow-lg shadow-purple-600/25 ring-2 ring-purple-400/40"
                   : "bg-purple-50/90 dark:bg-[#1e113b] hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-900 dark:text-purple-100 border-purple-300 dark:border-purple-500/40 shadow-sm"
               }`}
@@ -503,28 +640,60 @@ export default function ProductModal({
                   <span className="font-black tracking-wide">{ALL_CATEGORIES_LABEL}</span>
                   <span
                     className={`text-[10px] sm:text-xs font-semibold ${
-                      isUniversalCategory(selectedCategoryName)
+                      isAllCategoriesSelected
                         ? "text-purple-100"
                         : "text-purple-600 dark:text-purple-300/80"
                     }`}
                   >
-                    (إظهار هذا المنتج تلقائياً في كافة أقسام المتجر)
+                    {isAllCategoriesSelected
+                      ? "(انقر هنا لإلغاء التعميم وفتح قائمة الأقسام لاختيار قسم مخصص)"
+                      : "(إظهار هذا المنتج تلقائياً في كافة أقسام المتجر)"}
                   </span>
                 </div>
               </div>
               <span
                 className={`px-2.5 py-1 rounded-lg text-[11px] font-black whitespace-nowrap transition-colors ${
-                  isUniversalCategory(selectedCategoryName)
-                    ? "bg-white/20 text-white border border-white/30"
+                  isAllCategoriesSelected
+                    ? "bg-white/20 hover:bg-white/30 text-white border border-white/30"
                     : "bg-purple-600 text-white hover:bg-purple-500 shadow-xs"
                 }`}
               >
-                {isUniversalCategory(selectedCategoryName) ? "✓ مفعل للكل" : "تحديد بنقرة ⚡"}
+                {isAllCategoriesSelected ? "✓ مفعل للكل (انقر للتغيير)" : "تحديد بنقرة ⚡"}
               </span>
             </button>
 
+            {/* Selected Categories Interactive Chips */}
+            {selectedCategories.length > 0 && !isAllCategoriesSelected && (
+              <div className="flex flex-wrap items-center gap-1.5 p-2.5 rounded-xl bg-purple-50/60 dark:bg-[#1a0f36] border border-purple-200/80 dark:border-purple-500/30">
+                <span className="text-[11px] font-extrabold text-purple-800 dark:text-purple-300 ml-1">
+                  الأقسام المحددة ({selectedCategories.length}):
+                </span>
+                {selectedCategories.map((cat) => (
+                  <span
+                    key={cat}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-extrabold bg-purple-600 text-white shadow-xs"
+                  >
+                    <span>📁 {cat}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveCategoryChip(cat);
+                      }}
+                      className="hover:bg-white/20 rounded-full w-4 h-4 inline-flex items-center justify-center text-[10px] font-black transition-colors cursor-pointer"
+                      title={`إزالة قسم ${cat}`}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Search / Filter / Add Input */}
             <div className="relative">
               <input
+                ref={categoryInputRef}
                 type="text"
                 value={categoryQuery}
                 onChange={(e) => {
@@ -532,37 +701,77 @@ export default function ProductModal({
                   setIsComboOpen(true);
                 }}
                 onFocus={() => setIsComboOpen(true)}
-                className={`w-full px-4 py-2.5 border rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-bold text-sm focus:ring-2 outline-none transition-all ${
-                  isUniversalCategory(selectedCategoryName)
+                onClick={() => setIsComboOpen(true)}
+                className={`w-full px-4 py-2.5 pl-24 border rounded-xl bg-white dark:bg-[#1e113b] text-gray-900 dark:text-gray-100 font-bold text-sm focus:ring-2 outline-none transition-all ${
+                  isAllCategoriesSelected || selectedCategories.length > 0
                     ? "border-purple-500 dark:border-purple-500/70 focus:ring-purple-500"
-                    : "border-gray-300 dark:border-gray-600 focus:ring-blue-500"
+                    : "border-gray-300 dark:border-gray-600 focus:ring-purple-500"
                 }`}
-                placeholder="ابحث عن قسم معين، أو اكتب اسم قسم جديد..."
+                placeholder={
+                  isAllCategoriesSelected
+                    ? "انقر لاختيار قسم مخصص بدلاً من جميع الأقسام..."
+                    : selectedCategories.length > 0
+                    ? "أضف قسماً آخر للمنتج أو ابحث في الأقسام..."
+                    : "اختر قسماً أو أكثر من القائمة، أو اكتب اسم قسم جديد..."
+                }
               />
 
-              {categoryQuery && (
+              <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {categoryQuery && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCategoryQuery("");
+                      categoryInputRef.current?.focus();
+                    }}
+                    className="px-2 py-1 rounded-md text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-xs font-bold cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => {
-                    setCategoryQuery("");
-                    setSelectedCategoryName("");
-                    setNotes((prev) => updateNotesWithCategory(prev, ""));
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsComboOpen((prev) => !prev);
                   }}
-                  className="absolute left-3 top-2.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs font-bold"
+                  className="px-2.5 py-1 rounded-lg bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-200 hover:bg-purple-200 dark:hover:bg-purple-800 text-[11px] font-extrabold transition-colors cursor-pointer"
                 >
-                  ✕ مسح
+                  {isComboOpen ? "إغلاق ▲" : "الأقسام ▼"}
                 </button>
-              )}
+              </div>
             </div>
 
-            {/* Interactive Dropdown Menu */}
+            {/* Interactive Dropdown Menu — Shows ALL categories immediately without needing to clear text */}
             {isComboOpen && (
-              <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-[#180e35] border border-purple-200 dark:border-purple-500/40 rounded-xl shadow-2xl z-50 max-h-60 overflow-y-auto divide-y divide-gray-100 dark:divide-purple-800/40 animate-fadeIn">
+              <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-[#180e35] border border-purple-300 dark:border-purple-500/50 rounded-xl shadow-2xl z-50 max-h-68 overflow-y-auto divide-y divide-gray-100 dark:divide-purple-800/40 animate-fadeIn">
+                {/* Sticky Header inside Dropdown for Multi-Select convenience */}
+                <div className="sticky top-0 z-10 bg-purple-50/95 dark:bg-[#1e113b]/95 backdrop-blur-xs px-3 py-2 flex items-center justify-between text-[11px] font-extrabold text-purple-900 dark:text-purple-200 border-b border-purple-200 dark:border-purple-700/60">
+                  <span>
+                    💡 انقر على أي قسم لإضافته أو إزالته (يدعم اختيار عدة أقسام معاً)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsComboOpen(false);
+                    }}
+                    className="px-2.5 py-0.5 rounded-md bg-purple-600 hover:bg-purple-500 text-white font-black cursor-pointer"
+                  >
+                    تم ✓
+                  </button>
+                </div>
+
                 {/* Pinned Universal Option inside Dropdown */}
-                <div
-                  onClick={() => handleSelectCategory(ALL_CATEGORIES_LABEL)}
-                  className={`p-3 text-xs font-extrabold cursor-pointer transition-all flex items-center justify-between ${
-                    isUniversalCategory(selectedCategoryName)
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleToggleUniversalCategory();
+                  }}
+                  className={`w-full p-3 text-xs font-extrabold cursor-pointer transition-all flex items-center justify-between text-right ${
+                    isAllCategoriesSelected
                       ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
                       : "bg-purple-50/70 dark:bg-purple-950/60 hover:bg-purple-100 dark:hover:bg-purple-900/70 text-purple-900 dark:text-purple-200"
                   }`}
@@ -572,7 +781,7 @@ export default function ProductModal({
                     <span>{ALL_CATEGORIES_LABEL}</span>
                     <span
                       className={`text-[10px] font-semibold ${
-                        isUniversalCategory(selectedCategoryName)
+                        isAllCategoriesSelected
                           ? "text-purple-100"
                           : "text-purple-600 dark:text-purple-300/80"
                       }`}
@@ -580,35 +789,61 @@ export default function ProductModal({
                       — شامل لجميع أقسام المتجر
                     </span>
                   </div>
-                  {isUniversalCategory(selectedCategoryName) ? (
-                    <span className="font-black text-white bg-white/20 px-2 py-0.5 rounded-md">✓ محدد</span>
+                  {isAllCategoriesSelected ? (
+                    <span className="font-black text-white bg-white/20 px-2 py-0.5 rounded-md">
+                      ✓ مفعل (انقر لإلغائه)
+                    </span>
                   ) : (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-200/70 dark:bg-purple-800/60 text-purple-800 dark:text-purple-200">
                       شامل
                     </span>
                   )}
-                </div>
+                </button>
 
                 {filteredCategories.length > 0 ? (
-                  filteredCategories.map((c) => (
-                    <div
-                      key={c.id}
-                      onClick={() => handleSelectCategory(c.name)}
-                      className={`p-3 text-xs font-bold cursor-pointer transition-colors flex items-center justify-between hover:bg-purple-50 dark:hover:bg-purple-900/30 ${
-                        selectedCategoryName === c.name
-                          ? "bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400"
-                          : "text-gray-800 dark:text-gray-200"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span>📁</span>
-                        <span>{c.name}</span>
-                      </div>
-                      {selectedCategoryName === c.name && (
-                        <span className="text-blue-600 dark:text-blue-400 font-bold">✓ محدد</span>
-                      )}
-                    </div>
-                  ))
+                  filteredCategories.map((c) => {
+                    const isSelected =
+                      !isAllCategoriesSelected &&
+                      selectedCategories.some((sc) => sc.toLowerCase() === c.name.trim().toLowerCase());
+                    return (
+                      <button
+                        type="button"
+                        key={c.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleRegularCategory(c.name, false);
+                        }}
+                        className={`w-full p-3 text-xs font-bold cursor-pointer transition-colors flex items-center justify-between text-right hover:bg-purple-50 dark:hover:bg-purple-900/40 ${
+                          isSelected
+                            ? "bg-purple-100/80 dark:bg-purple-900/50 text-purple-900 dark:text-white"
+                            : "text-gray-800 dark:text-gray-200"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            className={`w-4 h-4 rounded flex items-center justify-center border text-[10px] font-black transition-colors ${
+                              isSelected
+                                ? "bg-purple-600 border-purple-500 text-white"
+                                : "border-gray-300 dark:border-purple-500/50 bg-white dark:bg-[#1e113b]"
+                            }`}
+                          >
+                            {isSelected ? "✓" : ""}
+                          </span>
+                          <span>📁</span>
+                          <span>{c.name}</span>
+                        </div>
+                        {isSelected ? (
+                          <span className="text-purple-700 dark:text-purple-300 font-extrabold text-[11px] bg-purple-200/70 dark:bg-purple-800/70 px-2 py-0.5 rounded-md">
+                            ✓ مضاف للمنتج
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 dark:text-purple-400/70 text-[11px] font-semibold">
+                            + اختيار القسم
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
                 ) : (
                   !isUniversalCategory(categoryQuery.trim()) && (
                     <div className="p-3 text-xs text-gray-400 text-center">
@@ -619,13 +854,17 @@ export default function ProductModal({
 
                 {/* Creatable Option if query does not match an existing category */}
                 {categoryQuery.trim() && !exactCategoryMatch && !isUniversalCategory(categoryQuery.trim()) && (
-                  <div
-                    onClick={() => handleCreateNewCategory(categoryQuery)}
-                    className="p-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/40 dark:to-indigo-900/40 hover:from-blue-100 hover:to-indigo-100 text-blue-700 dark:text-blue-300 font-bold text-xs cursor-pointer flex items-center gap-2 transition-colors border-t border-blue-200 dark:border-blue-800"
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCreateNewCategory(categoryQuery);
+                    }}
+                    className="w-full p-3 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/40 dark:to-indigo-900/40 hover:from-purple-100 hover:to-indigo-100 text-purple-700 dark:text-purple-200 font-bold text-xs cursor-pointer flex items-center gap-2 transition-colors border-t border-purple-200 dark:border-purple-800 text-right"
                   >
                     <span className="text-base">✨</span>
-                    <span>+ إنشاء قسم جديد باسم <strong>"{categoryQuery.trim()}"</strong></span>
-                  </div>
+                    <span>+ إنشاء وإضافة قسم جديد باسم <strong>"{categoryQuery.trim()}"</strong></span>
+                  </button>
                 )}
               </div>
             )}

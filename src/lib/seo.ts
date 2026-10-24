@@ -255,6 +255,24 @@ export function isUniversalCategory(catName?: string | null): boolean {
 }
 
 /**
+ * تقسيم نص التصنيفات المتعددة (المفصولة بفاصلة عربية أو إنجليزية) إلى مصفوفة أسماء أقسام نظيفة وفريدة
+ */
+export function splitCategoryNames(raw?: string | null): string[] {
+  if (!raw) return [];
+  const cleaned = raw.replace(/^الفئة:\s*/i, "").trim();
+  if (!cleaned) return [];
+  if (isUniversalCategory(cleaned)) return [ALL_CATEGORIES_LABEL];
+  const parts = cleaned
+    .split(/[,،]+/)
+    .map((s) => s.trim())
+    .filter((s) => Boolean(s) && s !== "عام" && s !== "غير محدد");
+  if (parts.some((p) => isUniversalCategory(p))) {
+    return [ALL_CATEGORIES_LABEL];
+  }
+  return Array.from(new Set(parts));
+}
+
+/**
  * التحقق مما إذا كان المنتج معيناً للظهور في "جميع الاقسام"
  */
 export function isProductInAllCategories(product?: {
@@ -266,18 +284,42 @@ export function isProductInAllCategories(product?: {
   if (product.isAllCategories === true) return true;
   if (isUniversalCategory(product.categoryName)) return true;
   if (product.notes) {
-    const match = product.notes.match(/الفئة:\s*([^|,\n]+)/);
+    const match = product.notes.match(/الفئة:\s*([^|\n]+)/);
     const extracted = match?.[1]?.trim();
     if (isUniversalCategory(extracted)) return true;
+    const parts = splitCategoryNames(extracted);
+    if (parts.some((p) => isUniversalCategory(p))) return true;
   }
   return false;
 }
 
-/** Extracts category name from product notes field (e.g. "الفئة: إطارات وجنوط | ...") */
+/** Extracts category name (or comma-joined multi-categories) from product notes field */
 export function extractCategoryFromNotes(notes?: string | null): string {
   if (!notes) return "قطع غيار اصلية";
-  const match = notes.match(/الفئة:\s*([^|,\n]+)/);
+  const match = notes.match(/الفئة:\s*([^|\n]+)/);
   return match?.[1]?.trim() ?? "قطع غيار اصلية";
+}
+
+/**
+ * استخراج قائمة كافة الأقسام المرتبطة بالمنتج كمصفوفة
+ */
+export function extractCategoriesFromProduct(product?: {
+  notes?: string | null;
+  categoryName?: string | null;
+  isAllCategories?: boolean;
+} | null): string[] {
+  if (!product) return [];
+  if (isProductInAllCategories(product)) return [ALL_CATEGORIES_LABEL];
+
+  const fromNotesMatch = product.notes ? product.notes.match(/الفئة:\s*([^|\n]+)/) : null;
+  const fromNotesStr = fromNotesMatch?.[1]?.trim() || "";
+  const fromNotesList = splitCategoryNames(fromNotesStr);
+  if (fromNotesList.length > 0) return fromNotesList;
+
+  const fromCatNameList = splitCategoryNames(product.categoryName);
+  if (fromCatNameList.length > 0) return fromCatNameList;
+
+  return [];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

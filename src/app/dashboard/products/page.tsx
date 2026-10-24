@@ -17,11 +17,13 @@ import {
   ALL_CATEGORIES_LABEL,
   isUniversalCategory,
   isProductInAllCategories,
+  extractCategoriesFromProduct,
+  splitCategoryNames,
 } from "@/lib/seo";
 import { useDashboardPagination, useDebouncedValue } from "@/lib/useDashboardPagination";
 
 export default function ProductsPage() {
-  const { products, suppliers, categories, addCategory, deleteProduct, updateProduct, bulkUpdateProducts, bulkDeleteProducts, persistAllCategoriesAndProducts, reloadAllData, hydrateProductImages } = useData();
+  const { products, suppliers, categories, addProduct, addCategory, deleteProduct, updateProduct, bulkUpdateProducts, bulkDeleteProducts, persistAllCategoriesAndProducts, reloadAllData, hydrateProductImages } = useData();
   const { settings } = useSettings();
   const { logActivity } = useActivityLog();
   const { softDelete, bulkSoftDelete } = useTrash();
@@ -84,6 +86,8 @@ export default function ProductsPage() {
 
   // Bulk Edit Form Inputs
   const [bulkCategory, setBulkCategory] = useState("");
+  const [bulkSelectedCategories, setBulkSelectedCategories] = useState<string[]>([]);
+  const [bulkIsAllCategories, setBulkIsAllCategories] = useState(false);
   const [bulkSupplierId, setBulkSupplierId] = useState("");
   const [bulkMargin, setBulkMargin] = useState<number>(20);
   const [bulkPriceTargetField, setBulkPriceTargetField] = useState<"retailPrice" | "costPrice" | "wholesalePrice">("retailPrice");
@@ -161,7 +165,7 @@ export default function ProductsPage() {
         details: `تعديل المنتَج "${productData.name}"`,
       });
     } else {
-      const created = await (useData as any)().addProduct(productData);
+      const created = await addProduct(productData);
       await logActivity({
         user: settings.currentRole,
         action: "create",
@@ -200,29 +204,41 @@ export default function ProductsPage() {
 
   // Bulk Operations Handlers - Fast Batch Processing
   const handleBulkCategorySave = async () => {
-    if (!bulkCategory.trim() || selectedIds.length === 0) return;
+    const typedRaw = bulkCategory.trim().replace(/^الفئة:\s*/, "").trim();
+    const typedList = splitCategoryNames(typedRaw);
+    const finalIsAll =
+      bulkIsAllCategories ||
+      isUniversalCategory(typedRaw) ||
+      typedList.some((c) => isUniversalCategory(c));
+
+    const combinedCats = finalIsAll
+      ? [ALL_CATEGORIES_LABEL]
+      : Array.from(new Set([...bulkSelectedCategories, ...typedList.filter((c) => !isUniversalCategory(c))]));
+
+    if (combinedCats.length === 0 || selectedIds.length === 0) return;
     setSubmittingBulk(true);
     try {
-      const rawInput = bulkCategory.trim().replace(/^الفئة:\s*/, "").trim();
-      const isAllCats = isUniversalCategory(rawInput);
-      const targetCatName = isAllCats ? ALL_CATEGORIES_LABEL : rawInput;
+      const targetCatName = finalIsAll ? ALL_CATEGORIES_LABEL : combinedCats.join(" ، ");
 
-      // If it's a new specific category (not "جميع الاقسام"), ensure it exists in categories table
+      // Ensure any new specific categories exist in categories table
       let resolvedCatId: string | null = null;
-      if (!isAllCats && targetCatName) {
-        const existingCat = categories.find(
-          (c) => c.name.trim().toLowerCase() === targetCatName.toLowerCase()
-        );
-        if (existingCat) {
-          resolvedCatId = existingCat.id;
-        } else {
-          const created = await addCategory({
-            name: targetCatName,
-            image: "",
-            priority: categories.length + 1,
-            isActive: true,
-          });
-          resolvedCatId = created.id;
+      if (!finalIsAll) {
+        for (let i = 0; i < combinedCats.length; i++) {
+          const cName = combinedCats[i];
+          const existingCat = categories.find(
+            (c) => c.name.trim().toLowerCase() === cName.toLowerCase()
+          );
+          if (existingCat) {
+            if (i === 0) resolvedCatId = existingCat.id;
+          } else {
+            const created = await addCategory({
+              name: cName,
+              image: "",
+              priority: categories.length + 1 + i,
+              isActive: true,
+            });
+            if (i === 0) resolvedCatId = created.id;
+          }
         }
       }
 
@@ -235,7 +251,7 @@ export default function ProductsPage() {
           const tag = `الفئة: ${targetCatName}`;
           let updatedNotes = "";
           if (currentNotes.includes("الفئة:")) {
-            updatedNotes = currentNotes.replace(/الفئة:\s*[^|,\n]+/g, tag);
+            updatedNotes = currentNotes.replace(/الفئة:\s*[^|\n]+/g, tag);
           } else if (!currentNotes) {
             updatedNotes = tag;
           } else {
@@ -245,8 +261,8 @@ export default function ProductsPage() {
           return updateProduct(p.id, {
             notes: updatedNotes,
             categoryName: targetCatName,
-            categoryId: isAllCats ? null : resolvedCatId,
-            isAllCategories: isAllCats,
+            categoryId: finalIsAll ? null : resolvedCatId,
+            isAllCategories: finalIsAll,
           });
         })
       );
@@ -260,6 +276,8 @@ export default function ProductsPage() {
       toastSuccess(`🎉 تم تعديل الفئة لـ ${selectedIds.length} منتج إلى "${targetCatName}" بنجاح!`);
       setBulkModal(null);
       setBulkCategory("");
+      setBulkSelectedCategories([]);
+      setBulkIsAllCategories(false);
       setSelectedIds([]);
     } catch (err) {
       toastError("خطأ في التعديل", "حدث خطأ أثناء التعديل الجماعي للفئة");
@@ -930,11 +948,8 @@ export default function ProductsPage() {
                           <td className="p-2 text-center">
                             {(() => {
                               const isUniversal = isProductInAllCategories(product);
-                              const match = product.notes ? product.notes.match(/الفئة:\s*([^|,\n]+)/) : null;
-                              const catName = isUniversal
-                                ? ALL_CATEGORIES_LABEL
-                                : (match && match[1] ? match[1].trim() : product.categoryName || null);
-                              if (isUniversal || isUniversalCategory(catName)) {
+                              const catList = extractCategoriesFromProduct(product);
+                              if (isUniversal || catList.some((c) => isUniversalCategory(c))) {
                                 return (
                                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-200 border border-purple-300 dark:border-purple-500/60 font-extrabold text-[11px] whitespace-nowrap shadow-xs">
                                     <span>🌐</span>
@@ -942,10 +957,17 @@ export default function ProductsPage() {
                                   </span>
                                 );
                               }
-                              return catName ? (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-[11px] whitespace-nowrap">
-                                  {catName}
-                                </span>
+                              return catList.length > 0 ? (
+                                <div className="flex flex-wrap items-center justify-center gap-1 max-w-[160px] mx-auto">
+                                  {catList.map((cName) => (
+                                    <span
+                                      key={cName}
+                                      className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-[10px] whitespace-nowrap"
+                                    >
+                                      {cName}
+                                    </span>
+                                  ))}
+                                </div>
                               ) : (
                                 <span className="text-gray-400 text-[10px] italic">غير مصنف</span>
                               );
@@ -1037,10 +1059,7 @@ export default function ProductsPage() {
               {visibleProducts.map((product) => {
                 const isSelected = selectedIdSet.has(product.id);
                 const isUniversal = isProductInAllCategories(product);
-                const match = product.notes ? product.notes.match(/الفئة:\s*([^|,\n]+)/) : null;
-                const catName = isUniversal
-                  ? ALL_CATEGORIES_LABEL
-                  : (match && match[1] ? match[1].trim() : product.categoryName || null);
+                const catList = extractCategoriesFromProduct(product);
                 const isAvailable = product.stock > 0;
 
                 return (
@@ -1054,7 +1073,7 @@ export default function ProductsPage() {
                   >
                     {/* 1. Header: Title & Status */}
                     <div className="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
-                      <div className="flex items-center gap-2.5 min-w-0 max-w-[70%]">
+                      <div className="flex items-center gap-2.5 min-w-0 max-w-[65%]">
                         {isAdminOrManager && (
                           <input
                             type="checkbox"
@@ -1068,18 +1087,21 @@ export default function ProductsPage() {
                         </h3>
                       </div>
 
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        {catName && (
-                          isUniversal || isUniversalCategory(catName) ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-200 border border-purple-300 dark:border-purple-500/60 font-extrabold text-[11px] whitespace-nowrap shrink-0">
-                              <span>🌐</span>
-                              <span>{ALL_CATEGORIES_LABEL}</span>
+                      <div className="flex flex-wrap items-center justify-end gap-1 flex-shrink-0">
+                        {isUniversal || catList.some((c) => isUniversalCategory(c)) ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-200 border border-purple-300 dark:border-purple-500/60 font-extrabold text-[11px] whitespace-nowrap shrink-0">
+                            <span>🌐</span>
+                            <span>{ALL_CATEGORIES_LABEL}</span>
+                          </span>
+                        ) : (
+                          catList.map((cName) => (
+                            <span
+                              key={cName}
+                              className="inline-flex items-center px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-[10px] whitespace-nowrap shrink-0"
+                            >
+                              {cName}
                             </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-[11px] whitespace-nowrap shrink-0">
-                              {catName}
-                            </span>
-                          )
+                          ))
                         )}
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap shrink-0 ${
                           isAvailable
@@ -1253,19 +1275,28 @@ export default function ProductsPage() {
       {/* 1. Bulk Category / Department Modal */}
       {bulkModal === "category" && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" dir="rtl">
-          <div className="bg-white dark:bg-[#160b2e] rounded-2xl p-6 max-w-md w-full border border-purple-200 dark:border-purple-500/40 shadow-2xl text-right space-y-4">
+          <div className="bg-white dark:bg-[#160b2e] rounded-2xl p-6 max-w-lg w-full border border-purple-200 dark:border-purple-500/40 shadow-2xl text-right space-y-4">
             <div className="flex justify-between items-center border-b border-gray-200 dark:border-purple-800/50 pb-3">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">📁 تعديل الفئة / القسم لـ ({selectedIds.length}) منتج</h3>
               <button onClick={() => setBulkModal(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
             </div>
 
             <div className="space-y-3">
-              {/* Standalone One-Click Universal Category Button */}
+              {/* Standalone One-Click Universal Category Toggle Button */}
               <button
                 type="button"
-                onClick={() => setBulkCategory(ALL_CATEGORIES_LABEL)}
+                onClick={() => {
+                  if (bulkIsAllCategories) {
+                    setBulkIsAllCategories(false);
+                    setBulkCategory("");
+                  } else {
+                    setBulkIsAllCategories(true);
+                    setBulkSelectedCategories([]);
+                    setBulkCategory("");
+                  }
+                }}
                 className={`w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm font-extrabold transition-all flex items-center justify-between gap-2 cursor-pointer active:scale-[0.99] ${
-                  isUniversalCategory(bulkCategory)
+                  bulkIsAllCategories
                     ? "bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 text-white border-purple-400 shadow-lg shadow-purple-600/25 ring-2 ring-purple-400/40"
                     : "bg-purple-50/90 dark:bg-[#1e113b] hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-900 dark:text-purple-100 border-purple-300 dark:border-purple-500/40"
                 }`}
@@ -1275,41 +1306,92 @@ export default function ProductsPage() {
                   <div>
                     <span className="font-black block sm:inline">{ALL_CATEGORIES_LABEL}</span>
                     <span className="text-[11px] opacity-85 block sm:inline sm:mr-1.5">
-                      (تعيين المنتجات المحددة للظهور في كل الأقسام)
+                      {bulkIsAllCategories
+                        ? "(انقر لإلغاء التعميم واختيار أقسام محددة)"
+                        : "(تعيين المنتجات المحددة للظهور في كل الأقسام)"}
                     </span>
                   </div>
                 </div>
                 <span
                   className={`px-2.5 py-1 rounded-lg text-[11px] font-black whitespace-nowrap ${
-                    isUniversalCategory(bulkCategory)
+                    bulkIsAllCategories
                       ? "bg-white/20 text-white border border-white/30"
                       : "bg-purple-600 text-white"
                   }`}
                 >
-                  {isUniversalCategory(bulkCategory) ? "✓ محدد" : "تحديد الكل ⚡"}
+                  {bulkIsAllCategories ? "✓ مفعل للكل" : "تحديد الكل ⚡"}
                 </span>
               </button>
 
+              {/* Selected Multi-Categories Chips */}
+              {bulkSelectedCategories.length > 0 && !bulkIsAllCategories && (
+                <div className="flex flex-wrap items-center gap-1.5 p-2.5 rounded-xl bg-purple-50/60 dark:bg-[#1e113b] border border-purple-200 dark:border-purple-500/30">
+                  <span className="text-[11px] font-extrabold text-purple-800 dark:text-purple-300">
+                    الأقسام المحددة ({bulkSelectedCategories.length}):
+                  </span>
+                  {bulkSelectedCategories.map((cName) => (
+                    <span
+                      key={cName}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-extrabold bg-purple-600 text-white"
+                    >
+                      <span>📁 {cName}</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setBulkSelectedCategories((prev) => prev.filter((item) => item !== cName))
+                        }
+                        className="hover:bg-white/20 rounded-full w-4 h-4 inline-flex items-center justify-center text-[10px]"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1.5">
-                  أو اختر قسماً محدداً / اكتب اسم قسم جديد:
+                  اختر قسماً أو أكثر من الأقسام المتوفرة (أو اكتب قسماً جديداً):
                 </label>
-                <input
-                  type="text"
-                  list="bulk-categories-datalist"
-                  placeholder="مثال: قطع غيار، بطاريات، زيوت..."
-                  value={bulkCategory}
-                  onChange={(e) => setBulkCategory(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-purple-500/40 rounded-xl bg-white dark:bg-[#1e113b] text-gray-900 dark:text-white text-sm font-bold outline-none focus:ring-2 focus:ring-purple-500"
-                />
-                <datalist id="bulk-categories-datalist">
-                  <option value={ALL_CATEGORIES_LABEL}>🌐 جميع الاقسام (شامل لكل المتجر)</option>
+                <div className="max-h-40 overflow-y-auto rounded-xl border border-purple-200 dark:border-purple-500/40 bg-gray-50/50 dark:bg-[#1e113b]/80 p-2 grid grid-cols-2 gap-1.5 mb-2">
                   {categories
                     .filter((c) => !isUniversalCategory(c.name))
-                    .map((c) => (
-                      <option key={c.id} value={c.name} />
-                    ))}
-                </datalist>
+                    .map((c) => {
+                      const isSel = !bulkIsAllCategories && bulkSelectedCategories.includes(c.name);
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => {
+                            setBulkIsAllCategories(false);
+                            setBulkSelectedCategories((prev) =>
+                              prev.includes(c.name)
+                                ? prev.filter((item) => item !== c.name)
+                                : [...prev, c.name]
+                            );
+                          }}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center justify-between gap-1.5 text-right transition-all cursor-pointer ${
+                            isSel
+                              ? "bg-purple-600 text-white shadow-xs"
+                              : "bg-white dark:bg-[#160b2e] text-gray-700 dark:text-gray-200 hover:bg-purple-50 dark:hover:bg-purple-900/40 border border-gray-200 dark:border-purple-800/50"
+                          }`}
+                        >
+                          <span className="truncate">📁 {c.name}</span>
+                          {isSel && <span className="font-black">✓</span>}
+                        </button>
+                      );
+                    })}
+                </div>
+                <input
+                  type="text"
+                  placeholder="أو اكتب اسم قسم جديد هنا..."
+                  value={bulkCategory}
+                  onChange={(e) => {
+                    setBulkCategory(e.target.value);
+                    if (e.target.value.trim()) setBulkIsAllCategories(false);
+                  }}
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-purple-500/40 rounded-xl bg-white dark:bg-[#1e113b] text-gray-900 dark:text-white text-sm font-bold outline-none focus:ring-2 focus:ring-purple-500"
+                />
               </div>
             </div>
 
@@ -1317,7 +1399,10 @@ export default function ProductsPage() {
               <button onClick={() => setBulkModal(null)} className="px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-xl">إلغاء</button>
               <button
                 onClick={handleBulkCategorySave}
-                disabled={submittingBulk || !bulkCategory.trim()}
+                disabled={
+                  submittingBulk ||
+                  (!bulkIsAllCategories && bulkSelectedCategories.length === 0 && !bulkCategory.trim())
+                }
                 className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 rounded-xl disabled:opacity-50 shadow-md transition-all"
               >
                 {submittingBulk ? "جاري الحفظ..." : "تطبيق التعديل"}
