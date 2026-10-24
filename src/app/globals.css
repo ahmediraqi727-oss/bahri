@@ -350,5 +350,35 @@ aside {
   }
 }
 
+/* 11. Background Scroll Lock & Full-Area Modal Smooth Scrolling */
+html.modal-scroll-locked,
+body.modal-scroll-locked {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
 
+.custom-modal-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #7c3aed rgba(91, 33, 182, 0.12);
+}
 
+.custom-modal-scroll::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.custom-modal-scroll::-webkit-scrollbar-track {
+  background: rgba(91, 33, 182, 0.08);
+  border-radius: 9999px;
+}
+
+.custom-modal-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #7c3aed, #5b21b6);
+  border-radius: 9999px;
+}
+
+.custom-modal-scroll::-webkit-scrollbar-thumb:hover {
+  background: #6d28d9;
+}

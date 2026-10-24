@@ -21,6 +21,8 @@ import {
   splitCategoryNames,
 } from "@/lib/seo";
 import { useDashboardPagination, useDebouncedValue } from "@/lib/useDashboardPagination";
+import TruncatedText from "@/components/TruncatedText";
+import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
 
 export default function ProductsPage() {
   const { products, suppliers, categories, addProduct, addCategory, deleteProduct, updateProduct, bulkUpdateProducts, bulkDeleteProducts, persistAllCategoriesAndProducts, reloadAllData, hydrateProductImages } = useData();
@@ -61,6 +63,9 @@ export default function ProductsPage() {
   // Selection & Bulk Edits
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkModal, setBulkModal] = useState<"category" | "supplier" | "margin" | "price" | "stock" | "delete" | null>(null);
+
+  // قفل تمرير الخلفية عند فتح أي نافذة تعديل جماعي أو تأكيد حذف
+  useBodyScrollLock(Boolean(bulkModal || deleteConfirm));
 
   // Aliases and helpers for unified bulk action bar
   const selectedProductIds = selectedIds;
@@ -932,20 +937,32 @@ export default function ProductsPage() {
                             </td>
                           )}
                           <td className="p-2.5 max-w-[200px]">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
                               {product.image ? (
                                 <img src={product.image} alt="" className="w-8 h-8 rounded-lg object-cover flex-shrink-0 border border-gray-200 dark:border-gray-700" />
                               ) : (
                                 <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 text-sm flex-shrink-0">📦</div>
                               )}
-                              <div className="min-w-0">
-                                <p className="font-bold text-gray-900 dark:text-white truncate max-w-[140px]" title={product.name}>{product.name}</p>
-                                {product.notes && <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate max-w-[140px]">{product.notes}</p>}
+                              <div className="min-w-0 flex-1">
+                                <TruncatedText
+                                  text={product.name}
+                                  as="p"
+                                  maxWidthClass="max-w-[145px]"
+                                  className="font-bold text-gray-900 dark:text-white"
+                                />
+                                {product.notes && (
+                                  <TruncatedText
+                                    text={product.notes}
+                                    as="p"
+                                    maxWidthClass="max-w-[145px]"
+                                    className="text-[10px] text-gray-500 dark:text-gray-400"
+                                  />
+                                )}
                               </div>
                             </div>
                           </td>
 
-                          <td className="p-2 text-center">
+                          <td className="p-2 text-center max-w-[170px]">
                             {(() => {
                               const isUniversal = isProductInAllCategories(product);
                               const catList = extractCategoriesFromProduct(product);
@@ -958,18 +975,28 @@ export default function ProductsPage() {
                                 );
                               }
                               return catList.length > 0 ? (
-                                <div className="flex flex-wrap items-center justify-center gap-1 max-w-[160px] mx-auto">
-                                  {catList.map((cName) => (
+                                <div className="flex items-center justify-center gap-1 max-w-[160px] mx-auto overflow-hidden whitespace-nowrap">
+                                  {catList.slice(0, 2).map((cName) => (
                                     <span
                                       key={cName}
-                                      className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-[10px] whitespace-nowrap"
+                                      className="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-[10px] whitespace-nowrap max-w-[110px]"
                                     >
-                                      {cName}
+                                      <TruncatedText text={cName} maxWidthClass="max-w-[95px]" />
                                     </span>
                                   ))}
+                                  {catList.length > 2 && (
+                                    <span
+                                      className="inline-flex items-center px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-200 font-extrabold text-[10px] whitespace-nowrap shrink-0"
+                                    >
+                                      <TruncatedText
+                                        text={catList.join(" ، ")}
+                                        maxWidthClass="max-w-[40px]"
+                                      />
+                                    </span>
+                                  )}
                                 </div>
                               ) : (
-                                <span className="text-gray-400 text-[10px] italic">غير مصنف</span>
+                                <span className="text-gray-400 text-[10px] italic whitespace-nowrap">غير مصنف</span>
                               );
                             })()}
                           </td>
@@ -1015,8 +1042,11 @@ export default function ProductsPage() {
                           )}
 
                           {isAdminOrManager && (
-                            <td className="p-1.5 text-gray-600 dark:text-gray-400 text-[10px] font-bold text-center max-w-[75px] leading-tight break-words">
-                              {getSupplierName(product.supplierId)}
+                            <td className="p-1.5 text-gray-600 dark:text-gray-400 text-[10px] font-bold text-center max-w-[90px] whitespace-nowrap">
+                              <TruncatedText
+                                text={getSupplierName(product.supplierId)}
+                                maxWidthClass="max-w-[80px] mx-auto"
+                              />
                             </td>
                           )}
 
@@ -1082,9 +1112,11 @@ export default function ProductsPage() {
                             className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer flex-shrink-0"
                           />
                         )}
-                        <h3 className="font-bold text-gray-900 dark:text-white text-sm truncate" title={product.name}>
-                          {product.name}
-                        </h3>
+                        <TruncatedText
+                          text={product.name}
+                          as="h3"
+                          className="font-bold text-gray-900 dark:text-white text-sm"
+                        />
                       </div>
 
                       <div className="flex flex-wrap items-center justify-end gap-1 flex-shrink-0">
@@ -1256,7 +1288,15 @@ export default function ProductsPage() {
 
       {/* Single Delete Confirmation Modal */}
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          data-modal-overlay="true"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDeleteConfirm(null);
+          }}
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 overscroll-contain"
+        >
           <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 max-w-md w-full border border-gray-200 dark:border-gray-700 shadow-2xl text-right" dir="rtl">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">🗑️ حذف المنتج</h3>
             <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
@@ -1274,8 +1314,17 @@ export default function ProductsPage() {
 
       {/* 1. Bulk Category / Department Modal */}
       {bulkModal === "category" && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" dir="rtl">
-          <div className="bg-white dark:bg-[#160b2e] rounded-2xl p-6 max-w-lg w-full border border-purple-200 dark:border-purple-500/40 shadow-2xl text-right space-y-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          data-modal-overlay="true"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setBulkModal(null);
+          }}
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overscroll-contain"
+          dir="rtl"
+        >
+          <div className="bg-white dark:bg-[#160b2e] rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto overscroll-contain custom-modal-scroll border border-purple-200 dark:border-purple-500/40 shadow-2xl text-right space-y-4">
             <div className="flex justify-between items-center border-b border-gray-200 dark:border-purple-800/50 pb-3">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">📁 تعديل الفئة / القسم لـ ({selectedIds.length}) منتج</h3>
               <button onClick={() => setBulkModal(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
@@ -1353,7 +1402,10 @@ export default function ProductsPage() {
                 <label className="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1.5">
                   اختر قسماً أو أكثر من الأقسام المتوفرة (أو اكتب قسماً جديداً):
                 </label>
-                <div className="max-h-40 overflow-y-auto rounded-xl border border-purple-200 dark:border-purple-500/40 bg-gray-50/50 dark:bg-[#1e113b]/80 p-2 grid grid-cols-2 gap-1.5 mb-2">
+                <div
+                  style={{ touchAction: "pan-y" }}
+                  className="max-h-44 overflow-y-auto overscroll-contain custom-modal-scroll rounded-xl border border-purple-200 dark:border-purple-500/40 bg-gray-50/50 dark:bg-[#1e113b]/80 p-2 grid grid-cols-2 gap-1.5 mb-2"
+                >
                   {categories
                     .filter((c) => !isUniversalCategory(c.name))
                     .map((c) => {

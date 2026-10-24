@@ -10,6 +10,8 @@ import SupplierContactModal from "@/components/SupplierContactModal";
 import { Product, Supplier } from "@/lib/types";
 import { exportInventoryToCSV } from "@/lib/csv-export";
 import { useDashboardPagination, useDebouncedValue } from "@/lib/useDashboardPagination";
+import TruncatedText from "@/components/TruncatedText";
+import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
 
 interface StockThresholds {
   excellent: number;
@@ -539,23 +541,28 @@ export default function InventoryPage() {
                               aria-label={`تحديد ${product.name}`}
                             />
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
+                          <td className="px-4 py-3 max-w-[240px]">
+                            <div className="flex items-center gap-3 min-w-0">
                               {product.image ? (
                                 <img
                                   src={product.image}
                                   alt=""
-                                  className={`w-9 h-9 rounded-lg object-cover ${
+                                  className={`w-9 h-9 rounded-lg object-cover shrink-0 ${
                                     isOutOfStock ? "ring-2 ring-red-500" : ""
                                   }`}
                                 />
                               ) : (
-                                <div className="w-9 h-9 rounded-lg bg-white dark:bg-gray-800 flex items-center justify-center text-gray-400 border border-gray-200 dark:border-gray-700">📦</div>
+                                <div className="w-9 h-9 rounded-lg bg-white dark:bg-gray-800 flex items-center justify-center text-gray-400 border border-gray-200 dark:border-gray-700 shrink-0">📦</div>
                               )}
-                              <div>
-                                <span className="font-bold text-gray-900 dark:text-white block">{product.name}</span>
+                              <div className="min-w-0 flex-1">
+                                <TruncatedText
+                                  text={product.name}
+                                  as="span"
+                                  maxWidthClass="max-w-[180px]"
+                                  className="font-bold text-gray-900 dark:text-white"
+                                />
                                 {isOutOfStock && (
-                                  <span className="text-[11px] font-extrabold text-red-600 dark:text-red-400">
+                                  <span className="text-[11px] font-extrabold text-red-600 dark:text-red-400 block whitespace-nowrap">
                                     نفدت الكمية - أولوية تعبئة قصوى
                                   </span>
                                 )}
@@ -595,7 +602,7 @@ export default function InventoryPage() {
                           <td className="px-4 py-3 text-gray-900 dark:text-white font-medium whitespace-nowrap">
                             {(product.retailPrice * product.stock).toLocaleString()} د.ع
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3 max-w-[130px] whitespace-nowrap">
                             {supplier && (level === "low" || level === "empty") ? (
                               <button
                                 onClick={() => setContactModal({ supplier: supplier!, product })}
@@ -605,7 +612,11 @@ export default function InventoryPage() {
                                 📨 مراسلة
                               </button>
                             ) : supplier ? (
-                              <span className="text-xs text-gray-500 dark:text-gray-400">{supplier.name}</span>
+                              <TruncatedText
+                                text={supplier.name}
+                                maxWidthClass="max-w-[115px]"
+                                className="text-xs text-gray-500 dark:text-gray-400"
+                              />
                             ) : (
                               <span className="text-xs text-gray-400">—</span>
                             )}
@@ -650,9 +661,11 @@ export default function InventoryPage() {
                           className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-700 cursor-pointer flex-shrink-0"
                           aria-label={`تحديد ${product.name}`}
                         />
-                        <h3 className="font-extrabold text-gray-900 dark:text-white text-sm truncate" title={product.name}>
-                          {product.name}
-                        </h3>
+                        <TruncatedText
+                          text={product.name}
+                          as="h3"
+                          className="font-extrabold text-gray-900 dark:text-white text-sm"
+                        />
                       </div>
 
                       <span className={`px-2.5 py-1 rounded-lg text-xs font-extrabold whitespace-nowrap flex-shrink-0 ${style.badge}`}>
@@ -797,8 +810,16 @@ export default function InventoryPage() {
 
       {/* Threshold Settings Modal */}
       {showSettings && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-md w-full border border-gray-200 dark:border-gray-700 shadow-2xl">
+        <div
+          role="dialog"
+          aria-modal="true"
+          data-modal-overlay="true"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowSettings(false);
+          }}
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 overscroll-contain"
+        >
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto overscroll-contain custom-modal-scroll border border-gray-200 dark:border-gray-700 shadow-2xl">
             <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
               <h2 className="text-lg font-bold text-gray-900 dark:text-white">عتبات تنبيه المخزون</h2>
               <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-500">✕</button>

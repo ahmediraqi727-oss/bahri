@@ -14,6 +14,7 @@ import {
   extractCategoriesFromProduct,
   splitCategoryNames,
 } from "@/lib/seo";
+import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
 
 interface ProductModalProps {
   isOpen: boolean;
@@ -471,21 +472,79 @@ export default function ProductModal({
     }
   };
 
+  // قفل تمرير الخلفية فور فتح نافذة تعديل/إضافة المنتج
+  useBodyScrollLock(isOpen);
+
+  // إغلاق النافذة عند الضغط على زر Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && activeScannerField === null) {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, activeScannerField, onClose]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" dir="rtl">
-      <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-gray-200 dark:border-gray-700 shadow-2xl">
-        <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-            {product ? "تعديل المنتج" : "إضافة منتج جديد"}
-          </h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-500">
+    <div
+      role="dialog"
+      aria-modal="true"
+      data-modal-overlay="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 bg-black/65 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-4 overscroll-contain animate-modalBackdrop"
+      dir="rtl"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white dark:bg-[#160b2e] rounded-2xl max-w-2xl w-full max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden overscroll-contain border border-purple-300/60 dark:border-purple-500/40 shadow-[0_24px_60px_rgba(0,0,0,0.65)] animate-scaleUp"
+      >
+        {/* Sticky Royal Purple Header */}
+        <div className="shrink-0 flex items-center justify-between px-5 py-4 bg-gradient-to-l from-[#5b21b6] via-[#4c1d95] to-[#2e1065] text-white border-b border-purple-400/30 shadow-md z-20">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="w-8 h-8 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center text-base shrink-0">
+              {product ? "✏️" : "➕"}
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-base sm:text-lg font-extrabold text-white truncate">
+                {product ? "تعديل بيانات المنتج" : "إضافة منتج جديد"}
+              </h2>
+              {product?.name && (
+                <p className="text-[11px] text-purple-200/90 truncate max-w-[260px] sm:max-w-[380px]" title={product.name}>
+                  {product.name}
+                </p>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="إغلاق النافذة"
+            className="w-9 h-9 rounded-xl bg-white/10 hover:bg-red-500/90 text-white flex items-center justify-center transition-all cursor-pointer active:scale-95 shrink-0 border border-white/20"
+          >
             ✕
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-5">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          {/* Full-Area Smooth Scrollable Modal Body */}
+          <div
+            style={{ touchAction: "pan-y", WebkitOverflowScrolling: "touch" }}
+            onWheel={(e) => {
+              // منع حقول الأرقام من خطف عجلة الماوس أثناء تمرير النافذة بالكامل
+              const active = document.activeElement;
+              if (active && active instanceof HTMLInputElement && active.type === "number") {
+                active.blur();
+              }
+              e.stopPropagation();
+            }}
+            className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-5 custom-modal-scroll"
+          >
           {/* Smart Return Navigation Banner */}
           {returnUrl && (
             <div className="bg-gradient-to-r from-purple-900/30 to-indigo-900/30 border border-purple-500/40 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -1262,23 +1321,23 @@ export default function ProductModal({
             canUseManualEntry={true}
           />
 
-          {/* Notes */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">ملاحظات إضافية</label>
-            <textarea
-              value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
-              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none resize-none"
-              placeholder="ملاحظات إضافية..."
-            />
+            {/* Notes */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">ملاحظات إضافية</label>
+              <textarea
+                value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-[var(--primary)] outline-none resize-none"
+                placeholder="ملاحظات إضافية..."
+              />
+            </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex gap-3 pt-2">
+          {/* Sticky Bottom Action Bar (Save & Cancel) */}
+          <div className="shrink-0 flex items-center gap-3 px-4 sm:px-5 py-3.5 bg-gray-50/95 dark:bg-[#1d0f3a]/95 border-t border-purple-200/70 dark:border-purple-500/30 backdrop-blur-md z-20">
             <button
               type="submit"
               disabled={submitting}
-              className="flex-1 py-2.5 text-sm font-bold text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-md"
-              style={{ backgroundColor: "var(--primary)" }}
+              className="flex-1 py-2.5 px-4 text-sm font-extrabold text-white rounded-xl bg-gradient-to-l from-[#5b21b6] via-[#6d28d9] to-[#4c1d95] hover:from-[#6d28d9] hover:to-[#5b21b6] transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-purple-900/30 cursor-pointer active:scale-[0.99] whitespace-nowrap"
             >
               {submitting ? (
                 "جاري الحفظ..."
@@ -1288,9 +1347,9 @@ export default function ProductModal({
                   <span>حفظ والعودة إلى استوديو الملصقات</span>
                 </>
               ) : product ? (
-                "حفظ التعديلات"
+                "💾 حفظ التعديلات"
               ) : (
-                "حفظ المنتج"
+                "💾 حفظ المنتج"
               )}
             </button>
             <button
@@ -1302,7 +1361,7 @@ export default function ProductModal({
                   onClose();
                 }
               }}
-              className="px-6 py-2.5 text-sm font-bold text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              className="px-6 py-2.5 text-sm font-bold text-gray-700 dark:text-purple-100 bg-white dark:bg-white/10 border border-gray-300 dark:border-purple-400/30 rounded-xl hover:bg-gray-100 dark:hover:bg-white/20 transition-colors cursor-pointer whitespace-nowrap"
             >
               {returnUrl ? "إلغاء والعودة" : "إلغاء"}
             </button>

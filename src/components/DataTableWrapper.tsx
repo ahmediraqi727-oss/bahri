@@ -34,10 +34,11 @@ export default function DataTableWrapper({ children, className = "" }: DataTable
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isDragging || !containerRef.current) return;
-    e.preventDefault();
     const x = e.pageX - containerRef.current.offsetLeft;
     const walk = (x - startX) * 1.5; // Drag speed multiplier
-    containerRef.current.scrollLeft = scrollLeft - walk;
+    if (Math.abs(walk) > 4) {
+      containerRef.current.scrollLeft = scrollLeft - walk;
+    }
   };
 
   return (
@@ -47,7 +48,8 @@ export default function DataTableWrapper({ children, className = "" }: DataTable
       onMouseLeave={handleMouseLeave}
       onMouseUp={handleMouseUp}
       onMouseMove={handleMouseMove}
-      className={`overflow-x-auto w-full max-w-full touch-pan-x scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 ${
+      style={{ touchAction: "pan-x pan-y" }}
+      className={`overflow-x-auto w-full max-w-full scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 ${
         isDragging ? "cursor-grabbing select-none" : "cursor-grab"
       } ${className}`}
     >

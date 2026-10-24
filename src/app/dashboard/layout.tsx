@@ -6,10 +6,14 @@ import Header from "@/components/Header";
 import DashboardAssistant from "@/components/DashboardAssistant";
 import { useSettings } from "@/lib/settings-context";
 import { useAuth } from "@/lib/auth-context";
+import { useAutoDashboardModalScrollLock } from "@/lib/use-body-scroll-lock";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { settings, setCurrentRole } = useSettings();
   const { user, loading } = useAuth();
+
+  // قفل تمرير الخلفية تلقائياً عند فتح أي نافذة منبثقة في لوحة التحكم
+  useAutoDashboardModalScrollLock();
 
   useEffect(() => {
     if (user) setCurrentRole(user.role);

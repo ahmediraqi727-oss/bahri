@@ -12,6 +12,7 @@ import {
   splitCategoryNames,
 } from "@/lib/seo";
 import { useDebouncedValue } from "@/lib/useDashboardPagination";
+import TruncatedText from "@/components/TruncatedText";
 
 function doesProductMatchCategory(p: Product, cat: CategoryItem): boolean {
   if (isProductInAllCategories(p)) return true;
@@ -494,13 +495,12 @@ export default function CategoriesManager() {
                   )}
                 </div>
                 <div className="text-right min-w-0 flex-1">
-                  <div
-                    className="overflow-x-auto whitespace-nowrap no-scrollbar max-w-full"
-                    style={{ scrollbarWidth: "none" }}
-                    title={c.name}
-                  >
-                    <p className="text-xs font-extrabold inline-block">{c.name}</p>
-                  </div>
+                  <TruncatedText
+                    text={c.name}
+                    as="p"
+                    maxWidthClass="max-w-[140px]"
+                    className="text-xs font-extrabold"
+                  />
                   <p className="text-[10px] text-gray-500 dark:text-gray-400 font-bold mt-0.5 whitespace-nowrap">
                     أولوية: {c.priority} • [{totalCount} منتج]
                   </p>
@@ -564,15 +564,13 @@ export default function CategoriesManager() {
                     {alertBadge}
                   </div>
 
-                  {/* Full-width Horizontally Scrollable Category Title (No Clipping, Compact Card Size) */}
-                  <div
-                    className="w-full overflow-x-auto whitespace-nowrap no-scrollbar py-1 px-2 rounded-lg bg-gray-50/90 dark:bg-gray-900/60 border border-gray-200/70 dark:border-gray-700/70 scroll-smooth"
-                    style={{ scrollbarWidth: "none" }}
-                    title={c.name}
-                  >
-                    <h4 className="font-extrabold text-xs text-gray-900 dark:text-white inline-block leading-tight">
-                      {c.name}
-                    </h4>
+                  {/* Single-Line Truncated Category Title with Royal Purple Hover/Touch Tooltip */}
+                  <div className="w-full py-1 px-2 rounded-lg bg-gray-50/90 dark:bg-gray-900/60 border border-gray-200/70 dark:border-gray-700/70 min-w-0">
+                    <TruncatedText
+                      text={c.name}
+                      as="h4"
+                      className="font-extrabold text-xs text-gray-900 dark:text-white leading-tight"
+                    />
                   </div>
 
                   {/* Compact Analytics Stats Grid */}
@@ -910,13 +908,14 @@ export default function CategoriesManager() {
         ) : (
           <div className="space-y-3">
             <div
+              style={{ touchAction: "pan-y", WebkitOverflowScrolling: "touch" }}
               onScroll={(e) => {
                 const el = e.currentTarget;
                 if (el.scrollTop + el.clientHeight >= el.scrollHeight - 120 && pickerLimit < filteredProducts.length) {
                   setPickerLimit((prev) => Math.min(prev + 36, filteredProducts.length));
                 }
               }}
-              className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-96 overflow-y-auto p-1 custom-scrollbar"
+              className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-96 overflow-y-auto overscroll-contain p-1 custom-modal-scroll"
             >
               {visiblePickerProducts.map((product) => {
                 const isChecked = selectedProductIds.has(product.id);
@@ -944,8 +943,12 @@ export default function CategoriesManager() {
                     )}
 
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-gray-900 dark:text-white truncate" title={product.name}>{product.name}</p>
-                      <p className="text-[11px] text-blue-600 dark:text-blue-400 font-extrabold mt-0.5">
+                      <TruncatedText
+                        text={product.name}
+                        as="p"
+                        className="text-xs font-bold text-gray-900 dark:text-white"
+                      />
+                      <p className="text-[11px] text-blue-600 dark:text-blue-400 font-extrabold mt-0.5 whitespace-nowrap">
                         {product.retailPrice.toLocaleString()} د.ع
                       </p>
                     </div>
