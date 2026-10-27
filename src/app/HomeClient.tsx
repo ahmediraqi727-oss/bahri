@@ -87,7 +87,15 @@ interface Post {
 
 export default function HomeClient() {
   const { settings, toggleDarkMode, toggleEyeProtection } = useSettings();
-  const { products, suppliers, categories, getEffectiveTiers, hydrateProductImages } = useData();
+  const {
+    products,
+    suppliers,
+    categories,
+    loading: dataLoading,
+    reloadAllData,
+    getEffectiveTiers,
+    hydrateProductImages,
+  } = useData();
   const { addItem, itemCount } = useCart();
   const { user, signOut, loading: authLoading } = useAuth();
   const { t, lang, setLang } = useLang();
@@ -96,7 +104,8 @@ export default function HomeClient() {
   // Global pricing config from settings
   const globalPricingConfig = settings.pricingTiers ?? DEFAULT_PRICING_CONFIG;
 
-  const [search, setSearch] = useState("");
+  // Clean, non-interfering initial filter states
+  const [search, setSearch] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
@@ -250,9 +259,11 @@ export default function HomeClient() {
     batchSize,
     isFastScrolling,
     loadMore: loadMoreStreaming,
+    refetch: refetchStreaming,
   } = useAdaptiveProducts({
     searchQuery: search,
     selectedCategory: selectedCategory,
+    canSeeOutOfStock,
   });
 
   // إدارة حجم الدفعة المعروضة بالواجهة (20 للجوال/التابلت و40 للحاسوب، وتتضاعف إلى 40 أو 80 عند التمرير السريع)
@@ -314,23 +325,30 @@ export default function HomeClient() {
       if (canSeeOutOfStock || (sp.stock ?? 0) > 0) {
         const ctxProd = contextMap.get(sp.id);
         const cachedImg = knownImagesRef.current.get(sp.id);
+        const resolvedImg = sp.image || ctxProd?.image || cachedImg?.image || "";
+        const resolvedThumb =
+          sp.thumbnailUrl || ctxProd?.thumbnailUrl || cachedImg?.thumbnailUrl || null;
         if (ctxProd) {
           map.set(sp.id, {
             ...ctxProd,
-            image: sp.image || ctxProd.image || cachedImg?.image || "",
+            image: resolvedImg,
             originalImageUrl:
               sp.originalImageUrl ||
               ctxProd.originalImageUrl ||
               cachedImg?.originalImageUrl ||
-              sp.image ||
-              "",
-            thumbnailUrl:
-              sp.thumbnailUrl || ctxProd.thumbnailUrl || cachedImg?.thumbnailUrl || null,
+              resolvedImg,
+            thumbnailUrl: resolvedThumb,
             blurDataUrl:
               sp.blurDataUrl || ctxProd.blurDataUrl || cachedImg?.blurDataUrl || null,
+            imageChecked: Boolean(
+              sp.imageChecked || ctxProd.imageChecked || resolvedImg || resolvedThumb
+            ),
           });
         } else {
-          map.set(sp.id, sp);
+          map.set(sp.id, {
+            ...sp,
+            imageChecked: true,
+          });
         }
       }
     });
@@ -345,6 +363,7 @@ export default function HomeClient() {
             originalImageUrl: cachedImg.originalImageUrl || cachedImg.image,
             thumbnailUrl: cachedImg.thumbnailUrl,
             blurDataUrl: cachedImg.blurDataUrl,
+            imageChecked: true,
           });
         } else {
           map.set(p.id, p);
@@ -355,17 +374,46 @@ export default function HomeClient() {
     return Array.from(map.values());
   }, [allAvailableProducts, streamingProducts, canSeeOutOfStock]);
 
-  // تصفية حسب القسم المختار أولاً مع دعم التطبيع العربي
+  // تصفية فورية (0ms) حسب القسم المختار مع دعم التطبيع العربي الشامل (ه/ة، أ/إ/ا) ومعرف القسم
   const categoryScopedProducts = useMemo(() => {
-    if (!selectedCategory) return mergedCatalogProducts;
-    const normSel = normalizeSearchText(selectedCategory);
-    return mergedCatalogProducts.filter(
-      (p) =>
-        isProductInAllCategories(p) ||
-        (p.notes && normalizeSearchText(p.notes).includes(normSel)) ||
-        (p.categoryName && normalizeSearchText(p.categoryName).includes(normSel))
+    const cleanCat = selectedCategory ? selectedCategory.trim() : "";
+    if (!cleanCat || cleanCat === "الكل") return mergedCatalogProducts;
+
+    const normSel = normalizeSearchText(cleanCat);
+    if (!normSel) return mergedCatalogProducts;
+
+    const selTokens = normSel.split(/\s+/).filter((t) => t.length >= 2);
+    const matchedCategoryObj = categories.find(
+      (c) => normalizeSearchText(c.name) === normSel
     );
-  }, [mergedCatalogProducts, selectedCategory]);
+    const targetCategoryId = matchedCategoryObj?.id || null;
+    const streamingCatIds = new Set(streamingProducts.map((sp) => sp.id));
+
+    return mergedCatalogProducts.filter((p) => {
+      if (isProductInAllCategories(p)) return true;
+      if (targetCategoryId && p.categoryId === targetCategoryId) return true;
+      if (streamingCatIds.has(p.id)) return true;
+
+      const normCatName = p.categoryName ? normalizeSearchText(p.categoryName) : "";
+      if (normCatName && (normCatName.includes(normSel) || normSel.includes(normCatName))) {
+        return true;
+      }
+
+      const normNotes = p.notes ? normalizeSearchText(p.notes) : "";
+      if (normNotes && normNotes.includes(normSel)) {
+        return true;
+      }
+
+      if (selTokens.length >= 2) {
+        const combinedMeta = `${normCatName} ${normNotes}`;
+        if (selTokens.every((tk) => combinedMeta.includes(tk))) {
+          return true;
+        }
+      }
+
+      return false;
+    });
+  }, [mergedCatalogProducts, selectedCategory, categories, streamingProducts]);
 
   // تشغيل محرك البحث الذكي الهجين الشامل (المطابقات المباشرة والجزئية + المرادفات + التسامح مع الأخطاء + المقترحات البديلة)
   const smartSearchResult = useMemo(() => {
@@ -417,9 +465,9 @@ export default function HomeClient() {
     const missingImageIds: string[] = [];
 
     currentAndNextSlice.forEach((p) => {
-      if (!p.image || !p.image.trim()) {
+      if (!p.imageChecked && (!p.image || !p.image.trim())) {
         missingImageIds.push(p.id);
-      } else if (typeof window !== "undefined") {
+      } else if (typeof window !== "undefined" && p.image) {
         const urlToPreload = p.image.trim();
         if (
           urlToPreload &&
@@ -435,7 +483,7 @@ export default function HomeClient() {
     });
 
     similarProducts.forEach((p) => {
-      if (!p.image || !p.image.trim()) {
+      if (!p.imageChecked && (!p.image || !p.image.trim())) {
         missingImageIds.push(p.id);
       }
     });
@@ -1667,11 +1715,16 @@ export default function HomeClient() {
           </div>
         )}
 
-        {streamingLoading && availableProducts.length === 0 && similarProducts.length === 0 ? (
+        {(streamingLoading || dataLoading) &&
+        availableProducts.length === 0 &&
+        similarProducts.length === 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 animate-pulse">
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 space-y-4 flex flex-col justify-between h-80">
-                <div className="bg-gray-200 dark:bg-gray-800 h-44 rounded-xl w-full" />
+              <div
+                key={i}
+                className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 space-y-4 flex flex-col justify-between h-80"
+              >
+                <div className="bg-gradient-to-br from-[#2e1065]/40 via-[#4c1d95]/30 to-[#5b21b6]/40 h-44 rounded-xl w-full" />
                 <div className="space-y-2">
                   <div className="bg-gray-200 dark:bg-gray-800 h-4 rounded w-3/4" />
                   <div className="bg-gray-200 dark:bg-gray-800 h-4 rounded w-1/2" />
@@ -1681,21 +1734,77 @@ export default function HomeClient() {
             ))}
           </div>
         ) : availableProducts.length === 0 && similarProducts.length === 0 ? (
-          <div className="text-center py-16 bg-white dark:bg-[#160b2e] rounded-3xl border border-purple-200/70 dark:border-purple-900/60 p-8 shadow-sm">
-            <span className="text-6xl block mb-4" aria-hidden="true">📭</span>
-            <p className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">
-              {selectedCategory ? `لا توجد منتجات متوفرة حالياً في قسم "${selectedCategory}"` : "لا توجد منتجات مطابقة للبحث"}
-            </p>
-            <p className="text-xs sm:text-sm text-gray-500 dark:text-purple-300/70 mb-4">
-              جرب البحث بكلمة أقصر أو مرادف آخر للقطعة (مثل: تاير، إطار، بطارية، بريك)
-            </p>
-            <button
-              onClick={() => { setSearch(""); setSelectedCategory(null); setImageResults(null); setSuggestions([]); }}
-              className="mt-2 px-6 py-2.5 rounded-xl bg-[#5b21b6] hover:bg-purple-700 text-white text-sm font-bold shadow-md cursor-pointer transition-colors"
-            >
-              عرض جميع المنتجات
-            </button>
-          </div>
+          Boolean(search.trim()) || Boolean(imageResults) ? (
+            /* 1. Explicit User Search Empty State — ONLY shown when the user actively searched */
+            <div className="text-center py-16 bg-white dark:bg-[#160b2e] rounded-3xl border border-purple-200/70 dark:border-purple-900/60 p-8 shadow-sm">
+              <span className="text-6xl block mb-4" aria-hidden="true">
+                📭
+              </span>
+              <p className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">
+                لا توجد منتجات مطابقة للبحث
+              </p>
+              <p className="text-xs sm:text-sm text-gray-500 dark:text-purple-300/70 mb-4">
+                جرب البحث بكلمة أقصر أو مرادف آخر للقطعة (مثل: تاير، إطار، بطارية، بريك)
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setSelectedCategory(null);
+                  setImageResults(null);
+                  setSuggestions([]);
+                }}
+                className="mt-2 px-6 py-2.5 rounded-xl bg-[#5b21b6] hover:bg-purple-700 text-white text-sm font-bold shadow-md cursor-pointer transition-colors"
+              >
+                عرض جميع المنتجات
+              </button>
+            </div>
+          ) : selectedCategory ? (
+            /* 2. Category Empty State — ONLY shown when a selected category has 0 products after loading finishes */
+            <div className="text-center py-16 bg-white dark:bg-[#160b2e] rounded-3xl border border-purple-200/70 dark:border-purple-900/60 p-8 shadow-sm">
+              <span className="text-6xl block mb-4" aria-hidden="true">
+                📁
+              </span>
+              <p className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">
+                {`لا توجد منتجات متوفرة حالياً في قسم "${selectedCategory}"`}
+              </p>
+              <p className="text-xs sm:text-sm text-gray-500 dark:text-purple-300/70 mb-4">
+                يرجى اختيار قسم آخر من شريط الأقسام أو تصفح كافة معروضات المتجر
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCategory(null);
+                }}
+                className="mt-2 px-6 py-2.5 rounded-xl bg-[#5b21b6] hover:bg-purple-700 text-white text-sm font-bold shadow-md cursor-pointer transition-colors"
+              >
+                عرض جميع المنتجات
+              </button>
+            </div>
+          ) : (
+            /* 3. Storefront Catalog Refresh State — Never shows "لا توجد منتجات مطابقة للبحث" on homepage */
+            <div className="text-center py-16 bg-white dark:bg-[#160b2e] rounded-3xl border border-purple-200/70 dark:border-purple-900/60 p-8 shadow-sm">
+              <span className="text-5xl block mb-4" aria-hidden="true">
+                🛍️
+              </span>
+              <p className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-2">
+                جاري تجهيز معروضات المتجر
+              </p>
+              <p className="text-xs sm:text-sm text-gray-500 dark:text-purple-300/70 mb-4">
+                اضغط لإعادة تحديث قائمة المنتجات فوراً
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  refetchStreaming();
+                  reloadAllData();
+                }}
+                className="mt-2 px-6 py-2.5 rounded-xl bg-[#5b21b6] hover:bg-purple-700 text-white text-sm font-bold shadow-md cursor-pointer transition-colors"
+              >
+                تحديث المنتجات ↻
+              </button>
+            </div>
+          )
         ) : (
           <>
             {/* 1. Direct & Partial Matches Grid */}

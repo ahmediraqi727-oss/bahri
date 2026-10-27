@@ -18,6 +18,8 @@ export interface ProgressiveProductImageProps {
   mode?: "thumbnail" | "card" | "detail";
   /** تحميل فوري بدون انتظار التمرير (لأول عناصر الشاشة) */
   priority?: boolean;
+  /** يشير إلى أن حقل الصورة قيد الجلب من قاعدة البيانات (يمنع ظهور رمز الصندوق المؤقت) */
+  isHydrating?: boolean;
   /** فئات CSS للحاوية الخارجية */
   containerClassName?: string;
   /** فئات CSS للصورة نفسها */
@@ -42,6 +44,7 @@ export default function ProgressiveProductImage({
   alt = "",
   mode = "thumbnail",
   priority = false,
+  isHydrating = false,
   containerClassName = "w-10 h-10 rounded-xl",
   imgClassName = "object-cover",
   fallbackIcon = "📦",
@@ -103,6 +106,17 @@ export default function ProgressiveProductImage({
       setLoaded(false);
     }
   }, [primaryTargetSrc]);
+
+  // أثناء جلب حقل الصورة في الخلفية نعرض تدرجاً بنفسجياً أنيقاً بدون إظهار الصندوق الكرتوني المؤقت
+  if (!targetSrc && isHydrating && !hasError) {
+    return (
+      <div
+        ref={containerRef}
+        className={`relative overflow-hidden select-none bg-gradient-to-br from-[#2e1065] via-[#4c1d95] to-[#5b21b6] animate-pulse ${containerClassName}`}
+        aria-hidden="true"
+      />
+    );
+  }
 
   // الاكتفاء بالرمز البديل (📦) فقط للمنتجات التي لا تملك صورة أصلاً أو فشل رابطها
   if (!targetSrc || hasError) {

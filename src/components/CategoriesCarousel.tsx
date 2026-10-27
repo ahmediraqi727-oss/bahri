@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useMemo } from "react";
 import { useData } from "@/lib/data-context";
 import { CategoryItem, getCategoryDisplayImage } from "@/lib/types";
 import { isUniversalCategory } from "@/lib/seo";
@@ -20,44 +20,50 @@ export default function CategoriesCarousel({ selectedCategory, onSelectCategory 
   const [scrollLeftState, setScrollLeftState] = useState(0);
   const [dragged, setDragged] = useState(false);
 
-  // Combine database categories with categories detected from products (excluding universal "جميع الاقسام")
-  const allCategories: CategoryItem[] = categories.filter((c) => !isUniversalCategory(c.name));
+  // Memoize merged & sorted categories so pointer/drag state updates never re-scan products
+  const sortedCategories = useMemo(() => {
+    const allCategories: CategoryItem[] = categories.filter((c) => !isUniversalCategory(c.name));
+    const seenLower = new Set(allCategories.map((c) => c.name.trim().toLowerCase()));
 
-  products.forEach((p) => {
-    if (!p.notes) return;
-    let name = "";
-    if (p.notes.includes("الفئة:")) {
-      name = p.notes.split("الفئة:")[1]?.split("|")[0]?.trim() || "";
-    } else {
-      const parts = p.notes.split(/[\n|,]/);
-      if (parts[0] && parts[0].length <= 35) name = parts[0].trim();
+    for (let i = 0; i < products.length; i++) {
+      const p = products[i];
+      if (!p.notes) continue;
+      let name = "";
+      if (p.notes.includes("الفئة:")) {
+        name = p.notes.split("الفئة:")[1]?.split("|")[0]?.trim() || "";
+      } else {
+        const parts = p.notes.split(/[\n|,]/);
+        if (parts[0] && parts[0].length <= 35) name = parts[0].trim();
+      }
+      if (name && !isUniversalCategory(name)) {
+        const key = name.toLowerCase();
+        if (!seenLower.has(key)) {
+          seenLower.add(key);
+          allCategories.push({
+            id: `auto-${name}`,
+            name,
+            image: "",
+            priority: 99,
+            isActive: true,
+          });
+        }
+      }
     }
-    if (
-      name &&
-      !isUniversalCategory(name) &&
-      !allCategories.some((c) => c.name.toLowerCase() === name.toLowerCase())
-    ) {
-      allCategories.push({
-        id: `auto-${name}`,
-        name: name,
-        image: "",
-        priority: 99,
-        isActive: true,
-      });
-    }
-  });
 
-  // Sort categories by priority ascending (1 first)
-  const sortedCategories = allCategories
-    .filter((c) => c.isActive !== false && !isUniversalCategory(c.name))
-    .sort((a, b) => (a.priority || 0) - (b.priority || 0));
+    return allCategories
+      .filter((c) => c.isActive !== false && !isUniversalCategory(c.name))
+      .sort((a, b) => (a.priority || 0) - (b.priority || 0));
+  }, [categories, products]);
 
-  const scroll = (direction: "left" | "right") => {
-    if (scrollRef.current) {
-      const amount = direction === "left" ? -280 : 280;
-      scrollRef.current.scrollBy({ left: amount, behavior: "smooth" });
+  // Memoize display images per category
+  const categoryImageMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (let i = 0; i < sortedCategories.length; i++) {
+      const cat = sortedCategories[i];
+      map.set(cat.id, getCategoryDisplayImage(cat, products));
     }
-  };
+    return map;
+  }, [sortedCategories, products]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!scrollRef.current) return;
@@ -99,8 +105,9 @@ export default function CategoriesCarousel({ selectedCategory, onSelectCategory 
 
           {selectedCategory && (
             <button
+              type="button"
               onClick={() => onSelectCategory(null)}
-              className="text-xs text-blue-600 dark:text-blue-400 font-bold hover:underline mr-2 flex items-center gap-1 bg-blue-50 dark:bg-blue-900/30 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800"
+              className="text-xs text-blue-600 dark:text-blue-400 font-bold hover:underline mr-2 flex items-center gap-1 bg-blue-50 dark:bg-blue-900/30 px-2.5 py-1 rounded-lg border border-blue-200 dark:border-blue-800 cursor-pointer"
             >
               <span>عرض جميع المنتجات</span>
               <span>↺</span>
@@ -121,28 +128,39 @@ export default function CategoriesCarousel({ selectedCategory, onSelectCategory 
         }`}
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
-        {/* Render Actual Store Categories Directly without 'All Categories' Card */}
         {sortedCategories.map((cat) => {
           const isSelected = selectedCategory === cat.name;
-          const displayImg = getCategoryDisplayImage(cat, products);
+          const displayImg = categoryImageMap.get(cat.id) || "";
           return (
             <button
               key={cat.id}
+              type="button"
               onClick={() => {
                 if (!dragged) {
-                  incrementCategoryViews(cat.id);
-                  onSelectCategory(isSelected ? null : cat.name);
+                  const nextCat = isSelected ? null : cat.name;
+                  onSelectCategory(nextCat);
+                  if (nextCat) {
+                    setTimeout(() => {
+                      incrementCategoryViews(cat.id);
+                    }, 350);
+                  }
                 }
               }}
-              className={`flex-shrink-0 flex flex-col items-center justify-between w-28 sm:w-32 h-32 sm:h-36 p-3 rounded-2xl border-2 transition-all duration-300 ${
+              className={`flex-shrink-0 flex flex-col items-center justify-between w-28 sm:w-32 h-32 sm:h-36 p-3 rounded-2xl border-2 transition-all duration-200 cursor-pointer ${
                 isSelected
-                  ? "border-blue-600 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 shadow-lg scale-105"
-                  : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:border-blue-300 hover:shadow-md hover:scale-102"
+                  ? "border-[#5b21b6] bg-purple-50 dark:bg-purple-900/40 text-[#5b21b6] dark:text-purple-200 shadow-lg scale-105"
+                  : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:border-purple-400 hover:shadow-md hover:scale-102"
               }`}
             >
               <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0 shadow-inner">
                 {displayImg ? (
-                  <img src={displayImg} alt={cat.name} className="w-full h-full object-cover pointer-events-none" />
+                  <img
+                    src={displayImg}
+                    alt={cat.name}
+                    loading="eager"
+                    decoding="async"
+                    className="w-full h-full object-cover pointer-events-none"
+                  />
                 ) : (
                   <span className="text-2xl">📁</span>
                 )}

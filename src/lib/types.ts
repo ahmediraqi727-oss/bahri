@@ -338,6 +338,8 @@ export interface Product {
   originalImageUrl?: string;
   thumbnailUrl?: string | null;
   blurDataUrl?: string | null;
+  /** Indicates whether the image column has been fetched/verified from the database */
+  imageChecked?: boolean;
   costPrice: number;
   wholesalePrice: number;
   profitMargin: number;
@@ -453,43 +455,44 @@ export function calculateRetailPrice(costPrice: number, profitMargin: number): n
 }
 
 /**
- * Returns a stable, deterministic category image.
+ * Returns a stable, deterministic category image in O(N) time without array allocations or sorting.
  * Manager custom uploaded image is 100% top priority.
- * Fallbacks are sorted deterministically so category images NEVER shift randomly on refresh!
  */
 export function getCategoryDisplayImage(cat: CategoryItem, products: Product[]): string {
-  // 1. Manager Custom Uploaded Image (Top Priority - Strictly Preserved)
   if (cat.image && cat.image.trim()) {
     return cat.image.trim();
   }
 
-  // 2. Deterministic Dynamic Fallback: Top product image tagged under this category
-  const catNameLower = cat.name.toLowerCase();
-  const categoryProducts = products.filter((p) => {
-    if (!p.notes) return false;
-    const notesLower = p.notes.toLowerCase();
-    return (
-      notesLower.includes(`الفئة: ${catNameLower}`) ||
-      notesLower.includes(catNameLower) ||
-      notesLower.includes(`فئة: ${catNameLower}`)
-    );
-  });
+  const catNameLower = (cat.name || "").trim().toLowerCase();
+  if (!catNameLower || products.length === 0) return "";
 
-  // Sort deterministically by ID to ensure static consistency across page reloads
-  const sortedCatProducts = [...categoryProducts].sort((a, b) => a.id.localeCompare(b.id));
-  const productWithImage = sortedCatProducts.find((p) => p.image && p.image.trim());
-  if (productWithImage && productWithImage.image.trim()) {
-    return productWithImage.image.trim();
+  let bestCatProductId = "";
+  let bestCatProductImg = "";
+
+  for (let i = 0; i < products.length; i++) {
+    const p = products[i];
+    const img = p.thumbnailUrl || p.image;
+    if (!img || !img.trim()) continue;
+
+    const pCatLower = (p.categoryName || "").toLowerCase();
+    const notesLower = (p.notes || "").toLowerCase();
+    const isMatch =
+      (cat.id && p.categoryId === cat.id) ||
+      (pCatLower && pCatLower.includes(catNameLower)) ||
+      (notesLower &&
+        (notesLower.includes(`الفئة: ${catNameLower}`) ||
+          notesLower.includes(catNameLower) ||
+          notesLower.includes(`فئة: ${catNameLower}`)));
+
+    if (isMatch) {
+      if (!bestCatProductId || p.id < bestCatProductId) {
+        bestCatProductId = p.id;
+        bestCatProductImg = img.trim();
+      }
+    }
   }
 
-  // 3. Fallback to any product in store with image (sorted deterministically)
-  const sortedProducts = [...products].sort((a, b) => a.id.localeCompare(b.id));
-  const globalProductWithImage = sortedProducts.find((p) => p.image && p.image.trim());
-  if (globalProductWithImage && globalProductWithImage.image.trim()) {
-    return globalProductWithImage.image.trim();
-  }
-
-  return "";
+  return bestCatProductImg;
 }
 
 export interface CustomerRecord {

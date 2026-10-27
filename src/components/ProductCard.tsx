@@ -133,6 +133,7 @@ export default function ProductCard({
           alt={productAlt}
           mode="card"
           priority={priorityImage}
+          isHydrating={product.imageChecked === false && !product.image && !product.thumbnailUrl}
           containerClassName="w-full h-full"
           imgClassName={`object-cover group-hover:scale-110 transition-transform duration-700 ease-out will-change-transform ${
             isOutOfStock ? "opacity-85 saturate-75" : ""

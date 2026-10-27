@@ -9,6 +9,7 @@ import { normalizeDigits, expandTokenSynonyms } from "@/lib/smart-search";
 interface UseAdaptiveProductsOptions {
   searchQuery?: string;
   selectedCategory?: string | null;
+  canSeeOutOfStock?: boolean;
   initialProducts?: Product[];
 }
 
@@ -25,8 +26,15 @@ interface UseAdaptiveProductsReturn {
   sentinelRef: (node: HTMLElement | null) => void;
 }
 
-// Track whether the `search_products_smart` RPC is installed in Supabase to avoid redundant failed RPC calls
-let smartRpcAvailable: boolean | null = null;
+// Track RPC availability and column support to avoid redundant failed probes
+let storefrontRpcAvailable: boolean | null = null;
+let extendedColsSupported: boolean | null = null;
+
+const STOREFRONT_EXTENDED_COLS =
+  "id, name, image, thumbnail_url, cost_price, wholesale_price, retail_price, profit_margin, stock, batch_stock, supplier_id, notes, category_id, category_name, is_all_categories, barcode, qr_code, sku, created_at, updated_at";
+
+const STOREFRONT_CORE_COLS =
+  "id, name, image, cost_price, wholesale_price, retail_price, profit_margin, stock, supplier_id, notes, category_id, barcode, qr_code, created_at, updated_at";
 
 /**
  * تحديد حجم الدفعة المتجاوب حسب حجم الشاشة:
@@ -35,41 +43,56 @@ let smartRpcAvailable: boolean | null = null;
  */
 export function getViewportBatchSize(): number {
   if (typeof window === "undefined") return 20;
-  const width = window.innerWidth;
-  if (width < 1024) return 20;
-  return 40;
+  return window.innerWidth < 1024 ? 20 : 40;
+}
+
+/**
+ * توليد بدائل الحروف العربية الشائعة (ه/ة، ا/أ/إ) لضمان تطابق اسم القسم في استعلامات قاعدة البيانات المباشرة
+ */
+function buildCategoryVariants(cat: string): string[] {
+  const clean = cat.replace(/[,%()]/g, "").trim();
+  if (!clean) return [];
+  const set = new Set<string>([clean]);
+  set.add(clean.replace(/ه(?=\s|$)/g, "ة"));
+  set.add(clean.replace(/ة/g, "ه"));
+  set.add(clean.replace(/[أإآ]/g, "ا"));
+  return Array.from(set).filter(Boolean).slice(0, 4);
 }
 
 export function useAdaptiveProducts({
   searchQuery = "",
   selectedCategory = null,
+  canSeeOutOfStock = true,
   initialProducts = [],
 }: UseAdaptiveProductsOptions = {}): UseAdaptiveProductsReturn {
-  // لا نعتمد على المنتجات المبدئية إذا كانت بدون صور لضمان جلب الدفعات مع صورها كاملة
   const initialWithImages = initialProducts.filter((p) => Boolean(p.image && p.image.trim()));
   const [products, setProducts] = useState<Product[]>(
     initialWithImages.slice(0, getViewportBatchSize())
   );
-  const [loading, setLoading] = useState(initialWithImages.length === 0);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const [totalCount, setTotalCount] = useState(0);
-  const [batchSize, setBatchSize] = useState(getViewportBatchSize());
-  const [isFastScrolling, setIsFastScrolling] = useState(false);
+  const [loading, setLoading] = useState<boolean>(initialWithImages.length === 0);
+  const [loadingMore, setLoadingMore] = useState<boolean>(false);
+  const [hasMore, setHasMore] = useState<boolean>(true);
+  const [totalCount, setTotalCount] = useState<number>(0);
+  const [batchSize, setBatchSize] = useState<number>(getViewportBatchSize());
+  const [isFastScrolling, setIsFastScrolling] = useState<boolean>(false);
 
-  // Debounce search query (180ms) to eliminate per-keystroke network bottlenecks
-  const [debouncedSearch, setDebouncedSearch] = useState(searchQuery);
+  // Debounce search query (150ms) when user types; instant (0ms) when search is cleared
+  const [debouncedSearch, setDebouncedSearch] = useState<string>(() => (searchQuery || "").trim());
   useEffect(() => {
+    const trimmed = (searchQuery || "").trim();
+    if (!trimmed) {
+      setDebouncedSearch("");
+      return;
+    }
     const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery);
-    }, 180);
+      setDebouncedSearch(trimmed);
+    }, 150);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Accurate offset ref so dynamic batch doubling (20->40 or 40->80) never skips or duplicates rows
-  const offsetRef = useRef(0);
-  const isFetchingRef = useRef(false);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const offsetRef = useRef<number>(0);
+  const isFetchingRef = useRef<boolean>(false);
+  const requestIdRef = useRef<number>(0);
 
   // Scroll velocity tracking (px/ms)
   const velocityRef = useRef<number>(0);
@@ -96,13 +119,11 @@ export function useAdaptiveProducts({
       if (dt > 25) {
         const dy = Math.abs(currentY - lastScrollYRef.current);
         const instantVelocity = dy / dt; // px per ms
-        // Smooth exponential moving average so brief pauses don't immediately drop velocity before IntersectionObserver triggers
         velocityRef.current = velocityRef.current * 0.35 + instantVelocity * 0.65;
         lastScrollYRef.current = currentY;
         lastScrollTimeRef.current = now;
 
-        const fast = velocityRef.current > 1.15;
-        if (fast) {
+        if (velocityRef.current > 1.15) {
           setIsFastScrolling(true);
           if (fastScrollResetTimerRef.current) {
             clearTimeout(fastScrollResetTimerRef.current);
@@ -124,93 +145,41 @@ export function useAdaptiveProducts({
     };
   }, []);
 
-  const fetchProductsBatch = useCallback(
-    async (isReset = false) => {
-      // Allow reset queries to cancel in-flight requests instead of being dropped
-      if (isFetchingRef.current && !isReset) return;
-      isFetchingRef.current = true;
+  const executeRangeSlice = useCallback(
+    async (
+      sliceFrom: number,
+      sliceTo: number,
+      cleanCategory: string | null,
+      cleanQuery: string,
+      includeOutOfStock: boolean
+    ): Promise<Record<string, unknown>[]> => {
+      const buildQuery = (cols: string, useExtendedCategoryCols: boolean) => {
+        let q = supabase
+          .from("products")
+          .select(cols)
+          .order("created_at", { ascending: false })
+          .range(sliceFrom, sliceTo);
 
-      if (isReset) {
-        setLoading(true);
-        offsetRef.current = 0;
-      } else {
-        setLoadingMore(true);
-      }
-
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-
-      try {
-        const baseBatch = getViewportBatchSize();
-        // مضاعفة حجم الدفعة تلقائياً عند التمرير السريع (20 تصبح 40 للجوال، و40 تصبح 80 للحاسوب)
-        const isHighVelocity = !isReset && velocityRef.current > 1.15;
-        const currentBatchSize = isHighVelocity ? baseBatch * 2 : baseBatch;
-
-        const from = isReset ? 0 : offsetRef.current;
-        const to = from + currentBatchSize - 1;
-        const cleanQuery = normalizeDigits(debouncedSearch.trim());
-
-        // 1. Try Supabase Smart Trigram RPC when searching (if installed in SQL Editor)
-        if (
-          cleanQuery &&
-          smartRpcAvailable !== false &&
-          (!selectedCategory || selectedCategory === "الكل")
-        ) {
-          const { data: rpcData, error: rpcError } = await supabase.rpc(
-            "search_products_smart",
-            {
-              search_term: cleanQuery,
-              result_limit: currentBatchSize,
-              result_offset: from,
-            }
-          );
-
-          if (controller.signal.aborted) return;
-
-          if (!rpcError && Array.isArray(rpcData)) {
-            smartRpcAvailable = true;
-            const fetchedItems = rpcData.map((row) =>
-              rowToProduct(row as Record<string, unknown>)
-            );
-            offsetRef.current = from + fetchedItems.length;
-            setTotalCount((prev) =>
-              isReset ? fetchedItems.length : Math.max(prev, offsetRef.current)
-            );
-            if (isReset) {
-              setProducts(fetchedItems);
-            } else {
-              setProducts((prev) => {
-                const existingIds = new Set(prev.map((p) => p.id));
-                const newItems = fetchedItems.filter((p) => !existingIds.has(p.id));
-                return [...prev, ...newItems];
-              });
-            }
-            setHasMore(fetchedItems.length >= currentBatchSize);
-            return;
-          } else if (rpcError) {
-            smartRpcAvailable = false;
-          }
+        if (!includeOutOfStock) {
+          q = q.gt("stock", 0);
         }
 
-        // 2. Direct Chunked Query Fetching Full Product & Image Columns (`image`, `original_image_url`, `thumbnail_url`)
-        let query = supabase
-          .from("products")
-          .select("*", { count: "exact" })
-          .order("created_at", { ascending: false })
-          .range(from, to);
-
-        if (
-          selectedCategory &&
-          selectedCategory.trim() &&
-          selectedCategory.trim() !== "الكل"
-        ) {
-          const cat = selectedCategory.trim().replace(/[,%()]/g, "");
-          query = query.or(
-            `notes.ilike.%${cat}%,notes.ilike.%جميع الاقسام%,notes.ilike.%جميع الأقسام%`
-          );
+        if (cleanCategory) {
+          const variants = buildCategoryVariants(cleanCategory);
+          const catClauses: string[] = [
+            "notes.ilike.%جميع الاقسام%",
+            "notes.ilike.%جميع الأقسام%",
+          ];
+          if (useExtendedCategoryCols) {
+            catClauses.push("is_all_categories.eq.true");
+          }
+          variants.forEach((v) => {
+            catClauses.push(`notes.ilike.%${v}%`);
+            if (useExtendedCategoryCols) {
+              catClauses.push(`category_name.ilike.%${v}%`);
+            }
+          });
+          q = q.or(catClauses.join(","));
         }
 
         if (cleanQuery) {
@@ -242,59 +211,174 @@ export function useAdaptiveProducts({
             }
           });
 
-          const uniqueClauses = Array.from(new Set(orClauses)).slice(0, 14);
+          const uniqueClauses = Array.from(new Set(orClauses)).slice(0, 12);
           if (uniqueClauses.length > 0) {
-            query = query.or(uniqueClauses.join(","));
+            q = q.or(uniqueClauses.join(","));
           }
         }
 
-        const { data, count, error } = await query;
+        return q;
+      };
 
-        if (controller.signal.aborted) {
-          return;
+      if (extendedColsSupported !== false) {
+        const { data, error } = await buildQuery(STOREFRONT_EXTENDED_COLS, true);
+        if (!error && data) {
+          extendedColsSupported = true;
+          return data as unknown as Record<string, unknown>[];
         }
+        extendedColsSupported = false;
+      }
 
-        if (error) {
-          console.warn("Supabase range query error:", error.message);
-          setHasMore(false);
-          return;
-        }
+      const { data: fallbackData, error: fallbackError } = await buildQuery(
+        STOREFRONT_CORE_COLS,
+        false
+      );
+      if (fallbackError) {
+        console.warn("Supabase storefront slice warning:", fallbackError.message);
+        return [];
+      }
+      return (fallbackData as unknown as Record<string, unknown>[]) || [];
+    },
+    []
+  );
 
-        if (data) {
-          const fetchedItems = data.map((row) =>
-            rowToProduct(row as Record<string, unknown>)
+  const fetchProductsBatch = useCallback(
+    async (isReset = false) => {
+      if (isFetchingRef.current && !isReset) return;
+      isFetchingRef.current = true;
+      const reqId = ++requestIdRef.current;
+
+      if (isReset) {
+        setLoading(true);
+        offsetRef.current = 0;
+      } else {
+        setLoadingMore(true);
+      }
+
+      try {
+        const baseBatch = getViewportBatchSize();
+        // مضاعفة حجم الدفعة تلقائياً عند التمرير السريع (20 تصبح 40 للجوال، و40 تصبح 80 للحاسوب)
+        const isHighVelocity = !isReset && velocityRef.current > 1.15;
+        const currentBatchSize = isHighVelocity ? baseBatch * 2 : baseBatch;
+
+        const from = isReset ? 0 : offsetRef.current;
+        const cleanQuery = normalizeDigits((debouncedSearch || "").trim());
+        const cleanCategory =
+          selectedCategory &&
+          selectedCategory.trim() !== "" &&
+          selectedCategory.trim() !== "الكل"
+            ? selectedCategory.trim()
+            : null;
+
+        // 1. Primary: High-Speed Supabase RPC `get_storefront_products` (with limit + 1 lookahead)
+        if (storefrontRpcAvailable !== false) {
+          const { data: rpcData, error: rpcError } = await supabase.rpc(
+            "get_storefront_products",
+            {
+              p_limit: currentBatchSize + 1,
+              p_offset: from,
+              p_category: cleanCategory,
+              p_search_query: cleanQuery || null,
+              p_include_out_of_stock: canSeeOutOfStock,
+            }
           );
-          const nextOffset = from + fetchedItems.length;
-          offsetRef.current = nextOffset;
 
-          const countVal = count ?? nextOffset;
-          setTotalCount(countVal);
+          if (reqId !== requestIdRef.current) return;
 
-          if (isReset) {
-            setProducts(fetchedItems);
-          } else {
-            setProducts((prev) => {
-              const existingIds = new Set(prev.map((p) => p.id));
-              const newItems = fetchedItems.filter((p) => !existingIds.has(p.id));
-              return [...prev, ...newItems];
+          if (!rpcError && Array.isArray(rpcData)) {
+            storefrontRpcAvailable = true;
+            const hasMoreFlag = rpcData.length > currentBatchSize;
+            const slicedRows = rpcData.slice(0, currentBatchSize);
+            const fetchedItems = slicedRows.map((row) => {
+              const p = rowToProduct(row as Record<string, unknown>);
+              p.imageChecked = true;
+              return p;
             });
-          }
 
-          setHasMore(fetchedItems.length >= currentBatchSize && nextOffset < countVal);
+            offsetRef.current = from + fetchedItems.length;
+            setTotalCount((prev) =>
+              isReset ? offsetRef.current : Math.max(prev, offsetRef.current)
+            );
+
+            if (isReset) {
+              setProducts(fetchedItems);
+            } else {
+              setProducts((prev) => {
+                const existingIds = new Set(prev.map((p) => p.id));
+                const newItems = fetchedItems.filter((p) => !existingIds.has(p.id));
+                return [...prev, ...newItems];
+              });
+            }
+            setHasMore(hasMoreFlag);
+            return;
+          } else if (rpcError) {
+            storefrontRpcAvailable = false;
+          }
         }
+
+        // 2. Fallback: Parallel 20-row chunked slices without `count: "exact"` or `original_image_url`
+        const SLICES_PER_REQ = 20;
+        const totalToFetch = currentBatchSize + 1;
+        const slicePromises: Promise<Record<string, unknown>[]>[] = [];
+
+        let cursor = from;
+        let remaining = totalToFetch;
+        while (remaining > 0) {
+          const take = Math.min(remaining, SLICES_PER_REQ + 1);
+          slicePromises.push(
+            executeRangeSlice(
+              cursor,
+              cursor + take - 1,
+              cleanCategory,
+              cleanQuery,
+              canSeeOutOfStock
+            )
+          );
+          cursor += take;
+          remaining -= take;
+        }
+
+        const sliceResults = await Promise.all(slicePromises);
+        if (reqId !== requestIdRef.current) return;
+
+        const combinedRows = sliceResults.flat();
+        const hasMoreFlag = combinedRows.length > currentBatchSize;
+        const slicedRows = combinedRows.slice(0, currentBatchSize);
+
+        const fetchedItems = slicedRows.map((row) => {
+          const p = rowToProduct(row);
+          p.imageChecked = true;
+          return p;
+        });
+
+        const nextOffset = from + fetchedItems.length;
+        offsetRef.current = nextOffset;
+        setTotalCount((prev) => (isReset ? nextOffset : Math.max(prev, nextOffset)));
+
+        if (isReset) {
+          setProducts(fetchedItems);
+        } else {
+          setProducts((prev) => {
+            const existingIds = new Set(prev.map((p) => p.id));
+            const newItems = fetchedItems.filter((p) => !existingIds.has(p.id));
+            return [...prev, ...newItems];
+          });
+        }
+
+        setHasMore(hasMoreFlag && fetchedItems.length > 0);
       } catch (err: any) {
         if (err?.name !== "AbortError") {
-          console.error("Adaptive streaming fetch error:", err);
+          console.error("Adaptive storefront fetch error:", err);
         }
       } finally {
-        if (!controller.signal.aborted) {
+        if (reqId === requestIdRef.current) {
           setLoading(false);
           setLoadingMore(false);
           isFetchingRef.current = false;
         }
       }
     },
-    [selectedCategory, debouncedSearch]
+    [selectedCategory, debouncedSearch, canSeeOutOfStock, executeRangeSlice]
   );
 
   const loadMore = useCallback(async () => {
@@ -310,7 +394,7 @@ export function useAdaptiveProducts({
   useEffect(() => {
     offsetRef.current = 0;
     fetchProductsBatch(true);
-  }, [selectedCategory, debouncedSearch, fetchProductsBatch]);
+  }, [selectedCategory, debouncedSearch, canSeeOutOfStock, fetchProductsBatch]);
 
   const observerRef = useRef<IntersectionObserver | null>(null);
   const sentinelRef = useCallback(
@@ -319,7 +403,6 @@ export function useAdaptiveProducts({
       if (loading || loadingMore) return;
 
       if (node) {
-        // استباق التحميل قبل وصول المستخدم لنهاية القائمة بـ 600px لضمان انسيابية التمرير
         observerRef.current = new IntersectionObserver(
           (entries) => {
             if (entries[0]?.isIntersecting && hasMore && !isFetchingRef.current) {

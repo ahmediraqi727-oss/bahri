@@ -205,6 +205,13 @@ export function rowToProduct(row: Record<string, unknown>): Product {
     ? notesCat
     : rawCatName || (notesCat !== "عام" ? notesCat : null);
 
+  const hasImageColumnInRow =
+    "image" in row ||
+    "image_url" in row ||
+    "imageUrl" in row ||
+    "original_image_url" in row ||
+    "thumbnail_url" in row;
+
   return {
     id: idStr,
     name: (row.name as string) || "",
@@ -212,6 +219,7 @@ export function rowToProduct(row: Record<string, unknown>): Product {
     originalImageUrl: origImage,
     thumbnailUrl: thumbUrl,
     blurDataUrl: blurUrl,
+    imageChecked: Boolean(image || thumbUrl || hasImageColumnInRow),
     costPrice: costP,
     wholesalePrice: wholesaleP,
     profitMargin: profitM,
@@ -447,69 +455,71 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     missingIds.forEach((id) => inflightImageIdsRef.current.add(id));
 
     try {
-      const CHUNK_SIZE = 30;
+      const CHUNK_SIZE = 20;
       for (let i = 0; i < missingIds.length; i += CHUNK_SIZE) {
         const chunk = missingIds.slice(i, i + CHUNK_SIZE);
         let { data, error } = await supabase
           .from("products")
-          .select("id, image, original_image_url, thumbnail_url")
+          .select("id, image, thumbnail_url")
           .in("id", chunk);
 
         if (error) {
-          const secondAttempt = await supabase
+          const fallback = await supabase
             .from("products")
-            .select("id, image, original_image_url")
+            .select("id, image")
             .in("id", chunk);
-          if (!secondAttempt.error) {
-            data = secondAttempt.data as any;
-          } else {
-            const fallback = await supabase
-              .from("products")
-              .select("id, image")
-              .in("id", chunk);
-            data = fallback.data as any;
-          }
+          data = fallback.data as any;
         }
 
+        const batchMap = new Map<
+          string,
+          { image: string; originalImageUrl: string; thumbnailUrl?: string | null; blurDataUrl?: string | null }
+        >();
+
         if (data && data.length > 0) {
-          const batchMap = new Map<
-            string,
-            { image: string; originalImageUrl: string; thumbnailUrl?: string | null; blurDataUrl?: string | null }
-          >();
           data.forEach((row: Record<string, unknown>) => {
             const pid = row.id as string;
-            const img = (row.image as string) || "";
-            const orig = (row.original_image_url as string) || img;
+            const img = ((row.image as string) || "").trim();
             const cachedThumb = getCachedProductThumbnail(pid, img);
             const thumb = (row.thumbnail_url as string | null) ?? cachedThumb?.thumbnail ?? null;
             const blur = cachedThumb?.blur ?? null;
-            const entry = { image: img, originalImageUrl: orig, thumbnailUrl: thumb, blurDataUrl: blur };
+            const entry = { image: img, originalImageUrl: img, thumbnailUrl: thumb, blurDataUrl: blur };
             hydratedImagesRef.current.set(pid, entry);
             batchMap.set(pid, entry);
           });
+        }
 
-          if (batchMap.size > 0) {
-            setProducts((prev) =>
-              prev.map((p) => {
-                const hydrated = batchMap.get(p.id);
-                if (!hydrated) return p;
-                if (
-                  p.image === hydrated.image &&
-                  p.originalImageUrl === hydrated.originalImageUrl &&
-                  p.thumbnailUrl === hydrated.thumbnailUrl
-                ) {
-                  return p;
-                }
-                return {
-                  ...p,
-                  image: hydrated.image || p.image,
-                  originalImageUrl: hydrated.originalImageUrl || p.originalImageUrl || hydrated.image,
-                  thumbnailUrl: hydrated.thumbnailUrl || p.thumbnailUrl || null,
-                  blurDataUrl: hydrated.blurDataUrl || p.blurDataUrl || null,
-                };
-              })
-            );
+        // Mark any ID in the chunk that returned empty as checked so we never re-query it endlessly
+        chunk.forEach((cid) => {
+          if (!hydratedImagesRef.current.has(cid)) {
+            const emptyEntry = { image: "", originalImageUrl: "", thumbnailUrl: null, blurDataUrl: null };
+            hydratedImagesRef.current.set(cid, emptyEntry);
+            batchMap.set(cid, emptyEntry);
           }
+        });
+
+        if (batchMap.size > 0) {
+          setProducts((prev) =>
+            prev.map((p) => {
+              const hydrated = batchMap.get(p.id);
+              if (!hydrated) return p;
+              if (
+                p.imageChecked === true &&
+                p.image === hydrated.image &&
+                p.thumbnailUrl === hydrated.thumbnailUrl
+              ) {
+                return p;
+              }
+              return {
+                ...p,
+                image: hydrated.image || p.image,
+                originalImageUrl: hydrated.originalImageUrl || p.originalImageUrl || hydrated.image,
+                thumbnailUrl: hydrated.thumbnailUrl || p.thumbnailUrl || null,
+                blurDataUrl: hydrated.blurDataUrl || p.blurDataUrl || null,
+                imageChecked: true,
+              };
+            })
+          );
         }
       }
     } catch (err) {
@@ -520,16 +530,17 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const fetchAllLightweightProducts = useCallback(async (): Promise<Product[]> => {
-    const FULL_META_COLS =
-      "id, name, image, original_image_url, thumbnail_url, cost_price, wholesale_price, retail_price, profit_margin, stock, batch_stock, supplier_id, notes, category_id, category_name, is_all_categories, barcode, qr_code, sku, scan_count, last_scanned_at, is_barcode_active, created_at, updated_at";
+    // Strictly lightweight metadata columns (no heavy image/original_image_url Base64 blobs across 5,000 rows)
+    const LIGHTWEIGHT_META_COLS =
+      "id, name, cost_price, wholesale_price, retail_price, profit_margin, stock, batch_stock, supplier_id, notes, category_id, category_name, is_all_categories, barcode, qr_code, sku, scan_count, last_scanned_at, is_barcode_active, created_at, updated_at";
     const FALLBACK_META_COLS =
-      "id, name, image, cost_price, wholesale_price, retail_price, profit_margin, stock, supplier_id, notes, category_id, barcode, qr_code, created_at, updated_at";
+      "id, name, cost_price, wholesale_price, retail_price, profit_margin, stock, supplier_id, notes, category_id, barcode, qr_code, created_at, updated_at";
 
     let rows: Record<string, unknown>[] | null = null;
 
     const firstTry = await supabase
       .from("products")
-      .select(FULL_META_COLS)
+      .select(LIGHTWEIGHT_META_COLS)
       .order("created_at", { ascending: false })
       .limit(5000);
 
@@ -545,23 +556,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (!secondTry.error && secondTry.data) {
         rows = secondTry.data as Record<string, unknown>[];
       } else {
-        // Fallback chunked range loader with image columns included so products never mount with empty image
         const chunkedRows: Record<string, unknown>[] = [];
-        const PAGE = 150;
+        const PAGE = 500;
         let offset = 0;
-        let useFallbackCols = false;
         while (offset < 5000) {
-          const colsToSelect: string = useFallbackCols ? FALLBACK_META_COLS : FULL_META_COLS;
           const { data: pageData, error: pageErr } = await supabase
             .from("products")
-            .select(colsToSelect)
+            .select(FALLBACK_META_COLS)
             .order("created_at", { ascending: false })
             .range(offset, offset + PAGE - 1);
 
-          if (pageErr && !useFallbackCols) {
-            useFallbackCols = true;
-            continue;
-          }
           if (pageErr || !pageData || pageData.length === 0) break;
           chunkedRows.push(...(pageData as unknown as Record<string, unknown>[]));
           if (pageData.length < PAGE) break;
@@ -573,21 +577,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const parsed = (rows || []).map((r) => {
       const prod = rowToProduct(r);
-      if (prod.image) {
-        hydratedImagesRef.current.set(prod.id, {
-          image: prod.image,
-          originalImageUrl: prod.originalImageUrl || prod.image,
-          thumbnailUrl: prod.thumbnailUrl || null,
-          blurDataUrl: prod.blurDataUrl || null,
-        });
+      const cachedImg = hydratedImagesRef.current.get(prod.id);
+      if (cachedImg) {
+        prod.image = cachedImg.image || prod.image;
+        prod.originalImageUrl = cachedImg.originalImageUrl || prod.originalImageUrl;
+        prod.thumbnailUrl = cachedImg.thumbnailUrl || prod.thumbnailUrl || null;
+        prod.blurDataUrl = cachedImg.blurDataUrl || prod.blurDataUrl || null;
+        prod.imageChecked = true;
       } else {
-        const cachedImg = hydratedImagesRef.current.get(prod.id);
-        if (cachedImg) {
-          prod.image = cachedImg.image || prod.image;
-          prod.originalImageUrl = cachedImg.originalImageUrl || prod.originalImageUrl;
-          prod.thumbnailUrl = cachedImg.thumbnailUrl || prod.thumbnailUrl || null;
-          prod.blurDataUrl = cachedImg.blurDataUrl || prod.blurDataUrl || null;
-        }
+        prod.imageChecked = Boolean(prod.image || prod.thumbnailUrl);
       }
       return prod;
     });
@@ -708,57 +706,39 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         if (loadedCategories.length > 0) setCategories(loadedCategories);
 
         if (loadedProducts.length > 0) {
-          // ترطيب صور الدفعة الأولى وعينة لكل قسم في الخلفية بدون حجب العرض الفوري
+          // ترطيب صور الدفعة الأولى في الخلفية بدون حجب العرض الفوري
           const initialIds = loadedProducts.slice(0, 40).map((p) => p.id);
-          const seenCats = new Set<string>();
-          loadedProducts.forEach((p) => {
-            const cKey = p.categoryId || p.categoryName || extractCategoryFromNotes(p.notes || "");
-            if (cKey && !seenCats.has(cKey) && seenCats.size < 40) {
-              seenCats.add(cKey);
-              initialIds.push(p.id);
-            }
-          });
           hydrateProductImages(initialIds);
 
-          const distinctFromProducts = new Set<string>();
-          loadedProducts.forEach((p) => {
-            const rawCat = p.categoryName || extractCategoryFromNotes(p.notes || "");
-            const catList = splitCategoryNames(rawCat);
-            catList.forEach((cat) => {
-              if (cat && cat !== "عام" && cat !== "غير محدد" && !isUniversalCategory(cat)) {
-                distinctFromProducts.add(cat);
-              }
-            });
-          });
-
-          if (loadedCategories.length === 0 || loadedCategories.length < distinctFromProducts.size) {
-            const existingImageMap = new Map<string, string>();
-            loadedCategories.forEach((c) => {
-              if (c.image && c.image.trim()) {
-                existingImageMap.set(c.name.trim().toLowerCase(), c.image.trim());
-              }
+          if (loadedCategories.length === 0) {
+            const distinctFromProducts = new Set<string>();
+            loadedProducts.forEach((p) => {
+              const rawCat = p.categoryName || extractCategoryFromNotes(p.notes || "");
+              const catList = splitCategoryNames(rawCat);
+              catList.forEach((cat) => {
+                if (cat && cat !== "عام" && cat !== "غير محدد" && !isUniversalCategory(cat)) {
+                  distinctFromProducts.add(cat);
+                }
+              });
             });
 
-            const catRows = Array.from(distinctFromProducts).map((catName, idx) => {
-              const existingImg = existingImageMap.get(catName.trim().toLowerCase());
-              const sampleProduct = loadedProducts.find((p) => (p.notes || "").includes(catName));
-              const finalImg = existingImg || sampleProduct?.image || "";
-              return {
+            if (distinctFromProducts.size > 0) {
+              const catRows = Array.from(distinctFromProducts).map((catName, idx) => ({
                 name: catName,
-                image: finalImg,
-                image_url: finalImg,
+                image: "",
+                image_url: "",
                 priority: idx + 1,
                 display_order: idx + 1,
                 sort_order: idx + 1,
                 is_active: true,
                 keywords: catName,
-              };
-            });
+              }));
 
-            supabase.from("categories").upsert(catRows, { onConflict: "name" }).then(async () => {
-              const { data: fresh } = await supabase.from("categories").select("*").order("priority", { ascending: true });
-              if (fresh && fresh.length > 0) setCategories(fresh.map(rowToCategory));
-            });
+              supabase.from("categories").upsert(catRows, { onConflict: "name" }).then(async () => {
+                const { data: fresh } = await supabase.from("categories").select("*").order("priority", { ascending: true });
+                if (fresh && fresh.length > 0) setCategories(fresh.map(rowToCategory));
+              });
+            }
           }
         }
       } catch (err) {
@@ -772,7 +752,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const channel = supabase
       .channel("public:all_data")
-      .on("postgres_changes", { event: "*", schema: "public", table: "categories" }, async () => {
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "categories" }, async () => {
+        const { data } = await supabase.from("categories").select("*").order("priority", { ascending: true });
+        if (data) setCategories(data.map(rowToCategory));
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "categories" }, async () => {
         const { data } = await supabase.from("categories").select("*").order("priority", { ascending: true });
         if (data) setCategories(data.map(rowToCategory));
       })
@@ -1173,17 +1157,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const incrementCategoryViews = useCallback(async (catIdOrName: string) => {
-    if (!catIdOrName) return;
-    setCategories((prev) => {
-      const target = prev.find(
+    if (!catIdOrName || catIdOrName.startsWith("auto-")) return;
+    try {
+      const target = categories.find(
         (c) => c.id === catIdOrName || c.name.toLowerCase() === catIdOrName.toLowerCase()
       );
-      if (!target) return prev;
+      if (!target || !isUUID(target.id)) return;
       const newViews = (target.views || 0) + 1;
-      supabase.from("categories").update({ views: newViews }).eq("id", target.id).then(() => {});
-      return prev.map((c) => (c.id === target.id ? { ...c, views: newViews } : c));
-    });
-  }, []);
+      await supabase.from("categories").update({ views: newViews }).eq("id", target.id);
+    } catch {
+      /* non-blocking view tracking */
+    }
+  }, [categories]);
 
   const reloadAllData = useCallback(async () => {
     const [loadedProducts, suppliersRes, categoriesRes, overridesRes] = await Promise.all([
