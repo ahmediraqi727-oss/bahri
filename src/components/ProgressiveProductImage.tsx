@@ -131,7 +131,8 @@ export default function ProgressiveProductImage({
     );
   }
 
-  const isEager = priority || mode === "card" || mode === "detail";
+  // منح الأولوية القصوى (eager + high fetchPriority) لمنتجات الشاشة الأولى فقط، والتحميل الكسول الذكي لبقية البطاقات
+  const isEager = Boolean(priority || mode === "detail");
 
   return (
     <div
@@ -162,8 +163,8 @@ export default function ProgressiveProductImage({
         src={targetSrc}
         alt={alt}
         loading={isEager ? "eager" : "lazy"}
-        fetchPriority={priority ? "high" : "auto"}
-        decoding="async"
+        fetchPriority={priority ? "high" : "low"}
+        decoding={priority ? "sync" : "async"}
         referrerPolicy="no-referrer"
         onLoad={() => setLoaded(true)}
         onError={() => {

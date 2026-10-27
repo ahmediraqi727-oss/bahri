@@ -6,6 +6,18 @@ import { Product } from "@/lib/types";
 import { rowToProduct } from "@/lib/data-context";
 import { normalizeDigits, expandTokenSynonyms } from "@/lib/smart-search";
 
+export interface ViewportGridMetrics {
+  deviceType: "mobile" | "tablet" | "desktop";
+  width: number;
+  height: number;
+  columns: number;
+  visibleRows: number;
+  /** عدد المنتجات المعروضة فوراً في الشاشة الأولى (Above the Fold) بأولوية قصوى */
+  initialFoldCount: number;
+  /** حجم الدفعة اللاحقة عند الجلب المسبق بالخلفية أو التمرير */
+  scrollBatchSize: number;
+}
+
 interface UseAdaptiveProductsOptions {
   searchQuery?: string;
   selectedCategory?: string | null;
@@ -17,9 +29,14 @@ interface UseAdaptiveProductsReturn {
   products: Product[];
   loading: boolean;
   loadingMore: boolean;
+  isPrefetching: boolean;
   hasMore: boolean;
   totalCount: number;
+  /** عدد منتجات الشاشة الأولى المحسوب ديناميكياً (مثلاً 4 للجوال، 10 للتابلت، 16 للحاسوب) */
+  initialFoldCount: number;
+  /** حجم الدفعة التكيفية للتمرير */
   batchSize: number;
+  viewportMetrics: ViewportGridMetrics;
   isFastScrolling: boolean;
   loadMore: () => Promise<void>;
   refetch: () => Promise<void>;
@@ -30,6 +47,32 @@ interface UseAdaptiveProductsReturn {
 let storefrontRpcAvailable: boolean | null = null;
 let extendedColsSupported: boolean | null = null;
 
+// Global set of pre-decoded image URLs so we never decode the same URL twice
+const decodedImageCache = new Set<string>();
+
+/**
+ * تحميل وفك ترميز الصورة مسبقاً في الخلفية (Async Image Pre-decoding)
+ * لضمان رسمها في 0ms فور ظهور البطاقة أثناء التمرير
+ */
+export function preloadAndDecodeImage(url?: string | null): void {
+  if (typeof window === "undefined" || !url) return;
+  const cleanUrl = url.trim();
+  if (!cleanUrl || cleanUrl.startsWith("data:") || decodedImageCache.has(cleanUrl)) {
+    return;
+  }
+  decodedImageCache.add(cleanUrl);
+
+  const img = new window.Image();
+  img.decoding = "async";
+  img.referrerPolicy = "no-referrer";
+  img.src = cleanUrl;
+  if (typeof img.decode === "function") {
+    img.decode().catch(() => {
+      // Ignore decode rejections for cross-origin or cached images
+    });
+  }
+}
+
 const STOREFRONT_EXTENDED_COLS =
   "id, name, image, thumbnail_url, cost_price, wholesale_price, retail_price, profit_margin, stock, batch_stock, supplier_id, notes, category_id, category_name, is_all_categories, barcode, qr_code, sku, created_at, updated_at";
 
@@ -37,13 +80,129 @@ const STOREFRONT_CORE_COLS =
   "id, name, image, cost_price, wholesale_price, retail_price, profit_margin, stock, supplier_id, notes, category_id, barcode, qr_code, created_at, updated_at";
 
 /**
- * تحديد حجم الدفعة المتجاوب حسب حجم الشاشة:
- * - الجوال والأجهزة اللوحية (< 1024px): 20 منتجاً في كل دفعة
- * - الحواسيب والشاشات الكبيرة (>= 1024px): 40 منتجاً في كل دفعة
+ * حساب هندسة الشبكة وعدد المنتجات المرئية ديناميكياً بالكامل بناءً على عرض وارتفاع النافذة:
+ * - الهواتف المحمولة (< 640px): أول 4 منتجات للشاشة الأولى (Above the fold) لسرعة استجابة فورية، ثم دفعات من 8 منتجات بالخلفية.
+ * - الأجهزة اللوحية (640px - 1023px): حساب عدد الأعمدة (2 أو 3) × الصفوف المرئية حسب الارتفاع (مثلاً 8 - 10 منتجات للشاشة الأولى).
+ * - الحواسيب (>= 1024px): 4 أعمدة × الصفوف المرئية حسب ارتفاع الشاشة (مثلاً 12 - 20 منتجاً تملأ الشاشة الأولى بالكامل).
+ */
+export function calculateViewportGridMetrics(
+  width?: number,
+  height?: number
+): ViewportGridMetrics {
+  const w =
+    typeof width === "number"
+      ? width
+      : typeof window !== "undefined"
+      ? window.innerWidth
+      : 390;
+  const h =
+    typeof height === "number"
+      ? height
+      : typeof window !== "undefined"
+      ? window.innerHeight
+      : 844;
+
+  // 1. Mobile Phones (< 640px)
+  if (w < 640) {
+    const columns = 1;
+    const estimatedCardHeight = 310;
+    const rawVisibleRows = Math.max(2, Math.ceil(h / estimatedCardHeight) + 1);
+    // ضمان تحميل أول 4 منتجات فوراً في الهواتف المحمولة (أو 5 للشاشات الطويلة جداً)
+    const initialFoldCount = Math.min(Math.max(4, rawVisibleRows), 4);
+    return {
+      deviceType: "mobile",
+      width: w,
+      height: h,
+      columns,
+      visibleRows: initialFoldCount,
+      initialFoldCount: 4,
+      scrollBatchSize: 8,
+    };
+  }
+
+  // 2. Tablets (640px - 1023px)
+  if (w < 1024) {
+    const columns = w >= 768 ? 3 : 2;
+    const estimatedRowHeight = 340;
+    const visibleRows = Math.max(3, Math.ceil(h / estimatedRowHeight) + 2);
+    // حساب العدد الدقيق للشاشة الأولى على التابلت (10 منتجات قياسياً أو مضاعف للأعمدة حسب الارتفاع)
+    const computedCount = columns * visibleRows;
+    const initialFoldCount = w < 768 ? Math.max(8, Math.min(computedCount, 12)) : Math.max(10, Math.min(computedCount, 15));
+    return {
+      deviceType: "tablet",
+      width: w,
+      height: h,
+      columns,
+      visibleRows,
+      initialFoldCount: w >= 768 ? 10 : Math.max(8, Math.min(10, computedCount)),
+      scrollBatchSize: columns * 4,
+    };
+  }
+
+  // 3. Desktops & Large Screens (>= 1024px)
+  const columns = 4;
+  const estimatedRowHeight = 360;
+  const visibleRows = Math.max(3, Math.ceil(h / estimatedRowHeight) + 1);
+  const initialFoldCount = Math.min(Math.max(12, columns * visibleRows), 24);
+  return {
+    deviceType: "desktop",
+    width: w,
+    height: h,
+    columns,
+    visibleRows,
+    initialFoldCount,
+    scrollBatchSize: Math.max(16, columns * 5),
+  };
+}
+
+/**
+ * دالة متوافقة للإرجاع السريع لحجم دفعة التمرير حسب الشاشة
  */
 export function getViewportBatchSize(): number {
-  if (typeof window === "undefined") return 20;
-  return window.innerWidth < 1024 ? 20 : 40;
+  return calculateViewportGridMetrics().scrollBatchSize;
+}
+
+/**
+ * خطاف (Hook) استشعار أبعاد الشاشة وتحديث حسابات الشبكة لحظياً
+ */
+export function useViewportGridConfig(): ViewportGridMetrics {
+  const [metrics, setMetrics] = useState<ViewportGridMetrics>(() =>
+    calculateViewportGridMetrics()
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let rafId: number | null = null;
+    const updateMetrics = () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        const next = calculateViewportGridMetrics(window.innerWidth, window.innerHeight);
+        setMetrics((prev) => {
+          if (
+            prev.deviceType === next.deviceType &&
+            prev.columns === next.columns &&
+            prev.initialFoldCount === next.initialFoldCount &&
+            prev.scrollBatchSize === next.scrollBatchSize
+          ) {
+            return prev;
+          }
+          return next;
+        });
+      });
+    };
+
+    updateMetrics();
+    window.addEventListener("resize", updateMetrics, { passive: true });
+    window.addEventListener("orientationchange", updateMetrics, { passive: true });
+    return () => {
+      window.removeEventListener("resize", updateMetrics);
+      window.removeEventListener("orientationchange", updateMetrics);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, []);
+
+  return metrics;
 }
 
 /**
@@ -65,15 +224,17 @@ export function useAdaptiveProducts({
   canSeeOutOfStock = true,
   initialProducts = [],
 }: UseAdaptiveProductsOptions = {}): UseAdaptiveProductsReturn {
+  const viewportMetrics = useViewportGridConfig();
   const initialWithImages = initialProducts.filter((p) => Boolean(p.image && p.image.trim()));
-  const [products, setProducts] = useState<Product[]>(
-    initialWithImages.slice(0, getViewportBatchSize())
+
+  const [products, setProducts] = useState<Product[]>(() =>
+    initialWithImages.slice(0, calculateViewportGridMetrics().initialFoldCount)
   );
   const [loading, setLoading] = useState<boolean>(initialWithImages.length === 0);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
+  const [isPrefetching, setIsPrefetching] = useState<boolean>(false);
   const [hasMore, setHasMore] = useState<boolean>(true);
   const [totalCount, setTotalCount] = useState<number>(0);
-  const [batchSize, setBatchSize] = useState<number>(getViewportBatchSize());
   const [isFastScrolling, setIsFastScrolling] = useState<boolean>(false);
 
   // Debounce search query (150ms) when user types; instant (0ms) when search is cleared
@@ -93,20 +254,13 @@ export function useAdaptiveProducts({
   const offsetRef = useRef<number>(0);
   const isFetchingRef = useRef<boolean>(false);
   const requestIdRef = useRef<number>(0);
+  const warmupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Scroll velocity tracking (px/ms)
   const velocityRef = useRef<number>(0);
   const lastScrollYRef = useRef<number>(0);
   const lastScrollTimeRef = useRef<number>(Date.now());
   const fastScrollResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    const handleResize = () => {
-      setBatchSize(getViewportBatchSize());
-    };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -141,6 +295,9 @@ export function useAdaptiveProducts({
       window.removeEventListener("scroll", handleScroll);
       if (fastScrollResetTimerRef.current) {
         clearTimeout(fastScrollResetTimerRef.current);
+      }
+      if (warmupTimerRef.current) {
+        clearTimeout(warmupTimerRef.current);
       }
     };
   }, []);
@@ -243,23 +400,36 @@ export function useAdaptiveProducts({
   );
 
   const fetchProductsBatch = useCallback(
-    async (isReset = false) => {
+    async (isReset = false, isSilentBackgroundWarmup = false) => {
       if (isFetchingRef.current && !isReset) return;
       isFetchingRef.current = true;
       const reqId = ++requestIdRef.current;
 
       if (isReset) {
+        if (warmupTimerRef.current) {
+          clearTimeout(warmupTimerRef.current);
+          warmupTimerRef.current = null;
+        }
         setLoading(true);
+        setIsPrefetching(false);
         offsetRef.current = 0;
+      } else if (isSilentBackgroundWarmup) {
+        setIsPrefetching(true);
       } else {
         setLoadingMore(true);
       }
 
       try {
-        const baseBatch = getViewportBatchSize();
-        // مضاعفة حجم الدفعة تلقائياً عند التمرير السريع (20 تصبح 40 للجوال، و40 تصبح 80 للحاسوب)
+        const metrics = calculateViewportGridMetrics();
         const isHighVelocity = !isReset && velocityRef.current > 1.15;
-        const currentBatchSize = isHighVelocity ? baseBatch * 2 : baseBatch;
+
+        // Stage 1 (isReset = true): جلب عدد منتجات الشاشة الأولى فقط (مثلاً 4 للجوال، 10 للتابلت، 16 للحاسوب) لظهور فوري
+        // Stage 2+ (isReset = false): جلب دفعة التمرير أو مضاعفتها عند التمرير السريع
+        const currentBatchSize = isReset
+          ? metrics.initialFoldCount
+          : isHighVelocity
+          ? metrics.scrollBatchSize * 2
+          : metrics.scrollBatchSize;
 
         const from = isReset ? 0 : offsetRef.current;
         const cleanQuery = normalizeDigits((debouncedSearch || "").trim());
@@ -269,6 +439,9 @@ export function useAdaptiveProducts({
           selectedCategory.trim() !== "الكل"
             ? selectedCategory.trim()
             : null;
+
+        let fetchedItems: Product[] = [];
+        let hasMoreFlag = false;
 
         // 1. Primary: High-Speed Supabase RPC `get_storefront_products` (with limit + 1 lookahead)
         if (storefrontRpcAvailable !== false) {
@@ -287,69 +460,61 @@ export function useAdaptiveProducts({
 
           if (!rpcError && Array.isArray(rpcData)) {
             storefrontRpcAvailable = true;
-            const hasMoreFlag = rpcData.length > currentBatchSize;
+            hasMoreFlag = rpcData.length > currentBatchSize;
             const slicedRows = rpcData.slice(0, currentBatchSize);
-            const fetchedItems = slicedRows.map((row) => {
+            fetchedItems = slicedRows.map((row) => {
               const p = rowToProduct(row as Record<string, unknown>);
               p.imageChecked = true;
               return p;
             });
-
-            offsetRef.current = from + fetchedItems.length;
-            setTotalCount((prev) =>
-              isReset ? offsetRef.current : Math.max(prev, offsetRef.current)
-            );
-
-            if (isReset) {
-              setProducts(fetchedItems);
-            } else {
-              setProducts((prev) => {
-                const existingIds = new Set(prev.map((p) => p.id));
-                const newItems = fetchedItems.filter((p) => !existingIds.has(p.id));
-                return [...prev, ...newItems];
-              });
-            }
-            setHasMore(hasMoreFlag);
-            return;
           } else if (rpcError) {
             storefrontRpcAvailable = false;
           }
         }
 
-        // 2. Fallback: Parallel 20-row chunked slices without `count: "exact"` or `original_image_url`
-        const SLICES_PER_REQ = 20;
-        const totalToFetch = currentBatchSize + 1;
-        const slicePromises: Promise<Record<string, unknown>[]>[] = [];
+        // 2. Fallback: Parallel chunked slices if RPC was not yet deployed
+        if (storefrontRpcAvailable === false) {
+          const SLICES_PER_REQ = 20;
+          const totalToFetch = currentBatchSize + 1;
+          const slicePromises: Promise<Record<string, unknown>[]>[] = [];
 
-        let cursor = from;
-        let remaining = totalToFetch;
-        while (remaining > 0) {
-          const take = Math.min(remaining, SLICES_PER_REQ + 1);
-          slicePromises.push(
-            executeRangeSlice(
-              cursor,
-              cursor + take - 1,
-              cleanCategory,
-              cleanQuery,
-              canSeeOutOfStock
-            )
-          );
-          cursor += take;
-          remaining -= take;
+          let cursor = from;
+          let remaining = totalToFetch;
+          while (remaining > 0) {
+            const take = Math.min(remaining, SLICES_PER_REQ + 1);
+            slicePromises.push(
+              executeRangeSlice(
+                cursor,
+                cursor + take - 1,
+                cleanCategory,
+                cleanQuery,
+                canSeeOutOfStock
+              )
+            );
+            cursor += take;
+            remaining -= take;
+          }
+
+          const sliceResults = await Promise.all(slicePromises);
+          if (reqId !== requestIdRef.current) return;
+
+          const combinedRows = sliceResults.flat();
+          hasMoreFlag = combinedRows.length > currentBatchSize;
+          const slicedRows = combinedRows.slice(0, currentBatchSize);
+
+          fetchedItems = slicedRows.map((row) => {
+            const p = rowToProduct(row);
+            p.imageChecked = true;
+            return p;
+          });
         }
 
-        const sliceResults = await Promise.all(slicePromises);
-        if (reqId !== requestIdRef.current) return;
-
-        const combinedRows = sliceResults.flat();
-        const hasMoreFlag = combinedRows.length > currentBatchSize;
-        const slicedRows = combinedRows.slice(0, currentBatchSize);
-
-        const fetchedItems = slicedRows.map((row) => {
-          const p = rowToProduct(row);
-          p.imageChecked = true;
-          return p;
-        });
+        // فك ترميز الصور مسبقاً في الخلفية للدفعات الاستباقية لضمان ظهورها في 0ms عند التمرير
+        if (!isReset) {
+          fetchedItems.forEach((item) => {
+            preloadAndDecodeImage(item.image || item.thumbnailUrl);
+          });
+        }
 
         const nextOffset = from + fetchedItems.length;
         offsetRef.current = nextOffset;
@@ -365,7 +530,17 @@ export function useAdaptiveProducts({
           });
         }
 
-        setHasMore(hasMoreFlag && fetchedItems.length > 0);
+        const moreAvailable = hasMoreFlag && fetchedItems.length > 0;
+        setHasMore(moreAvailable);
+
+        // الجلب الاستباقي الفوري للدفعة الثانية بالخلفية فور ظهور منتجات الشاشة الأولى
+        if (isReset && moreAvailable) {
+          warmupTimerRef.current = setTimeout(() => {
+            if (reqId === requestIdRef.current && !isFetchingRef.current) {
+              fetchProductsBatch(false, true);
+            }
+          }, 90);
+        }
       } catch (err: any) {
         if (err?.name !== "AbortError") {
           console.error("Adaptive storefront fetch error:", err);
@@ -374,6 +549,7 @@ export function useAdaptiveProducts({
         if (reqId === requestIdRef.current) {
           setLoading(false);
           setLoadingMore(false);
+          setIsPrefetching(false);
           isFetchingRef.current = false;
         }
       }
@@ -383,17 +559,17 @@ export function useAdaptiveProducts({
 
   const loadMore = useCallback(async () => {
     if (!hasMore || loading || loadingMore || isFetchingRef.current) return;
-    await fetchProductsBatch(false);
+    await fetchProductsBatch(false, false);
   }, [hasMore, loading, loadingMore, fetchProductsBatch]);
 
   const refetch = useCallback(async () => {
     offsetRef.current = 0;
-    await fetchProductsBatch(true);
+    await fetchProductsBatch(true, false);
   }, [fetchProductsBatch]);
 
   useEffect(() => {
     offsetRef.current = 0;
-    fetchProductsBatch(true);
+    fetchProductsBatch(true, false);
   }, [selectedCategory, debouncedSearch, canSeeOutOfStock, fetchProductsBatch]);
 
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -409,7 +585,7 @@ export function useAdaptiveProducts({
               loadMore();
             }
           },
-          { rootMargin: "600px 0px" }
+          { rootMargin: "750px 0px" }
         );
         observerRef.current.observe(node);
       }
@@ -421,9 +597,12 @@ export function useAdaptiveProducts({
     products,
     loading,
     loadingMore,
+    isPrefetching,
     hasMore,
     totalCount,
-    batchSize,
+    initialFoldCount: viewportMetrics.initialFoldCount,
+    batchSize: viewportMetrics.scrollBatchSize,
+    viewportMetrics,
     isFastScrolling,
     loadMore,
     refetch,

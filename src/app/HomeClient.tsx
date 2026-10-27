@@ -27,7 +27,10 @@ import ProductModal from "@/components/ProductModal";
 import ProductLinkModal from "@/components/ProductLinkModal";
 import { useNotifications } from "@/lib/notifications";
 import { useFavorites } from "@/contexts/FavoritesContext";
-import { useAdaptiveProducts } from "@/lib/useAdaptiveProducts";
+import {
+  useAdaptiveProducts,
+  preloadAndDecodeImage,
+} from "@/lib/useAdaptiveProducts";
 import { supabase } from "@/lib/supabase-client";
 import { useLang } from "@/lib/lang-context";
 import { hasPermission } from "@/lib/permissions";
@@ -256,6 +259,7 @@ export default function HomeClient() {
     loading: streamingLoading,
     loadingMore: streamingLoadingMore,
     hasMore: hasMoreProducts,
+    initialFoldCount,
     batchSize,
     isFastScrolling,
     loadMore: loadMoreStreaming,
@@ -266,14 +270,14 @@ export default function HomeClient() {
     canSeeOutOfStock,
   });
 
-  // إدارة حجم الدفعة المعروضة بالواجهة (20 للجوال/التابلت و40 للحاسوب، وتتضاعف إلى 40 أو 80 عند التمرير السريع)
-  const [visibleCount, setVisibleCount] = useState<number>(20);
+  // إدارة حجم الدفعة المعروضة بالواجهة (يبدأ بعدد منتجات الشاشة الأولى المحسوب ديناميكياً: 4 للجوال، 10 للتابلت، 12-20 للحاسوب)
+  const [visibleCount, setVisibleCount] = useState<number>(initialFoldCount);
   const [isBatchAdvancing, setIsBatchAdvancing] = useState<boolean>(false);
 
-  // إعادة ضبط الدفعة الأولى عند تغيير القسم أو البحث أو حجم الشاشة المبدئي
+  // إعادة ضبط الدفعة الأولى عند تغيير القسم أو البحث أو تغير هندسة الشاشة
   useEffect(() => {
-    setVisibleCount(batchSize);
-  }, [selectedCategory, search, imageResults, batchSize]);
+    setVisibleCount(initialFoldCount);
+  }, [selectedCategory, search, imageResults, initialFoldCount]);
 
   const supplierNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -458,56 +462,70 @@ export default function HomeClient() {
   const hasMoreChunksToDisplay =
     visibleCount < fullMatchingProducts.length || hasMoreProducts;
 
-  // الجلب المباشر والاستباقي للصور والمصغرات لكل دفعة معروضة + الدفعة التالية بالخلفية لضمان ظهور الصور فوراً دون انقطاع
+  // المرحلة 1: الجلب الفوري بأولوية قصوى لصور الدفعة المعروضة حالياً (الشاشة الأولى)
   useEffect(() => {
-    const prefetchLimit = visibleCount + (isFastScrolling ? batchSize * 2 : batchSize);
-    const currentAndNextSlice = fullMatchingProducts.slice(0, prefetchLimit);
-    const missingImageIds: string[] = [];
+    const visibleSlice = fullMatchingProducts.slice(0, visibleCount);
+    const immediateMissingIds: string[] = [];
 
-    currentAndNextSlice.forEach((p) => {
+    visibleSlice.forEach((p) => {
       if (!p.imageChecked && (!p.image || !p.image.trim())) {
-        missingImageIds.push(p.id);
-      } else if (typeof window !== "undefined" && p.image) {
-        const urlToPreload = p.image.trim();
-        if (
-          urlToPreload &&
-          !urlToPreload.startsWith("data:") &&
-          !preloadedUrlsRef.current.has(urlToPreload)
-        ) {
-          preloadedUrlsRef.current.add(urlToPreload);
-          const preloader = new window.Image();
-          preloader.decoding = "async";
-          preloader.src = urlToPreload;
-        }
+        immediateMissingIds.push(p.id);
       }
     });
 
     similarProducts.forEach((p) => {
       if (!p.imageChecked && (!p.image || !p.image.trim())) {
-        missingImageIds.push(p.id);
+        immediateMissingIds.push(p.id);
       }
     });
 
-    if (missingImageIds.length > 0) {
-      hydrateProductImages(missingImageIds);
+    if (immediateMissingIds.length > 0) {
+      hydrateProductImages(immediateMissingIds);
     }
+  }, [visibleCount, fullMatchingProducts, similarProducts, hydrateProductImages]);
+
+  // المرحلة 2: الجلب الاستباقي بالخلفية للدفعة التالية وفك ترميز صورها فور استقرار الشاشة الأولى
+  useEffect(() => {
+    if (fullMatchingProducts.length === 0) return;
+
+    const timer = setTimeout(() => {
+      const nextStep = isFastScrolling ? batchSize * 2 : batchSize;
+      const nextBatchSlice = fullMatchingProducts.slice(
+        visibleCount,
+        visibleCount + nextStep * 2
+      );
+      const nextMissingIds: string[] = [];
+
+      nextBatchSlice.forEach((p) => {
+        if (!p.imageChecked && (!p.image || !p.image.trim())) {
+          nextMissingIds.push(p.id);
+        } else if (p.image || p.thumbnailUrl) {
+          preloadAndDecodeImage(p.image || p.thumbnailUrl);
+        }
+      });
+
+      if (nextMissingIds.length > 0) {
+        hydrateProductImages(nextMissingIds);
+      }
+    }, 110);
+
+    return () => clearTimeout(timer);
   }, [
     visibleCount,
     batchSize,
     isFastScrolling,
     fullMatchingProducts,
-    similarProducts,
     hydrateProductImages,
   ]);
 
   // دالة تحميل الدفعة التالية عند الاقتراب من نهاية القائمة مع مضاعفة الدفعة عند التمرير السريع
   const handleLoadNextChunk = useCallback(() => {
-    if (streamingLoading || streamingLoadingMore || isBatchAdvancing) return;
+    if (streamingLoading || isBatchAdvancing) return;
     if (!hasMoreChunksToDisplay) return;
 
     const step = isFastScrolling ? batchSize * 2 : batchSize;
 
-    if (hasMoreProducts) {
+    if (hasMoreProducts && !streamingLoadingMore) {
       loadMoreStreaming();
     }
 
@@ -516,7 +534,7 @@ export default function HomeClient() {
       setTimeout(() => {
         setVisibleCount((prev) => Math.min(prev + step, fullMatchingProducts.length + step));
         setIsBatchAdvancing(false);
-      }, 140);
+      }, 95);
     } else {
       setVisibleCount((prev) => prev + step);
     }
@@ -533,7 +551,7 @@ export default function HomeClient() {
     fullMatchingProducts.length,
   ]);
 
-  // مراقب نهاية القائمة الاستباقي (600px قبل النهاية) لتشغيل الجلب المسبق بسلاسة
+  // مراقب نهاية القائمة الاستباقي (750px قبل النهاية) لتشغيل الجلب المسبق بسلاسة قبل وصول المستخدم للقاع
   const bottomObserverRef = useRef<IntersectionObserver | null>(null);
   const sentinelRef = useCallback(
     (node: HTMLElement | null) => {
@@ -548,7 +566,7 @@ export default function HomeClient() {
             handleLoadNextChunk();
           }
         },
-        { rootMargin: "600px 0px" }
+        { rootMargin: "750px 0px" }
       );
       bottomObserverRef.current.observe(node);
     },
@@ -1718,18 +1736,18 @@ export default function HomeClient() {
         {(streamingLoading || dataLoading) &&
         availableProducts.length === 0 &&
         similarProducts.length === 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 animate-pulse">
-            {Array.from({ length: 8 }).map((_, i) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+            {Array.from({ length: initialFoldCount }).map((_, i) => (
               <div
                 key={i}
-                className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-4 space-y-4 flex flex-col justify-between h-80"
+                className="bg-white dark:bg-[#140a2a] rounded-2xl border border-purple-200/70 dark:border-purple-800/50 p-4 space-y-4 flex flex-col justify-between h-80 animate-fadeIn"
               >
-                <div className="bg-gradient-to-br from-[#2e1065]/40 via-[#4c1d95]/30 to-[#5b21b6]/40 h-44 rounded-xl w-full" />
+                <div className="royal-shimmer-box h-44 rounded-xl w-full" />
                 <div className="space-y-2">
-                  <div className="bg-gray-200 dark:bg-gray-800 h-4 rounded w-3/4" />
-                  <div className="bg-gray-200 dark:bg-gray-800 h-4 rounded w-1/2" />
+                  <div className="royal-shimmer-box h-4 rounded-lg w-3/4" />
+                  <div className="royal-shimmer-box h-3.5 rounded-lg w-1/2 opacity-75" />
                 </div>
-                <div className="bg-gray-200 dark:bg-gray-800 h-9 rounded-xl w-full" />
+                <div className="royal-shimmer-box h-10 rounded-xl w-full" />
               </div>
             ))}
           </div>
@@ -1810,11 +1828,11 @@ export default function HomeClient() {
             {/* 1. Direct & Partial Matches Grid */}
             {availableProducts.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-                {availableProducts.map((product) => (
+                {availableProducts.map((product, index) => (
                   <ProductCard
                     key={product.id}
                     product={product}
-                    priorityImage={true}
+                    priorityImage={index < initialFoldCount}
                     selectedCategory={selectedCategory}
                     searchQuery={search}
                     cardQty={cardQty[product.id] ?? 1}
