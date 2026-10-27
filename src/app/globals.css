@@ -178,6 +178,59 @@ input[type="range"]::-webkit-slider-runnable-track {
   animation: slideDown 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+@keyframes royalShimmerSweep {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.royal-shimmer-box {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(91, 33, 182, 0.12) 0%, rgba(124, 58, 237, 0.2) 50%, rgba(76, 29, 149, 0.14) 100%);
+}
+
+.dark .royal-shimmer-box {
+  background: linear-gradient(135deg, rgba(46, 16, 101, 0.65) 0%, rgba(76, 29, 149, 0.5) 50%, rgba(91, 33, 182, 0.65) 100%);
+}
+
+.royal-shimmer-box::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(139, 92, 246, 0.18) 35%,
+    rgba(196, 181, 253, 0.32) 50%,
+    rgba(139, 92, 246, 0.18) 65%,
+    transparent 100%
+  );
+  animation: royalShimmerSweep 1.65s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform;
+}
+
+.dark .royal-shimmer-box::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(91, 33, 182, 0.28) 30%,
+    rgba(167, 139, 250, 0.36) 50%,
+    rgba(91, 33, 182, 0.28) 70%,
+    transparent 100%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .royal-shimmer-box::after {
+    animation: none;
+  }
+}
+
 /* ==========================================================================
    GLOBAL UI/UX RESPONSIVENESS & PREVENT OVERLAP RULES
    ========================================================================== */

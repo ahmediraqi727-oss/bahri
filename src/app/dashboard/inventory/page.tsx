@@ -5,7 +5,7 @@ import { useData } from "@/lib/data-context";
 import { useSettings } from "@/lib/settings-context";
 import { useActivityLog } from "@/lib/activity-log";
 import { useNotifications } from "@/lib/notifications";
-import DataTableWrapper from "@/components/DataTableWrapper";
+import DataTableWrapper, { RoyalProductCardSkeleton } from "@/components/DataTableWrapper";
 import SupplierContactModal from "@/components/SupplierContactModal";
 import { Product, Supplier } from "@/lib/types";
 import { exportInventoryToCSV } from "@/lib/csv-export";
@@ -100,7 +100,7 @@ const LEVEL_STYLES = {
 };
 
 export default function InventoryPage() {
-  const { products, suppliers, updateProduct, hydrateProductImages } = useData();
+  const { products, suppliers, loading: dataLoading, updateProduct, hydrateProductImages } = useData();
   const { settings } = useSettings();
   const { logActivity } = useActivityLog();
   const { addNotification } = useNotifications();
@@ -253,6 +253,7 @@ export default function InventoryPage() {
     visibleItems: visibleProducts,
     totalFilteredCount,
     hasMore,
+    isLoadingMore,
     isFastScrolling,
     effectiveBatchSize,
     sentinelRef,
@@ -516,8 +517,14 @@ export default function InventoryPage() {
 
       {/* Inventory Table */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-        {filtered.length === 0 ? (
-          <div className="p-12 text-center text-gray-500 dark:text-gray-400">
+        {dataLoading && products.length === 0 ? (
+          <DataTableWrapper
+            isLoading={true}
+            skeletonCount={8}
+            loadingLabel="جاري جلب بيانات المخزون وبطاقات المنتجات من قاعدة البيانات..."
+          />
+        ) : filtered.length === 0 ? (
+          <div className="p-12 text-center text-gray-500 dark:text-gray-400 animate-fadeIn">
             <span className="text-4xl block mb-3">📊</span>
             <p>{filterLevel !== "all" ? "لا توجد منتجات في هذا المستوى" : "لا توجد منتجات في المخزون"}</p>
           </div>
@@ -525,7 +532,11 @@ export default function InventoryPage() {
           <>
             {/* Desktop Table View */}
             <div className="hidden md:block">
-              <DataTableWrapper>
+              <DataTableWrapper
+                variant="table"
+                isLoadingMore={isLoadingMore}
+                batchSkeletonCount={3}
+              >
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
@@ -585,6 +596,7 @@ export default function InventoryPage() {
                                 productId={product.id}
                                 alt={product.name}
                                 mode="thumbnail"
+                                isHydrating={product.imageChecked === false && !product.image && !product.thumbnailUrl}
                                 containerClassName={`w-9 h-9 rounded-lg shrink-0 ${
                                   isOutOfStock ? "ring-2 ring-red-500" : "border border-gray-200 dark:border-gray-700"
                                 }`}
@@ -730,6 +742,7 @@ export default function InventoryPage() {
                         productId={product.id}
                         alt={product.name}
                         mode="thumbnail"
+                        isHydrating={product.imageChecked === false && !product.image && !product.thumbnailUrl}
                         containerClassName={`w-16 h-16 rounded-xl flex-shrink-0 border shadow-sm ${
                           isOutOfStock ? "border-red-500 ring-1 ring-red-500" : "border-gray-200 dark:border-gray-700"
                         }`}
@@ -816,6 +829,10 @@ export default function InventoryPage() {
                   </div>
                 );
               })}
+
+              {isLoadingMore && (
+                <RoyalProductCardSkeleton count={2} compact={true} className="pt-1" />
+              )}
             </div>
 
             {/* مؤشر التحميل التدريجي الذكي (Adaptive Infinite Scroll Sentinel) */}

@@ -27,6 +27,8 @@ export interface DashboardPaginationResult<T> {
   totalFilteredCount: number;
   /** هل يوجد المزيد من الدفعات لتحميلها؟ */
   hasMore: boolean;
+  /** هل يتم حالياً جلب دفعة إضافية؟ */
+  isLoadingMore: boolean;
   /** هل تم تفعيل مضاعفة الدفعة نتيجة التمرير السريع؟ */
   isFastScrolling: boolean;
   /** حجم الدفعة الأساسي حسب حجم الشاشة (40 للحاسوب / 20 للجوال) */
@@ -51,11 +53,13 @@ export function useDashboardPagination<T extends { id?: string }>(
   const [baseBatchSize, setBaseBatchSize] = useState<number>(40);
   const [displayLimit, setDisplayLimit] = useState<number>(40);
   const [isFastScrolling, setIsFastScrolling] = useState<boolean>(false);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
 
   const scrollSpeedRef = useRef<number>(0);
   const lastScrollTopRef = useRef<number>(0);
   const lastScrollTimeRef = useRef<number>(0);
   const fastScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadMoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
 
   // تحديد حجم الدفعة الابتدائية بناءً على عرض الشاشة (40 سطح مكتب / 20 جوال وتابلت)
@@ -81,6 +85,7 @@ export function useDashboardPagination<T extends { id?: string }>(
   // إعادة ضبط حد العرض عند تغير نتائج البحث أو الفلتر
   useEffect(() => {
     setDisplayLimit(baseBatchSize);
+    setIsLoadingMore(false);
   }, [items.length, baseBatchSize]);
 
   // مراقبة سرعة التمرير لمضاعفة الدفعة تلقائياً عند النزول السريع
@@ -115,6 +120,7 @@ export function useDashboardPagination<T extends { id?: string }>(
     return () => {
       window.removeEventListener("scroll", handleScroll);
       if (fastScrollTimeoutRef.current) clearTimeout(fastScrollTimeoutRef.current);
+      if (loadMoreTimerRef.current) clearTimeout(loadMoreTimerRef.current);
     };
   }, []);
 
@@ -122,12 +128,21 @@ export function useDashboardPagination<T extends { id?: string }>(
   const hasMore = displayLimit < items.length;
 
   const loadMore = useCallback(() => {
-    setDisplayLimit((prev) => {
-      if (prev >= items.length) return prev;
-      const increment = scrollSpeedRef.current > 1.5 ? baseBatchSize * 2 : baseBatchSize;
-      return Math.min(prev + increment, items.length);
-    });
-  }, [items.length, baseBatchSize]);
+    if (displayLimit >= items.length || isLoadingMore) return;
+    setIsLoadingMore(true);
+
+    if (loadMoreTimerRef.current) clearTimeout(loadMoreTimerRef.current);
+    const delay = scrollSpeedRef.current > 1.5 ? 90 : 180;
+
+    loadMoreTimerRef.current = setTimeout(() => {
+      setDisplayLimit((prev) => {
+        if (prev >= items.length) return prev;
+        const increment = scrollSpeedRef.current > 1.5 ? baseBatchSize * 2 : baseBatchSize;
+        return Math.min(prev + increment, items.length);
+      });
+      setIsLoadingMore(false);
+    }, delay);
+  }, [displayLimit, items.length, isLoadingMore, baseBatchSize]);
 
   const sentinelRef = useCallback(
     (node: HTMLElement | null) => {
@@ -169,6 +184,7 @@ export function useDashboardPagination<T extends { id?: string }>(
     displayLimit: Math.min(displayLimit, items.length),
     totalFilteredCount: items.length,
     hasMore,
+    isLoadingMore,
     isFastScrolling,
     baseBatchSize,
     effectiveBatchSize,

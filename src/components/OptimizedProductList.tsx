@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { Product } from '@/lib/types';
+import { useData } from '@/lib/data-context';
 import ProgressiveProductImage from '@/components/ProgressiveProductImage';
+import { RoyalProductCardSkeleton } from '@/components/DataTableWrapper';
 
 // إعدادات الأداء والدفعات الافتراضية
 const DEFAULT_INITIAL_LIMIT = 10;
@@ -11,6 +13,8 @@ const DEFAULT_BATCH_SIZE = 10;
 export interface OptimizedProductListProps {
   /** قائمة المنتجات الكاملة */
   products?: (Product | any)[];
+  /** حالة التحميل الاختيارية (ترتبط تلقائياً بـ DataContext عند عدم التمرير) */
+  isLoading?: boolean;
   /** مرجع اختياري لعنوان حاوية التمرير في حال استخدام المكون داخل Modal أو بطاقة ثابته الارتفاع */
   containerRef?: React.RefObject<HTMLElement | null>;
   /** دالة مخصصة لتقديم كل منتج حسب رغبة الشاشة المستدعية */
@@ -29,6 +33,7 @@ export interface OptimizedProductListProps {
 
 export default function OptimizedProductList({
   products = [],
+  isLoading,
   containerRef,
   renderProduct,
   emptyMessage = 'لا توجد منتجات مطابقة حالياً',
@@ -37,6 +42,9 @@ export default function OptimizedProductList({
   className = '',
   onProductClick,
 }: OptimizedProductListProps) {
+  const { loading: dataLoading } = useData();
+  const effectiveLoading = typeof isLoading === 'boolean' ? isLoading : dataLoading && products.length === 0;
+
   const [displayCount, setDisplayCount] = useState<number>(initialLimit);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
   
@@ -132,10 +140,19 @@ export default function OptimizedProductList({
     return products.slice(0, displayCount);
   }, [products, displayCount]);
 
+  // 0. التعامل مع حالة التحميل الأولي من قاعدة البيانات
+  if (effectiveLoading) {
+    return (
+      <div className={className}>
+        <RoyalProductCardSkeleton count={4} compact={true} />
+      </div>
+    );
+  }
+
   // 1. التعامل مع الحالة الفارغة (products.length === 0)
   if (products.length === 0) {
     return (
-      <div className={`p-8 bg-[#1e1936]/80 border border-purple-500/20 backdrop-blur-md rounded-2xl text-center shadow-lg transition-all ${className}`}>
+      <div className={`p-8 bg-[#1e1936]/80 border border-purple-500/20 backdrop-blur-md rounded-2xl text-center shadow-lg transition-all animate-fadeIn ${className}`}>
         <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 text-2xl">
           🔍
         </div>
@@ -148,11 +165,10 @@ export default function OptimizedProductList({
   }
 
   return (
-    <div className={`space-y-4 ${className}`}>
+    <div className={`space-y-4 animate-fadeIn ${className}`}>
       {/* مؤشر وشريط عدد المنتجات المعروضة */}
       <div className="text-xs text-purple-300/90 px-2 flex justify-between items-center bg-[#1e1936]/50 p-2.5 rounded-xl border border-purple-500/20 backdrop-blur-sm">
         <span className="flex items-center gap-1.5">
-          <span className="inline-block w-2 h-2 rounded-full bg-purple-400 animate-ping" />
           عرض <strong className="text-white font-bold">{visibleProducts.length}</strong> من أصل <strong className="text-white font-bold">{products.length}</strong> منتج
         </span>
         {isLoadingMore && (
@@ -194,6 +210,7 @@ export default function OptimizedProductList({
                   productId={product.id}
                   alt={productName}
                   mode="thumbnail"
+                  isHydrating={product.imageChecked === false && !product.image && !product.thumbnailUrl}
                   containerClassName="w-10 h-10 rounded-lg border border-purple-500/20 shrink-0"
                   fallbackTextClassName="text-xs"
                 />
@@ -220,22 +237,22 @@ export default function OptimizedProductList({
         })}
       </div>
 
-      {/* 2. هياكل التحميل الزجاجية (Glassmorphism Skeleton Loaders) */}
+      {/* 2. هياكل التحميل البنفسجية الملكية للدفعات الإضافية */}
       {isLoadingMore && (
         <div className="space-y-3 pt-1">
           {Array.from({ length: 2 }).map((_, i) => (
             <div
               key={`skeleton-${i}`}
-              className="p-4 bg-[#1e1936]/40 border border-purple-500/20 rounded-xl flex items-center justify-between animate-pulse"
+              className="p-4 bg-[#1e1936]/55 border border-purple-500/25 rounded-xl flex items-center justify-between animate-fadeIn"
             >
               <div className="flex items-center gap-3 w-full">
-                <div className="w-10 h-10 rounded-lg bg-purple-500/10 border border-purple-500/20" />
+                <div className="w-10 h-10 rounded-lg royal-shimmer-box border border-purple-500/30" />
                 <div className="space-y-2 flex-1">
-                  <div className="h-3.5 bg-purple-500/20 rounded w-1/3" />
-                  <div className="h-2.5 bg-purple-500/10 rounded w-1/5" />
+                  <div className="h-3.5 royal-shimmer-box rounded w-1/3" />
+                  <div className="h-2.5 royal-shimmer-box rounded w-1/5 opacity-75" />
                 </div>
               </div>
-              <div className="w-16 h-6 bg-purple-500/15 rounded-lg" />
+              <div className="w-16 h-6 royal-shimmer-box rounded-lg" />
             </div>
           ))}
         </div>

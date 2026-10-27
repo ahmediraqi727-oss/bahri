@@ -10,7 +10,7 @@ import { Product, calculateRetailPrice } from "@/lib/types";
 import { hasPermission } from "@/lib/permissions";
 import { getAdminPermissionsConfig } from "@/components/PermissionGate";
 import ImportExportBar from "@/components/ImportExportBar";
-import DataTableWrapper from "@/components/DataTableWrapper";
+import DataTableWrapper, { RoyalProductCardSkeleton } from "@/components/DataTableWrapper";
 import DateFilterPanel from "@/components/DateFilterPanel";
 import { useToast } from "@/components/ToastProvider";
 import {
@@ -27,7 +27,7 @@ import { useBodyScrollLock } from "@/lib/use-body-scroll-lock";
 import { searchProductsSmart } from "@/lib/smart-search";
 
 export default function ProductsPage() {
-  const { products, suppliers, categories, addProduct, addCategory, deleteProduct, updateProduct, bulkUpdateProducts, bulkDeleteProducts, persistAllCategoriesAndProducts, reloadAllData, hydrateProductImages } = useData();
+  const { products, suppliers, categories, loading: dataLoading, addProduct, addCategory, deleteProduct, updateProduct, bulkUpdateProducts, bulkDeleteProducts, persistAllCategoriesAndProducts, reloadAllData, hydrateProductImages } = useData();
   const { settings } = useSettings();
   const { logActivity } = useActivityLog();
   const { softDelete, bulkSoftDelete } = useTrash();
@@ -143,6 +143,7 @@ export default function ProductsPage() {
     visibleItems: visibleProducts,
     totalFilteredCount,
     hasMore,
+    isLoadingMore,
     isFastScrolling,
     effectiveBatchSize,
     sentinelRef,
@@ -904,8 +905,14 @@ export default function ProductsPage() {
 
       {/* Products Data Table */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
-        {filtered.length === 0 ? (
-          <div className="p-12 text-center text-gray-500 dark:text-gray-400">
+        {dataLoading && products.length === 0 ? (
+          <DataTableWrapper
+            isLoading={true}
+            skeletonCount={8}
+            loadingLabel="جاري جلب بطاقات وجدول المنتجات من قاعدة بيانات Supabase..."
+          />
+        ) : filtered.length === 0 ? (
+          <div className="p-12 text-center text-gray-500 dark:text-gray-400 animate-fadeIn">
             <span className="text-4xl block mb-3">📦</span>
             <p>{searchQuery ? "لا توجد نتائج تطابق البحث" : "لا توجد منتجات بعد"}</p>
             {canCreate && !searchQuery && (
@@ -918,7 +925,11 @@ export default function ProductsPage() {
           <>
             {/* Desktop Table View */}
             <div className="hidden md:block">
-              <DataTableWrapper>
+              <DataTableWrapper
+                variant="table"
+                isLoadingMore={isLoadingMore}
+                batchSkeletonCount={3}
+              >
                 <table className="w-full text-xs text-right border-collapse">
                   <thead>
                     <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
@@ -974,6 +985,7 @@ export default function ProductsPage() {
                                 productId={product.id}
                                 alt={product.name}
                                 mode="thumbnail"
+                                isHydrating={product.imageChecked === false && !product.image && !product.thumbnailUrl}
                                 containerClassName="w-8 h-8 rounded-lg flex-shrink-0 border border-gray-200 dark:border-gray-700"
                                 fallbackTextClassName="text-xs"
                               />
@@ -1222,6 +1234,7 @@ export default function ProductsPage() {
                         productId={product.id}
                         alt={product.name}
                         mode="thumbnail"
+                        isHydrating={product.imageChecked === false && !product.image && !product.thumbnailUrl}
                         containerClassName="w-16 h-16 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm"
                         fallbackTextClassName="text-2xl"
                       />
@@ -1302,6 +1315,10 @@ export default function ProductsPage() {
                   </div>
                 );
               })}
+
+              {isLoadingMore && (
+                <RoyalProductCardSkeleton count={2} compact={true} className="pt-1" />
+              )}
             </div>
 
             {/* مؤشر التحميل التدريجي الذكي (Adaptive Infinite Scroll Sentinel) */}
