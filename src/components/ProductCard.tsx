@@ -44,7 +44,7 @@ export default function ProductCard({
   onAddToCart,
   onToggleFavorite,
   isFavorite = false,
-  priorityImage = false,
+  priorityImage = true,
   selectedCategory = null,
   searchQuery = "",
   cardQty: propCardQty,

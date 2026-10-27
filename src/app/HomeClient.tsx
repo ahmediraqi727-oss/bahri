@@ -272,25 +272,62 @@ export default function HomeClient() {
     return map;
   }, [suppliers]);
 
+  // ذاكرة محلية دائمة لروابط الصور المكتشفة لضمان عدم فقدان أي صورة عند التبديل بين الأقسام
+  const knownImagesRef = useRef<
+    Map<
+      string,
+      {
+        image: string;
+        originalImageUrl: string;
+        thumbnailUrl: string | null;
+        blurDataUrl: string | null;
+      }
+    >
+  >(new Map());
+  const preloadedUrlsRef = useRef<Set<string>>(new Set());
+
   // دمج المنتجات القادمة مع صورها من الدفعات مع كتالوج الذاكرة الفوري لضمان عمل البحث الشامل وتحديثات الإدارة
   const mergedCatalogProducts = useMemo(() => {
     const contextMap = new Map<string, Product>();
     allAvailableProducts.forEach((p) => {
       contextMap.set(p.id, p);
+      if (p.image && p.image.trim()) {
+        knownImagesRef.current.set(p.id, {
+          image: p.image,
+          originalImageUrl: p.originalImageUrl || p.image,
+          thumbnailUrl: p.thumbnailUrl || null,
+          blurDataUrl: p.blurDataUrl || null,
+        });
+      }
     });
 
     const map = new Map<string, Product>();
     streamingProducts.forEach((sp) => {
+      if (sp.image && sp.image.trim()) {
+        knownImagesRef.current.set(sp.id, {
+          image: sp.image,
+          originalImageUrl: sp.originalImageUrl || sp.image,
+          thumbnailUrl: sp.thumbnailUrl || null,
+          blurDataUrl: sp.blurDataUrl || null,
+        });
+      }
       if (canSeeOutOfStock || (sp.stock ?? 0) > 0) {
         const ctxProd = contextMap.get(sp.id);
+        const cachedImg = knownImagesRef.current.get(sp.id);
         if (ctxProd) {
           map.set(sp.id, {
             ...ctxProd,
-            image: sp.image || ctxProd.image || "",
+            image: sp.image || ctxProd.image || cachedImg?.image || "",
             originalImageUrl:
-              sp.originalImageUrl || ctxProd.originalImageUrl || sp.image || "",
-            thumbnailUrl: sp.thumbnailUrl || ctxProd.thumbnailUrl || null,
-            blurDataUrl: sp.blurDataUrl || ctxProd.blurDataUrl || null,
+              sp.originalImageUrl ||
+              ctxProd.originalImageUrl ||
+              cachedImg?.originalImageUrl ||
+              sp.image ||
+              "",
+            thumbnailUrl:
+              sp.thumbnailUrl || ctxProd.thumbnailUrl || cachedImg?.thumbnailUrl || null,
+            blurDataUrl:
+              sp.blurDataUrl || ctxProd.blurDataUrl || cachedImg?.blurDataUrl || null,
           });
         } else {
           map.set(sp.id, sp);
@@ -300,7 +337,18 @@ export default function HomeClient() {
 
     allAvailableProducts.forEach((p) => {
       if (!map.has(p.id)) {
-        map.set(p.id, p);
+        const cachedImg = knownImagesRef.current.get(p.id);
+        if (cachedImg && !p.image) {
+          map.set(p.id, {
+            ...p,
+            image: cachedImg.image,
+            originalImageUrl: cachedImg.originalImageUrl || cachedImg.image,
+            thumbnailUrl: cachedImg.thumbnailUrl,
+            blurDataUrl: cachedImg.blurDataUrl,
+          });
+        } else {
+          map.set(p.id, p);
+        }
       }
     });
 
@@ -371,6 +419,18 @@ export default function HomeClient() {
     currentAndNextSlice.forEach((p) => {
       if (!p.image || !p.image.trim()) {
         missingImageIds.push(p.id);
+      } else if (typeof window !== "undefined") {
+        const urlToPreload = p.image.trim();
+        if (
+          urlToPreload &&
+          !urlToPreload.startsWith("data:") &&
+          !preloadedUrlsRef.current.has(urlToPreload)
+        ) {
+          preloadedUrlsRef.current.add(urlToPreload);
+          const preloader = new window.Image();
+          preloader.decoding = "async";
+          preloader.src = urlToPreload;
+        }
       }
     });
 
@@ -1641,11 +1701,11 @@ export default function HomeClient() {
             {/* 1. Direct & Partial Matches Grid */}
             {availableProducts.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-                {availableProducts.map((product, idx) => (
+                {availableProducts.map((product) => (
                   <ProductCard
                     key={product.id}
                     product={product}
-                    priorityImage={idx < 8}
+                    priorityImage={true}
                     selectedCategory={selectedCategory}
                     searchQuery={search}
                     cardQty={cardQty[product.id] ?? 1}

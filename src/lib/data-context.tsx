@@ -147,8 +147,15 @@ function setLocalBatchStock(productId: string, batchStock: number) {
 
 export function rowToProduct(row: Record<string, unknown>): Product {
   const idStr = (row.id as string) || "";
-  const image = (row.image as string) || "";
-  const origImage = (row.original_image_url as string) || image || "";
+  const rawImg =
+    (row.image as string) ||
+    (row.image_url as string) ||
+    (row.imageUrl as string) ||
+    (row.original_image_url as string) ||
+    (row.thumbnail_url as string) ||
+    "";
+  const image = typeof rawImg === "string" ? rawImg.trim() : "";
+  const origImage = ((row.original_image_url as string) || image || "").trim();
   const cachedThumb = getCachedProductThumbnail(idStr, image);
   const thumbUrl =
     (row.thumbnail_url as string | null) ??
@@ -514,9 +521,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const fetchAllLightweightProducts = useCallback(async (): Promise<Product[]> => {
     const FULL_META_COLS =
-      "id, name, cost_price, wholesale_price, retail_price, profit_margin, stock, batch_stock, supplier_id, notes, category_id, category_name, is_all_categories, barcode, qr_code, sku, scan_count, last_scanned_at, is_barcode_active, created_at, updated_at";
+      "id, name, image, original_image_url, thumbnail_url, cost_price, wholesale_price, retail_price, profit_margin, stock, batch_stock, supplier_id, notes, category_id, category_name, is_all_categories, barcode, qr_code, sku, scan_count, last_scanned_at, is_barcode_active, created_at, updated_at";
     const FALLBACK_META_COLS =
-      "id, name, cost_price, wholesale_price, retail_price, profit_margin, stock, supplier_id, notes, category_id, barcode, qr_code, created_at, updated_at";
+      "id, name, image, cost_price, wholesale_price, retail_price, profit_margin, stock, supplier_id, notes, category_id, barcode, qr_code, created_at, updated_at";
 
     let rows: Record<string, unknown>[] | null = null;
 
@@ -538,18 +545,25 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (!secondTry.error && secondTry.data) {
         rows = secondTry.data as Record<string, unknown>[];
       } else {
-        // Fallback chunked range loader if statement limit is strict
+        // Fallback chunked range loader with image columns included so products never mount with empty image
         const chunkedRows: Record<string, unknown>[] = [];
         const PAGE = 150;
         let offset = 0;
+        let useFallbackCols = false;
         while (offset < 5000) {
+          const colsToSelect: string = useFallbackCols ? FALLBACK_META_COLS : FULL_META_COLS;
           const { data: pageData, error: pageErr } = await supabase
             .from("products")
-            .select(FALLBACK_META_COLS)
+            .select(colsToSelect)
             .order("created_at", { ascending: false })
             .range(offset, offset + PAGE - 1);
+
+          if (pageErr && !useFallbackCols) {
+            useFallbackCols = true;
+            continue;
+          }
           if (pageErr || !pageData || pageData.length === 0) break;
-          chunkedRows.push(...(pageData as Record<string, unknown>[]));
+          chunkedRows.push(...(pageData as unknown as Record<string, unknown>[]));
           if (pageData.length < PAGE) break;
           offset += PAGE;
         }
@@ -559,12 +573,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const parsed = (rows || []).map((r) => {
       const prod = rowToProduct(r);
-      const cachedImg = hydratedImagesRef.current.get(prod.id);
-      if (cachedImg) {
-        prod.image = cachedImg.image || prod.image;
-        prod.originalImageUrl = cachedImg.originalImageUrl || prod.originalImageUrl;
-        prod.thumbnailUrl = cachedImg.thumbnailUrl || prod.thumbnailUrl || null;
-        prod.blurDataUrl = cachedImg.blurDataUrl || prod.blurDataUrl || null;
+      if (prod.image) {
+        hydratedImagesRef.current.set(prod.id, {
+          image: prod.image,
+          originalImageUrl: prod.originalImageUrl || prod.image,
+          thumbnailUrl: prod.thumbnailUrl || null,
+          blurDataUrl: prod.blurDataUrl || null,
+        });
+      } else {
+        const cachedImg = hydratedImagesRef.current.get(prod.id);
+        if (cachedImg) {
+          prod.image = cachedImg.image || prod.image;
+          prod.originalImageUrl = cachedImg.originalImageUrl || prod.originalImageUrl;
+          prod.thumbnailUrl = cachedImg.thumbnailUrl || prod.thumbnailUrl || null;
+          prod.blurDataUrl = cachedImg.blurDataUrl || prod.blurDataUrl || null;
+        }
       }
       return prod;
     });

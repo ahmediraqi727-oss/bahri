@@ -48,10 +48,9 @@ export default function ProgressiveProductImage({
   fallbackTextClassName = "text-base",
 }: ProgressiveProductImageProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [inView, setInView] = useState<boolean>(priority);
+  const imgRef = useRef<HTMLImageElement>(null);
   const [loaded, setLoaded] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
-
   const [useFallbackSrc, setUseFallbackSrc] = useState<boolean>(false);
 
   // استرجاع المصغرة أو المعاينة الضبابية المخزنة محلياً إذا لم تُمرر مباشرة
@@ -84,7 +83,7 @@ export default function ProgressiveProductImage({
 
   const targetSrc = useFallbackSrc && secondaryTargetSrc ? secondaryTargetSrc : primaryTargetSrc;
 
-  // الصورة الاستباقية للتمويه الفوري أثناء التحميل
+  // الصورة الاستباقية للتمويه الفوري خلف الصورة أثناء التحميل
   const previewBackdropSrc = useMemo(() => {
     if (effectiveBlur) return effectiveBlur;
     if (mode !== "thumbnail" && effectiveThumb && effectiveThumb !== targetSrc) {
@@ -98,42 +97,14 @@ export default function ProgressiveProductImage({
     setUseFallbackSrc(false);
     if (primaryTargetSrc && primaryTargetSrc.startsWith("data:image/")) {
       setLoaded(true);
-      setInView(true);
+    } else if (imgRef.current && imgRef.current.complete && imgRef.current.naturalWidth > 0) {
+      setLoaded(true);
     } else {
       setLoaded(false);
     }
   }, [primaryTargetSrc]);
 
-  // مراقب الظهور في الشاشة (IntersectionObserver) للتحميل الكسول الاستباقي
-  useEffect(() => {
-    if (priority || inView) return;
-    if (targetSrc && targetSrc.startsWith("data:image/")) {
-      setInView(true);
-      return;
-    }
-    const el = containerRef.current;
-    if (!el || typeof IntersectionObserver === "undefined") {
-      setInView(true);
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setInView(true);
-            observer.disconnect();
-            break;
-          }
-        }
-      },
-      { rootMargin: "450px 0px" }
-    );
-
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [priority, inView, targetSrc]);
-
+  // الاكتفاء بالرمز البديل (📦) فقط للمنتجات التي لا تملك صورة أصلاً أو فشل رابطها
   if (!targetSrc || hasError) {
     return (
       <div
@@ -146,52 +117,50 @@ export default function ProgressiveProductImage({
     );
   }
 
+  const isEager = priority || mode === "card" || mode === "detail";
+
   return (
     <div
       ref={containerRef}
       className={`relative overflow-hidden select-none bg-gradient-to-br from-[#2e1065] via-[#4c1d95] to-[#5b21b6] ${containerClassName}`}
     >
-      {/* طبقة التمويه البنفسجية الملكية الفورية (تظهر أثناء التحميل وعند ضعف الإنترنت ثم تتلاشى بسلاسة) */}
-      <div
-        aria-hidden="true"
-        className={`absolute inset-0 transition-opacity duration-500 ease-out pointer-events-none ${
-          loaded ? "opacity-0" : "opacity-100"
-        }`}
-      >
-        {previewBackdropSrc ? (
-          <img
-            src={previewBackdropSrc}
-            alt=""
-            className="w-full h-full object-cover scale-110 blur-md opacity-85"
-          />
-        ) : (
-          <div className="w-full h-full bg-gradient-to-br from-[#5b21b6]/85 via-[#4c1d95]/90 to-[#2e1065] animate-pulse flex items-center justify-center">
-            <span className="w-1/3 h-1/3 rounded-full bg-purple-300/20 blur-xs" />
-          </div>
-        )}
-      </div>
-
-      {/* الصورة الفعلية المحسنة بصيغة WebP */}
-      {inView && (
-        <img
-          src={targetSrc}
-          alt={alt}
-          loading={priority ? "eager" : "lazy"}
-          decoding="async"
-          referrerPolicy="no-referrer"
-          onLoad={() => setLoaded(true)}
-          onError={() => {
-            if (!useFallbackSrc && secondaryTargetSrc) {
-              setUseFallbackSrc(true);
-            } else {
-              setHasError(true);
-            }
-          }}
-          className={`w-full h-full transition-all duration-500 ease-out ${imgClassName} ${
-            loaded ? "opacity-100 scale-100 blur-0" : "opacity-0 scale-[1.03] blur-xs"
-          }`}
-        />
+      {/* خلفية متدرجة بنفسجية ملكية خفيفة خلف الصورة مباشرة بدون حجب ظهورها */}
+      {!loaded && (
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 z-0 pointer-events-none"
+        >
+          {previewBackdropSrc ? (
+            <img
+              src={previewBackdropSrc}
+              alt=""
+              className="w-full h-full object-cover scale-105 blur-sm opacity-90"
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-[#5b21b6]/70 via-[#4c1d95]/80 to-[#2e1065]" />
+          )}
+        </div>
       )}
+
+      {/* عرض الصورة الفعلية فوراً عند أول ظهور للبطاقة بدون إخفاء (opacity-100 مباشرة) */}
+      <img
+        ref={imgRef}
+        src={targetSrc}
+        alt={alt}
+        loading={isEager ? "eager" : "lazy"}
+        fetchPriority={priority ? "high" : "auto"}
+        decoding="async"
+        referrerPolicy="no-referrer"
+        onLoad={() => setLoaded(true)}
+        onError={() => {
+          if (!useFallbackSrc && secondaryTargetSrc) {
+            setUseFallbackSrc(true);
+          } else {
+            setHasError(true);
+          }
+        }}
+        className={`relative z-10 w-full h-full opacity-100 ${imgClassName}`}
+      />
     </div>
   );
 }
