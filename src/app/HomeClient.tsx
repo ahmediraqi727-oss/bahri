@@ -87,7 +87,7 @@ interface Post {
 
 export default function HomeClient() {
   const { settings, toggleDarkMode, toggleEyeProtection } = useSettings();
-  const { products, suppliers, categories, getEffectiveTiers } = useData();
+  const { products, suppliers, categories, getEffectiveTiers, hydrateProductImages } = useData();
   const { addItem, itemCount } = useCart();
   const { user, signOut, loading: authLoading } = useAuth();
   const { t, lang, setLang } = useLang();
@@ -247,12 +247,22 @@ export default function HomeClient() {
     loading: streamingLoading,
     loadingMore: streamingLoadingMore,
     hasMore: hasMoreProducts,
-    sentinelRef,
+    batchSize,
+    isFastScrolling,
+    loadMore: loadMoreStreaming,
   } = useAdaptiveProducts({
     searchQuery: search,
     selectedCategory: selectedCategory,
-    initialProducts: allAvailableProducts,
   });
+
+  // إدارة حجم الدفعة المعروضة بالواجهة (20 للجوال/التابلت و40 للحاسوب، وتتضاعف إلى 40 أو 80 عند التمرير السريع)
+  const [visibleCount, setVisibleCount] = useState<number>(20);
+  const [isBatchAdvancing, setIsBatchAdvancing] = useState<boolean>(false);
+
+  // إعادة ضبط الدفعة الأولى عند تغيير القسم أو البحث أو حجم الشاشة المبدئي
+  useEffect(() => {
+    setVisibleCount(batchSize);
+  }, [selectedCategory, search, imageResults, batchSize]);
 
   const supplierNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -262,19 +272,38 @@ export default function HomeClient() {
     return map;
   }, [suppliers]);
 
-  // دمج المنتجات المتوفرة بالذاكرة مع المنتجات القادمة من استعلام Supabase بدون تكرار لضمان سرعة البحث الفورية
+  // دمج المنتجات القادمة مع صورها من الدفعات مع كتالوج الذاكرة الفوري لضمان عمل البحث الشامل وتحديثات الإدارة
   const mergedCatalogProducts = useMemo(() => {
+    const contextMap = new Map<string, Product>();
+    allAvailableProducts.forEach((p) => {
+      contextMap.set(p.id, p);
+    });
+
     const map = new Map<string, Product>();
-    streamingProducts.forEach((p) => {
-      if (canSeeOutOfStock || (p.stock ?? 0) > 0) {
-        map.set(p.id, p);
+    streamingProducts.forEach((sp) => {
+      if (canSeeOutOfStock || (sp.stock ?? 0) > 0) {
+        const ctxProd = contextMap.get(sp.id);
+        if (ctxProd) {
+          map.set(sp.id, {
+            ...ctxProd,
+            image: sp.image || ctxProd.image || "",
+            originalImageUrl:
+              sp.originalImageUrl || ctxProd.originalImageUrl || sp.image || "",
+            thumbnailUrl: sp.thumbnailUrl || ctxProd.thumbnailUrl || null,
+            blurDataUrl: sp.blurDataUrl || ctxProd.blurDataUrl || null,
+          });
+        } else {
+          map.set(sp.id, sp);
+        }
       }
     });
+
     allAvailableProducts.forEach((p) => {
       if (!map.has(p.id)) {
         map.set(p.id, p);
       }
     });
+
     return Array.from(map.values());
   }, [allAvailableProducts, streamingProducts, canSeeOutOfStock]);
 
@@ -290,7 +319,7 @@ export default function HomeClient() {
     );
   }, [mergedCatalogProducts, selectedCategory]);
 
-  // تشغيل محرك البحث الذكي الهجين (المطابقات المباشرة والجزئية + المرادفات + التسامح مع الأخطاء + المقترحات البديلة)
+  // تشغيل محرك البحث الذكي الهجين الشامل (المطابقات المباشرة والجزئية + المرادفات + التسامح مع الأخطاء + المقترحات البديلة)
   const smartSearchResult = useMemo(() => {
     return searchProductsSmart(categoryScopedProducts, search, {
       supplierNameMap,
@@ -312,15 +341,111 @@ export default function HomeClient() {
     return [];
   }, [search, smartSearchResult.directMatches.length, smartSearchResult.fallbackMatches]);
 
-  const availableProducts = useMemo(() => {
+  // إجمالي المنتجات المطابقة قبل التقطيع الدفعي
+  const fullMatchingProducts = useMemo(() => {
     if (!imageResults || imageResults.length === 0) return textFilteredProducts;
-    const scored = imageResults.map((r) => {
-      const product = allAvailableProducts.find((p) => p.id === r.id);
-      return product ? { ...product, score: r.score } : null;
-    }).filter(Boolean);
+    const scored = imageResults
+      .map((r) => {
+        const product = mergedCatalogProducts.find((p) => p.id === r.id);
+        return product ? { ...product, score: r.score } : null;
+      })
+      .filter(Boolean);
     const textIds = new Set(textFilteredProducts.map((p) => p.id));
     return scored.filter((p) => textIds.has(p!.id)) as typeof allAvailableProducts;
-  }, [textFilteredProducts, imageResults, allAvailableProducts]);
+  }, [textFilteredProducts, imageResults, mergedCatalogProducts]);
+
+  // المنتجات المعروضة فعلياً في الشبكة وفق نظام الدفعات المتجاوب (20 للجوال / 40 للحاسوب)
+  const availableProducts = useMemo(() => {
+    return fullMatchingProducts.slice(0, visibleCount);
+  }, [fullMatchingProducts, visibleCount]);
+
+  const hasMoreChunksToDisplay =
+    visibleCount < fullMatchingProducts.length || hasMoreProducts;
+
+  // الجلب المباشر والاستباقي للصور والمصغرات لكل دفعة معروضة + الدفعة التالية بالخلفية لضمان ظهور الصور فوراً دون انقطاع
+  useEffect(() => {
+    const prefetchLimit = visibleCount + (isFastScrolling ? batchSize * 2 : batchSize);
+    const currentAndNextSlice = fullMatchingProducts.slice(0, prefetchLimit);
+    const missingImageIds: string[] = [];
+
+    currentAndNextSlice.forEach((p) => {
+      if (!p.image || !p.image.trim()) {
+        missingImageIds.push(p.id);
+      }
+    });
+
+    similarProducts.forEach((p) => {
+      if (!p.image || !p.image.trim()) {
+        missingImageIds.push(p.id);
+      }
+    });
+
+    if (missingImageIds.length > 0) {
+      hydrateProductImages(missingImageIds);
+    }
+  }, [
+    visibleCount,
+    batchSize,
+    isFastScrolling,
+    fullMatchingProducts,
+    similarProducts,
+    hydrateProductImages,
+  ]);
+
+  // دالة تحميل الدفعة التالية عند الاقتراب من نهاية القائمة مع مضاعفة الدفعة عند التمرير السريع
+  const handleLoadNextChunk = useCallback(() => {
+    if (streamingLoading || streamingLoadingMore || isBatchAdvancing) return;
+    if (!hasMoreChunksToDisplay) return;
+
+    const step = isFastScrolling ? batchSize * 2 : batchSize;
+
+    if (hasMoreProducts) {
+      loadMoreStreaming();
+    }
+
+    if (visibleCount < fullMatchingProducts.length) {
+      setIsBatchAdvancing(true);
+      setTimeout(() => {
+        setVisibleCount((prev) => Math.min(prev + step, fullMatchingProducts.length + step));
+        setIsBatchAdvancing(false);
+      }, 140);
+    } else {
+      setVisibleCount((prev) => prev + step);
+    }
+  }, [
+    streamingLoading,
+    streamingLoadingMore,
+    isBatchAdvancing,
+    hasMoreChunksToDisplay,
+    isFastScrolling,
+    batchSize,
+    hasMoreProducts,
+    loadMoreStreaming,
+    visibleCount,
+    fullMatchingProducts.length,
+  ]);
+
+  // مراقب نهاية القائمة الاستباقي (600px قبل النهاية) لتشغيل الجلب المسبق بسلاسة
+  const bottomObserverRef = useRef<IntersectionObserver | null>(null);
+  const sentinelRef = useCallback(
+    (node: HTMLElement | null) => {
+      if (bottomObserverRef.current) {
+        bottomObserverRef.current.disconnect();
+      }
+      if (!node || !hasMoreChunksToDisplay) return;
+
+      bottomObserverRef.current = new IntersectionObserver(
+        (entries) => {
+          if (entries[0]?.isIntersecting) {
+            handleLoadNextChunk();
+          }
+        },
+        { rootMargin: "600px 0px" }
+      );
+      bottomObserverRef.current.observe(node);
+    },
+    [hasMoreChunksToDisplay, handleLoadNextChunk]
+  );
 
   // تحديث المقترحات المنسدلة الفورية بناءً على نتائج البحث الذكي
   useEffect(() => {
@@ -1465,7 +1590,7 @@ export default function HomeClient() {
                 {search}
               </span>
               <span className="text-xs font-bold text-purple-700 dark:text-purple-300 font-mono tabular-nums">
-                ({availableProducts.length} منتج مطابق{similarProducts.length > 0 ? ` + ${similarProducts.length} مقترح مشابه` : ""})
+                ({fullMatchingProducts.length} منتج مطابق{similarProducts.length > 0 ? ` + ${similarProducts.length} مقترح مشابه` : ""})
               </span>
             </div>
             <button
@@ -1520,7 +1645,7 @@ export default function HomeClient() {
                   <ProductCard
                     key={product.id}
                     product={product}
-                    priorityImage={idx < 4}
+                    priorityImage={idx < 8}
                     selectedCategory={selectedCategory}
                     searchQuery={search}
                     cardQty={cardQty[product.id] ?? 1}
@@ -1585,15 +1710,42 @@ export default function HomeClient() {
               </div>
             )}
 
-            {/* Recommendation 4: Sentinel Element with rootMargin 300px for infinite streaming */}
-            <div ref={sentinelRef} className="h-16 w-full flex items-center justify-center my-6">
-              {streamingLoadingMore && (
-                <div className="flex items-center gap-2 text-xs font-bold text-[#5b21b6] dark:text-purple-300 bg-purple-50 dark:bg-[#241046]/60 px-5 py-2.5 rounded-2xl border border-purple-200 dark:border-purple-800/50 animate-pulse shadow-xs">
-                  <span className="animate-spin text-base">⏳</span>
-                  <span>جاري جلب المزيد من المنتجات تلقائياً...</span>
-                </div>
-              )}
-            </div>
+            {/* مؤشر التحميل الدفعي الذكي أسفل القائمة ("جاري تحميل المنتجات...") */}
+            {hasMoreChunksToDisplay && (
+              <div
+                ref={sentinelRef}
+                className="min-h-20 w-full flex flex-col items-center justify-center my-8 px-4"
+                dir="rtl"
+                aria-live="polite"
+              >
+                {streamingLoadingMore || isBatchAdvancing ? (
+                  <div className="flex items-center gap-3 text-xs sm:text-sm font-extrabold text-white bg-gradient-to-l from-[#5b21b6] via-[#4c1d95] to-[#2e1065] px-6 py-3 rounded-2xl border border-purple-400/30 shadow-lg shadow-purple-900/25 animate-fadeIn">
+                    <span
+                      className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin flex-shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span>جاري تحميل المنتجات...</span>
+                    {isFastScrolling && (
+                      <span className="px-2 py-0.5 rounded-lg bg-white/15 text-[11px] font-bold text-purple-100">
+                        ⚡ دفعة مضاعفة ({batchSize * 2})
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleLoadNextChunk}
+                    className="flex items-center gap-2.5 text-xs sm:text-sm font-extrabold text-[#5b21b6] dark:text-purple-200 bg-purple-50/90 dark:bg-[#1e103a] hover:bg-purple-100 dark:hover:bg-[#2a1650] px-5 py-2.5 rounded-2xl border border-purple-200/80 dark:border-purple-700/50 transition-all shadow-xs cursor-pointer"
+                  >
+                    <span
+                      className="w-3.5 h-3.5 rounded-full border-2 border-[#5b21b6]/30 dark:border-purple-300/30 border-t-[#5b21b6] dark:border-t-purple-300 animate-spin flex-shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span>جاري تحميل المنتجات...</span>
+                  </button>
+                )}
+              </div>
+            )}
           </>
         )}
       </section>

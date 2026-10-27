@@ -52,6 +52,8 @@ export default function ProgressiveProductImage({
   const [loaded, setLoaded] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
 
+  const [useFallbackSrc, setUseFallbackSrc] = useState<boolean>(false);
+
   // استرجاع المصغرة أو المعاينة الضبابية المخزنة محلياً إذا لم تُمرر مباشرة
   const cached = useMemo(
     () => getCachedProductThumbnail(productId, src),
@@ -62,7 +64,7 @@ export default function ProgressiveProductImage({
   const effectiveBlur = blurDataUrl || cached?.blur || null;
 
   // في وضع الجداول والقوائم (thumbnail) نعطي الأولوية للمصغرة المربعة 200x200 لأنها أخف بـ 90%
-  const targetSrc = useMemo(() => {
+  const primaryTargetSrc = useMemo(() => {
     const cleanSrc = (src || "").trim();
     const cleanThumb = (effectiveThumb || "").trim();
     if (mode === "thumbnail") {
@@ -70,6 +72,17 @@ export default function ProgressiveProductImage({
     }
     return cleanSrc || cleanThumb;
   }, [src, effectiveThumb, mode]);
+
+  const secondaryTargetSrc = useMemo(() => {
+    const cleanSrc = (src || "").trim();
+    const cleanThumb = (effectiveThumb || "").trim();
+    if (mode === "thumbnail") {
+      return cleanSrc && cleanSrc !== cleanThumb ? cleanSrc : "";
+    }
+    return cleanThumb && cleanThumb !== cleanSrc ? cleanThumb : "";
+  }, [src, effectiveThumb, mode]);
+
+  const targetSrc = useFallbackSrc && secondaryTargetSrc ? secondaryTargetSrc : primaryTargetSrc;
 
   // الصورة الاستباقية للتمويه الفوري أثناء التحميل
   const previewBackdropSrc = useMemo(() => {
@@ -82,17 +95,22 @@ export default function ProgressiveProductImage({
 
   useEffect(() => {
     setHasError(false);
-    // إذا كانت الصورة Data URL قصيرة (موجودة بالذاكرة)، نعتبرها جاهزة فوراً
-    if (targetSrc && targetSrc.startsWith("data:image/")) {
+    setUseFallbackSrc(false);
+    if (primaryTargetSrc && primaryTargetSrc.startsWith("data:image/")) {
       setLoaded(true);
+      setInView(true);
     } else {
       setLoaded(false);
     }
-  }, [targetSrc]);
+  }, [primaryTargetSrc]);
 
   // مراقب الظهور في الشاشة (IntersectionObserver) للتحميل الكسول الاستباقي
   useEffect(() => {
     if (priority || inView) return;
+    if (targetSrc && targetSrc.startsWith("data:image/")) {
+      setInView(true);
+      return;
+    }
     const el = containerRef.current;
     if (!el || typeof IntersectionObserver === "undefined") {
       setInView(true);
@@ -109,12 +127,12 @@ export default function ProgressiveProductImage({
           }
         }
       },
-      { rootMargin: "280px 0px" }
+      { rootMargin: "450px 0px" }
     );
 
     observer.observe(el);
     return () => observer.disconnect();
-  }, [priority, inView]);
+  }, [priority, inView, targetSrc]);
 
   if (!targetSrc || hasError) {
     return (
@@ -163,9 +181,8 @@ export default function ProgressiveProductImage({
           referrerPolicy="no-referrer"
           onLoad={() => setLoaded(true)}
           onError={() => {
-            // إذا فشل تحميل المصغرة وجربناها أولاً، نحاول التراجع للصورة الرئيسية
-            if (mode === "thumbnail" && src && targetSrc !== src) {
-              setLoaded(true);
+            if (!useFallbackSrc && secondaryTargetSrc) {
+              setUseFallbackSrc(true);
             } else {
               setHasError(true);
             }
